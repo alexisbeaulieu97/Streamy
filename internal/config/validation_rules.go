@@ -1,8 +1,10 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
 
-import streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+)
 
 // validateValidation checks a single post-execution validation entry.
 func validateValidation(val Validation, index int) error {
