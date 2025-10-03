@@ -1,0 +1,13 @@
+version: "1.0"
+name: Cycle Example
+steps:
+  - id: first
+    type: command
+    command: "echo first"
+    depends_on:
+      - second
+  - id: second
+    type: command
+    command: "echo second"
+    depends_on:
+      - first

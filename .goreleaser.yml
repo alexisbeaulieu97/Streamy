@@ -1,0 +1,33 @@
+project_name: streamy
+
+builds:
+  - id: streamy
+    main: ./cmd/streamy
+    ldflags:
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    binary: streamy
+    hooks:
+      post:
+        - cmd: chmod +x "{{ .Path }}"
+
+archives:
+  - format: binary
+    builds:
+      - streamy
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  use: git
