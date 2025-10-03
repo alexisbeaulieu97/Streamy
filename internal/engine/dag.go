@@ -89,7 +89,6 @@ func (g *Graph) TopologicalSort() error {
 
 	for len(queue) > 0 {
 		currentLevel := queue
-		queue = nil
 		sort.Strings(currentLevel)
 		levels = append(levels, append([]string(nil), currentLevel...))
 
