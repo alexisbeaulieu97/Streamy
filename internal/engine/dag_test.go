@@ -1,0 +1,152 @@
+package engine
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/alexisbeaulieu97/streamy/internal/config"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+)
+
+func TestBuildDAG_GeneratesLevels(t *testing.T) {
+	t.Parallel()
+
+    steps := []config.Step{
+        {
+            ID:      "install_git",
+            Type:    "package",
+            Enabled: true,
+            Package: &config.PackageStep{
+                Packages: []string{"git"},
+            },
+        },
+        {
+            ID:        "clone_repo",
+            Type:      "repo",
+            Enabled:   true,
+            DependsOn: []string{"install_git"},
+            Repo: &config.RepoStep{
+                URL:         "https://example.com/repo.git",
+				Destination: "/tmp/repo",
+			},
+		},
+        {
+            ID:        "configure",
+            Type:      "command",
+            Enabled:   true,
+            DependsOn: []string{"clone_repo"},
+            Command: &config.CommandStep{
+                Command: "./setup.sh",
+			},
+		},
+	}
+
+	graph, err := BuildDAG(steps)
+	require.NoError(t, err)
+	require.NotNil(t, graph)
+
+	require.Len(t, graph.Levels, 3)
+	require.ElementsMatch(t, []string{"install_git"}, graph.Levels[0])
+	require.ElementsMatch(t, []string{"clone_repo"}, graph.Levels[1])
+	require.ElementsMatch(t, []string{"configure"}, graph.Levels[2])
+}
+
+func TestBuildDAG_AllowsParallelSteps(t *testing.T) {
+	t.Parallel()
+
+	steps := []config.Step{
+        {
+            ID:      "install_git",
+            Type:    "package",
+            Enabled: true,
+            Package: &config.PackageStep{
+                Packages: []string{"git"},
+            },
+        },
+        {
+            ID:      "install_curl",
+            Type:    "package",
+            Enabled: true,
+            Package: &config.PackageStep{
+                Packages: []string{"curl"},
+            },
+        },
+        {
+            ID:        "clone_repo",
+            Type:      "repo",
+            Enabled:   true,
+            DependsOn: []string{"install_git", "install_curl"},
+            Repo: &config.RepoStep{
+                URL:         "https://example.com/repo.git",
+				Destination: "/tmp/repo",
+			},
+		},
+	}
+
+	graph, err := BuildDAG(steps)
+	require.NoError(t, err)
+
+	require.Len(t, graph.Levels, 2)
+	require.ElementsMatch(t, []string{"install_git", "install_curl"}, graph.Levels[0])
+	require.ElementsMatch(t, []string{"clone_repo"}, graph.Levels[1])
+}
+
+func TestBuildDAG_DetectsCycles(t *testing.T) {
+	t.Parallel()
+
+    steps := []config.Step{
+        {ID: "a", Type: "command", Enabled: true, DependsOn: []string{"c"}, Command: &config.CommandStep{Command: "echo a"}},
+        {ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}, Command: &config.CommandStep{Command: "echo b"}},
+        {ID: "c", Type: "command", Enabled: true, DependsOn: []string{"b"}, Command: &config.CommandStep{Command: "echo c"}},
+    }
+
+	graph, err := BuildDAG(steps)
+	require.Error(t, err)
+	require.Nil(t, graph)
+
+	var validationErr *streamyerrors.ValidationError
+	require.ErrorAs(t, err, &validationErr)
+	require.Contains(t, validationErr.Message, "cycle")
+}
+
+func TestBuildDAG_TopologicalOrderIsStable(t *testing.T) {
+	t.Parallel()
+
+    steps := []config.Step{
+        {ID: "a", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo a"}},
+        {ID: "b", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo b"}},
+    }
+
+	graph, err := BuildDAG(steps)
+	require.NoError(t, err)
+
+	require.ElementsMatch(t, []string{"a", "b"}, graph.Levels[0])
+}
+
+func TestBuildDAG_SkipsDisabledSteps(t *testing.T) {
+	t.Parallel()
+
+    steps := []config.Step{
+        {ID: "disabled", Type: "command", Enabled: false, Command: &config.CommandStep{Command: "echo skip"}},
+        {ID: "active", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo run"}},
+    }
+
+	graph, err := BuildDAG(steps)
+	require.NoError(t, err)
+	require.Len(t, graph.Levels, 1)
+	require.ElementsMatch(t, []string{"active"}, graph.Levels[0])
+}
+
+func TestBuildDAG_ErrorsWhenDependencyIsDisabled(t *testing.T) {
+	t.Parallel()
+
+    steps := []config.Step{
+        {ID: "disabled", Type: "command", Enabled: false, Command: &config.CommandStep{Command: "echo skip"}},
+        {ID: "active", Type: "command", Enabled: true, DependsOn: []string{"disabled"}, Command: &config.CommandStep{Command: "echo run"}},
+    }
+
+	graph, err := BuildDAG(steps)
+	require.Error(t, err)
+	require.Nil(t, graph)
+}
