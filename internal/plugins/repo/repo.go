@@ -47,7 +47,10 @@ func (p *repoPlugin) Check(ctx context.Context, step *config.Step) (bool, error)
 	}
 
 	if _, err := os.Stat(repoCfg.Destination); err != nil {
-		return false, nil
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, streamyerrors.NewExecutionError(step.ID, err)
 	}
 
 	if _, err := os.Stat(filepath.Join(repoCfg.Destination, ".git")); err != nil {
