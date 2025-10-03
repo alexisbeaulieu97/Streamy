@@ -13,6 +13,91 @@ import (
 	pluginpkg "github.com/alexisbeaulieu97/streamy/internal/plugin"
 )
 
+func TestPackagePlugin_Metadata(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	meta := p.Metadata()
+
+	require.NotEmpty(t, meta.Name)
+	require.NotEmpty(t, meta.Version)
+	require.Equal(t, "package", meta.Type)
+}
+
+func TestPackagePlugin_Schema(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	schema := p.Schema()
+
+	require.NotNil(t, schema)
+	_, ok := schema.(config.PackageStep)
+	require.True(t, ok, "schema should be of type PackageStep")
+}
+
+func TestPackagePlugin_ApplyInstallsMultiplePackages(t *testing.T) {
+	binDir := t.TempDir()
+	writeScript(t, binDir, "apt-get", `#!/bin/sh
+echo "Installing: $@"
+exit 0
+`)
+
+	originalPath := os.Getenv("PATH")
+	t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+	require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
+
+	step := &config.Step{
+		ID:   "install_packages",
+		Type: "package",
+		Package: &config.PackageStep{
+			Packages: []string{"git", "curl", "vim"},
+			Manager:  "apt",
+		},
+	}
+
+	p := New()
+
+	res, err := p.Apply(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, "success", strings.ToLower(res.Status))
+}
+
+func TestPackagePlugin_CheckMultiplePackages(t *testing.T) {
+	binDir := t.TempDir()
+	writeScript(t, binDir, "dpkg-query", `#!/bin/sh
+# Simulate git and curl installed, but not vim
+if echo "$@" | grep -q "vim"; then
+  exit 1
+fi
+echo "install ok installed"
+exit 0
+`)
+
+	originalPath := os.Getenv("PATH")
+	t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+	require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
+
+	p := New()
+
+	step := &config.Step{
+		ID:   "check_packages",
+		Type: "package",
+		Package: &config.PackageStep{
+			Packages: []string{"git", "curl"},
+			Manager:  "apt",
+		},
+	}
+
+	ok, err := p.Check(context.Background(), step)
+	require.NoError(t, err)
+	require.True(t, ok, "expected all packages to be installed")
+
+	step.Package.Packages = []string{"git", "curl", "vim"}
+	ok, err = p.Check(context.Background(), step)
+	require.NoError(t, err)
+	require.False(t, ok, "expected Check to return false when some packages missing")
+}
+
 func TestPackagePlugin_CheckReportsInstalledPackages(t *testing.T) {
 	binDir := t.TempDir()
 	writeScript(t, binDir, "dpkg-query", `#!/bin/sh

@@ -41,6 +41,53 @@ func TestApplyCommandValidatesConfigFile(t *testing.T) {
 	require.Contains(t, err.Error(), "does not exist")
 }
 
+func TestValidateApplyOptions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns error when config path is empty", func(t *testing.T) {
+		t.Parallel()
+		opts := applyOptions{ConfigPath: ""}
+		err := validateApplyOptions(opts)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "required")
+	})
+
+	t.Run("returns error when config path is whitespace", func(t *testing.T) {
+		t.Parallel()
+		opts := applyOptions{ConfigPath: "   "}
+		err := validateApplyOptions(opts)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "required")
+	})
+
+	t.Run("returns error when config file does not exist", func(t *testing.T) {
+		t.Parallel()
+		opts := applyOptions{ConfigPath: "/nonexistent/path/config.yaml"}
+		err := validateApplyOptions(opts)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "does not exist")
+	})
+
+	t.Run("returns error when config path is a directory", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		opts := applyOptions{ConfigPath: dir}
+		err := validateApplyOptions(opts)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "directory")
+	})
+
+	t.Run("succeeds for valid config file", func(t *testing.T) {
+		t.Parallel()
+		tmpFile := filepath.Join(t.TempDir(), "config.yaml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte("test"), 0o644))
+
+		opts := applyOptions{ConfigPath: tmpFile}
+		err := validateApplyOptions(opts)
+		require.NoError(t, err)
+	})
+}
+
 func executeCommand(cmd *cobra.Command, args ...string) error {
 	cmd.SetArgs(args)
 	buf := &bytes.Buffer{}

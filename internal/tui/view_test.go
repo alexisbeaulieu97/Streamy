@@ -34,3 +34,30 @@ func TestViewShowsSummaryWhenFinished(t *testing.T) {
 	require.Contains(t, view, "Finished")
 	require.Contains(t, view, "3/4")
 }
+
+func TestStatusIcon(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		status   string
+		expected string
+	}{
+		{"success shows checkmark", model.StatusSuccess, "✓"},
+		{"running shows hourglass", model.StatusRunning, "⏳"},
+		{"failed shows cross", model.StatusFailed, "✗"},
+		{"skipped shows circle-slash", model.StatusSkipped, "⊘"},
+		{"pending shows ellipsis", model.StatusPending, "…"},
+		{"unknown shows ellipsis", "unknown", "…"},
+		{"empty shows ellipsis", "", "…"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			icon := StatusIcon(tt.status)
+			require.Contains(t, icon, tt.expected)
+		})
+	}
+}

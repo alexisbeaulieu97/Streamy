@@ -81,3 +81,48 @@ func TestRunValidations_FailureAggregatesResults(t *testing.T) {
 	}
 	require.Equal(t, 2, failedCount)
 }
+
+func TestRunValidations_EmptyList(t *testing.T) {
+	t.Parallel()
+
+	results, err := RunValidations(context.Background(), []config.Validation{})
+	require.NoError(t, err)
+	require.Empty(t, results)
+}
+
+func TestRunValidations_MixedResults(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	existingFile := filepath.Join(tmp, "exists.txt")
+	require.NoError(t, os.WriteFile(existingFile, []byte("content"), 0o644))
+
+	validations := []config.Validation{
+		{
+			Type: "command_exists",
+			CommandExists: &config.CommandExistsValidation{
+				Command: "echo", // This should pass
+			},
+		},
+		{
+			Type: "file_exists",
+			FileExists: &config.FileExistsValidation{
+				Path: filepath.Join(tmp, "nonexistent.txt"), // This should fail
+			},
+		},
+		{
+			Type: "file_exists",
+			FileExists: &config.FileExistsValidation{
+				Path: existingFile, // This should pass
+			},
+		},
+	}
+
+	results, err := RunValidations(context.Background(), validations)
+	require.Error(t, err, "should return error when any validation fails")
+	require.Len(t, results, 3)
+
+	require.True(t, results[0].Passed)
+	require.False(t, results[1].Passed)
+	require.True(t, results[2].Passed)
+}

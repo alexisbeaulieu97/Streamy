@@ -120,3 +120,49 @@ func writeTempConfig(t *testing.T, contents string) string {
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
 	return path
 }
+
+func TestExtractLine(t *testing.T) {
+	t.Parallel()
+
+	t.Run("extracts line number from error", func(t *testing.T) {
+		t.Parallel()
+		err := &testError{msg: "yaml: line 42: some error"}
+		line := extractLine(err)
+		require.Equal(t, 42, line)
+	})
+
+	t.Run("returns zero when no line number found", func(t *testing.T) {
+		t.Parallel()
+		err := &testError{msg: "some error without line"}
+		line := extractLine(err)
+		require.Equal(t, 0, line)
+	})
+
+	t.Run("returns zero for nil error", func(t *testing.T) {
+		t.Parallel()
+		line := extractLine(nil)
+		require.Equal(t, 0, line)
+	})
+
+	t.Run("handles invalid line number", func(t *testing.T) {
+		t.Parallel()
+		err := &testError{msg: "yaml: line notanumber: error"}
+		line := extractLine(err)
+		require.Equal(t, 0, line)
+	})
+
+	t.Run("extracts first line number when multiple present", func(t *testing.T) {
+		t.Parallel()
+		err := &testError{msg: "yaml: line 10: nested line 20"}
+		line := extractLine(err)
+		require.Equal(t, 10, line)
+	})
+}
+
+type testError struct {
+	msg string
+}
+
+func (e *testError) Error() string {
+	return e.msg
+}

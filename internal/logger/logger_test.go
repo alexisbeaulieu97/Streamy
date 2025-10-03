@@ -60,3 +60,89 @@ func TestLoggerErrorIncludesContext(t *testing.T) {
 	require.Equal(t, "clone_repo", entry["step"])
 	require.Equal(t, "boom", entry["error"])
 }
+
+func TestLoggerWarn(t *testing.T) {
+	t.Parallel()
+
+	t.Run("writes warning message", func(t *testing.T) {
+		t.Parallel()
+		buf := &bytes.Buffer{}
+		log, err := New(Options{Level: "warn", HumanReadable: false, Writer: buf})
+		require.NoError(t, err)
+
+		log.Warn("something suspicious")
+
+		var entry logEntry
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
+		require.Equal(t, "something suspicious", entry["message"])
+		require.Equal(t, "warn", entry["level"])
+	})
+
+	t.Run("respects log level", func(t *testing.T) {
+		t.Parallel()
+		buf := &bytes.Buffer{}
+		log, err := New(Options{Level: "error", HumanReadable: false, Writer: buf})
+		require.NoError(t, err)
+
+		log.Warn("this should not appear")
+		require.Equal(t, "", strings.TrimSpace(buf.String()))
+	})
+}
+
+func TestLoggerNilHandling(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil logger Info does not panic", func(t *testing.T) {
+		t.Parallel()
+		var log *Logger
+		require.NotPanics(t, func() {
+			log.Info("test")
+		})
+	})
+
+	t.Run("nil logger Debug does not panic", func(t *testing.T) {
+		t.Parallel()
+		var log *Logger
+		require.NotPanics(t, func() {
+			log.Debug("test")
+		})
+	})
+
+	t.Run("nil logger Warn does not panic", func(t *testing.T) {
+		t.Parallel()
+		var log *Logger
+		require.NotPanics(t, func() {
+			log.Warn("test")
+		})
+	})
+
+	t.Run("nil logger Error does not panic", func(t *testing.T) {
+		t.Parallel()
+		var log *Logger
+		require.NotPanics(t, func() {
+			log.Error(errors.New("test"), "test")
+		})
+	})
+
+	t.Run("nil logger WithFields returns nil", func(t *testing.T) {
+		t.Parallel()
+		var log *Logger
+		result := log.WithFields(map[string]any{"key": "value"})
+		require.Nil(t, result)
+	})
+}
+
+func TestLoggerErrorWithNilError(t *testing.T) {
+	t.Parallel()
+
+	buf := &bytes.Buffer{}
+	log, err := New(Options{Level: "error", HumanReadable: false, Writer: buf})
+	require.NoError(t, err)
+
+	log.Error(nil, "error without underlying cause")
+
+	var entry logEntry
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
+	require.Equal(t, "error without underlying cause", entry["message"])
+	require.Equal(t, "error", entry["level"])
+}

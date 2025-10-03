@@ -119,3 +119,16 @@ func TestValidateStep(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateStepWithNilPointer(t *testing.T) {
+	t.Parallel()
+
+	// Test package step with nil config
+	step := Step{
+		ID:      "test",
+		Type:    "package",
+		Package: nil,
+	}
+	err := ValidateStep(step)
+	require.Error(t, err)
+}

@@ -12,6 +12,28 @@ import (
 	pluginpkg "github.com/alexisbeaulieu97/streamy/internal/plugin"
 )
 
+func TestCopyPlugin_Metadata(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	meta := p.Metadata()
+
+	require.NotEmpty(t, meta.Name)
+	require.NotEmpty(t, meta.Version)
+	require.Equal(t, "copy", meta.Type)
+}
+
+func TestCopyPlugin_Schema(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	schema := p.Schema()
+
+	require.NotNil(t, schema)
+	_, ok := schema.(config.CopyStep)
+	require.True(t, ok, "schema should be of type CopyStep")
+}
+
 func TestCopyPlugin_CheckUsesHashForIdempotency(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
@@ -103,6 +125,163 @@ func TestCopyPlugin_ApplyRecursiveCopy(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(destDir, "nested", "file.txt"))
 	require.NoError(t, err)
 	require.Equal(t, "recursive", string(data))
+}
+
+func TestCopyPlugin_CheckReturnsFalseForDirectory(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	destDir := t.TempDir()
+
+	step := &config.Step{
+		ID:   "copy_dir",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcDir,
+			Destination: destDir,
+		},
+	}
+
+	p := New()
+
+	ok, err := p.Check(context.Background(), step)
+	require.NoError(t, err)
+	require.False(t, ok, "expected Check to return false for directory")
+}
+
+func TestCopyPlugin_CheckReturnsFalseWhenDestinationMissing(t *testing.T) {
+	t.Parallel()
+
+	srcFile := filepath.Join(t.TempDir(), "src.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("data"), 0o644))
+
+	destFile := filepath.Join(t.TempDir(), "missing.txt")
+
+	step := &config.Step{
+		ID:   "copy_file",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcFile,
+			Destination: destFile,
+		},
+	}
+
+	p := New()
+
+	ok, err := p.Check(context.Background(), step)
+	require.NoError(t, err)
+	require.False(t, ok, "expected Check to return false when destination missing")
+}
+
+func TestCopyPlugin_ApplyWithOverwrite(t *testing.T) {
+	srcFile := filepath.Join(t.TempDir(), "src.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("new content"), 0o644))
+
+	destFile := filepath.Join(t.TempDir(), "dest.txt")
+	require.NoError(t, os.WriteFile(destFile, []byte("old content"), 0o644))
+
+	step := &config.Step{
+		ID:   "copy_file",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcFile,
+			Destination: destFile,
+			Overwrite:   true,
+		},
+	}
+
+	p := New()
+
+	res, err := p.Apply(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, "success", res.Status)
+
+	data, err := os.ReadFile(destFile)
+	require.NoError(t, err)
+	require.Equal(t, "new content", string(data))
+}
+
+func TestCopyPlugin_ApplyCreatesParentDirectory(t *testing.T) {
+	srcFile := filepath.Join(t.TempDir(), "src.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("data"), 0o644))
+
+	destFile := filepath.Join(t.TempDir(), "nested/dir/dest.txt")
+
+	step := &config.Step{
+		ID:   "copy_file",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcFile,
+			Destination: destFile,
+		},
+	}
+
+	p := New()
+
+	res, err := p.Apply(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, "success", res.Status)
+
+	data, err := os.ReadFile(destFile)
+	require.NoError(t, err)
+	require.Equal(t, "data", string(data))
+}
+
+func TestCopyPlugin_ApplyFailsForDirectoryWithoutRecursive(t *testing.T) {
+	t.Parallel()
+
+	srcDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("data"), 0o644))
+	destDir := filepath.Join(t.TempDir(), "dest")
+
+	step := &config.Step{
+		ID:   "copy_dir",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcDir,
+			Destination: destDir,
+			Recursive:   false, // This should fail
+		},
+	}
+
+	p := New()
+
+	res, err := p.Apply(context.Background(), step)
+	require.Error(t, err)
+	require.NotNil(t, res)
+	require.Equal(t, "failed", res.Status)
+	require.Contains(t, res.Message, "directory")
+	require.Contains(t, res.Message, "recursive")
+}
+
+func TestCopyPlugin_ApplyWithoutPreserveMode(t *testing.T) {
+	srcFile := filepath.Join(t.TempDir(), "src.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("data"), 0o700))
+
+	destFile := filepath.Join(t.TempDir(), "dest.txt")
+
+	step := &config.Step{
+		ID:   "copy_file",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:          srcFile,
+			Destination:     destFile,
+			PreserveMode:    false,
+			PreserveModeSet: true,
+		},
+	}
+
+	p := New()
+
+	res, err := p.Apply(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, "success", res.Status)
+
+	// File should have been copied with default permissions
+	info, err := os.Stat(destFile)
+	require.NoError(t, err)
+	// Should not preserve the 0o700 mode
+	require.NotEqual(t, os.FileMode(0o700), info.Mode().Perm())
 }
 
 func TestCopyPlugin_DryRunSkipsCopy(t *testing.T) {
