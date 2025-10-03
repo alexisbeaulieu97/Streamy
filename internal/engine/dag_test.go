@@ -150,3 +150,15 @@ func TestBuildDAG_ErrorsWhenDependencyIsDisabled(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, graph)
 }
+
+func TestBuildDAG_ErrorsWhenDependencyMissing(t *testing.T) {
+	t.Parallel()
+
+	steps := []config.Step{
+		{ID: "first", Type: "command", Enabled: true, DependsOn: []string{"missing"}, Command: &config.CommandStep{Command: "echo"}},
+	}
+
+	graph, err := BuildDAG(steps)
+	require.Error(t, err)
+	require.Nil(t, graph)
+}

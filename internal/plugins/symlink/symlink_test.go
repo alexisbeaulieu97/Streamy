@@ -216,3 +216,29 @@ func TestSymlinkPlugin_DryRunReportsSkip(t *testing.T) {
 	_, err = os.Lstat(target)
 	require.Error(t, err)
 }
+
+func TestSymlinkPlugin_ApplyFailsWhenTargetExistsWithoutForce(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "source.txt")
+	require.NoError(t, os.WriteFile(src, []byte("content"), 0o644))
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.txt")
+	require.NoError(t, os.WriteFile(target, []byte("existing"), 0o644))
+
+	step := &config.Step{
+		ID:   "link_file",
+		Type: "symlink",
+		Symlink: &config.SymlinkStep{
+			Source: src,
+			Target: target,
+			Force:  false,
+		},
+	}
+
+	p := New()
+
+	res, err := p.Apply(context.Background(), step)
+	require.Error(t, err)
+	require.Equal(t, "link_file", res.StepID)
+	require.Equal(t, "failed", res.Status)
+}
