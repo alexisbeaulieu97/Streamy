@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -14,6 +15,9 @@ import (
 )
 
 func TestCommandPlugin_CheckUsesCheckCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell assumptions do not hold on Windows")
+	}
 	binDir := t.TempDir()
 	writeScript(t, binDir, "check-script", `#!/bin/sh
 if [ "$EXPECT_FAIL" = "1" ]; then
@@ -50,6 +54,9 @@ exit 0
 }
 
 func TestCommandPlugin_ApplyRunsCommandWithEnvAndWorkdir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell assumptions do not hold on Windows")
+	}
 	workDir := t.TempDir()
 	outputFile := filepath.Join(workDir, "result.txt")
 
@@ -77,6 +84,9 @@ func TestCommandPlugin_ApplyRunsCommandWithEnvAndWorkdir(t *testing.T) {
 }
 
 func TestCommandPlugin_DryRunSkipsExecution(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell assumptions do not hold on Windows")
+	}
 	workDir := t.TempDir()
 	target := filepath.Join(workDir, "should_not_exist")
 
@@ -119,6 +129,17 @@ func TestCommandPlugin_Schema(t *testing.T) {
 	require.NotNil(t, schema)
 	_, ok := schema.(config.CommandStep)
 	require.True(t, ok, "schema should be of type CommandStep")
+}
+
+func TestCommandPlugin_CheckMissingConfig(t *testing.T) {
+	_, err := New().Check(context.Background(), &config.Step{ID: "missing", Type: "command"})
+	require.Error(t, err)
+}
+
+func TestCommandPlugin_ApplyMissingConfig(t *testing.T) {
+	res, err := New().Apply(context.Background(), &config.Step{ID: "missing", Type: "command"})
+	require.Error(t, err)
+	require.Nil(t, res)
 }
 
 func TestDetermineShell(t *testing.T) {

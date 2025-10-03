@@ -19,7 +19,7 @@ jobs:
         run: go test ./... -coverprofile=coverage.out
       - name: Enforce coverage threshold
         run: |
-          go tool cover -func=coverage.out | awk 'END {print $3}' | sed 's/%//' | awk '{if ($1+0 < 75) {exit 1}}'
+          go tool cover -func=coverage.out | awk 'END {print $3}' | sed 's/%//' | awk '{if ($1+0 < 80) {exit 1}}'
 
   lint:
     runs-on: ubuntu-latest
