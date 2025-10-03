@@ -12,32 +12,32 @@ import (
 func TestBuildDAG_GeneratesLevels(t *testing.T) {
 	t.Parallel()
 
-    steps := []config.Step{
-        {
-            ID:      "install_git",
-            Type:    "package",
-            Enabled: true,
-            Package: &config.PackageStep{
-                Packages: []string{"git"},
-            },
-        },
-        {
-            ID:        "clone_repo",
-            Type:      "repo",
-            Enabled:   true,
-            DependsOn: []string{"install_git"},
-            Repo: &config.RepoStep{
-                URL:         "https://example.com/repo.git",
+	steps := []config.Step{
+		{
+			ID:      "install_git",
+			Type:    "package",
+			Enabled: true,
+			Package: &config.PackageStep{
+				Packages: []string{"git"},
+			},
+		},
+		{
+			ID:        "clone_repo",
+			Type:      "repo",
+			Enabled:   true,
+			DependsOn: []string{"install_git"},
+			Repo: &config.RepoStep{
+				URL:         "https://example.com/repo.git",
 				Destination: "/tmp/repo",
 			},
 		},
-        {
-            ID:        "configure",
-            Type:      "command",
-            Enabled:   true,
-            DependsOn: []string{"clone_repo"},
-            Command: &config.CommandStep{
-                Command: "./setup.sh",
+		{
+			ID:        "configure",
+			Type:      "command",
+			Enabled:   true,
+			DependsOn: []string{"clone_repo"},
+			Command: &config.CommandStep{
+				Command: "./setup.sh",
 			},
 		},
 	}
@@ -56,29 +56,29 @@ func TestBuildDAG_AllowsParallelSteps(t *testing.T) {
 	t.Parallel()
 
 	steps := []config.Step{
-        {
-            ID:      "install_git",
-            Type:    "package",
-            Enabled: true,
-            Package: &config.PackageStep{
-                Packages: []string{"git"},
-            },
-        },
-        {
-            ID:      "install_curl",
-            Type:    "package",
-            Enabled: true,
-            Package: &config.PackageStep{
-                Packages: []string{"curl"},
-            },
-        },
-        {
-            ID:        "clone_repo",
-            Type:      "repo",
-            Enabled:   true,
-            DependsOn: []string{"install_git", "install_curl"},
-            Repo: &config.RepoStep{
-                URL:         "https://example.com/repo.git",
+		{
+			ID:      "install_git",
+			Type:    "package",
+			Enabled: true,
+			Package: &config.PackageStep{
+				Packages: []string{"git"},
+			},
+		},
+		{
+			ID:      "install_curl",
+			Type:    "package",
+			Enabled: true,
+			Package: &config.PackageStep{
+				Packages: []string{"curl"},
+			},
+		},
+		{
+			ID:        "clone_repo",
+			Type:      "repo",
+			Enabled:   true,
+			DependsOn: []string{"install_git", "install_curl"},
+			Repo: &config.RepoStep{
+				URL:         "https://example.com/repo.git",
 				Destination: "/tmp/repo",
 			},
 		},
@@ -95,11 +95,11 @@ func TestBuildDAG_AllowsParallelSteps(t *testing.T) {
 func TestBuildDAG_DetectsCycles(t *testing.T) {
 	t.Parallel()
 
-    steps := []config.Step{
-        {ID: "a", Type: "command", Enabled: true, DependsOn: []string{"c"}, Command: &config.CommandStep{Command: "echo a"}},
-        {ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}, Command: &config.CommandStep{Command: "echo b"}},
-        {ID: "c", Type: "command", Enabled: true, DependsOn: []string{"b"}, Command: &config.CommandStep{Command: "echo c"}},
-    }
+	steps := []config.Step{
+		{ID: "a", Type: "command", Enabled: true, DependsOn: []string{"c"}, Command: &config.CommandStep{Command: "echo a"}},
+		{ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}, Command: &config.CommandStep{Command: "echo b"}},
+		{ID: "c", Type: "command", Enabled: true, DependsOn: []string{"b"}, Command: &config.CommandStep{Command: "echo c"}},
+	}
 
 	graph, err := BuildDAG(steps)
 	require.Error(t, err)
@@ -113,10 +113,10 @@ func TestBuildDAG_DetectsCycles(t *testing.T) {
 func TestBuildDAG_TopologicalOrderIsStable(t *testing.T) {
 	t.Parallel()
 
-    steps := []config.Step{
-        {ID: "a", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo a"}},
-        {ID: "b", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo b"}},
-    }
+	steps := []config.Step{
+		{ID: "a", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo a"}},
+		{ID: "b", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo b"}},
+	}
 
 	graph, err := BuildDAG(steps)
 	require.NoError(t, err)
@@ -127,10 +127,10 @@ func TestBuildDAG_TopologicalOrderIsStable(t *testing.T) {
 func TestBuildDAG_SkipsDisabledSteps(t *testing.T) {
 	t.Parallel()
 
-    steps := []config.Step{
-        {ID: "disabled", Type: "command", Enabled: false, Command: &config.CommandStep{Command: "echo skip"}},
-        {ID: "active", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo run"}},
-    }
+	steps := []config.Step{
+		{ID: "disabled", Type: "command", Enabled: false, Command: &config.CommandStep{Command: "echo skip"}},
+		{ID: "active", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo run"}},
+	}
 
 	graph, err := BuildDAG(steps)
 	require.NoError(t, err)
@@ -141,10 +141,10 @@ func TestBuildDAG_SkipsDisabledSteps(t *testing.T) {
 func TestBuildDAG_ErrorsWhenDependencyIsDisabled(t *testing.T) {
 	t.Parallel()
 
-    steps := []config.Step{
-        {ID: "disabled", Type: "command", Enabled: false, Command: &config.CommandStep{Command: "echo skip"}},
-        {ID: "active", Type: "command", Enabled: true, DependsOn: []string{"disabled"}, Command: &config.CommandStep{Command: "echo run"}},
-    }
+	steps := []config.Step{
+		{ID: "disabled", Type: "command", Enabled: false, Command: &config.CommandStep{Command: "echo skip"}},
+		{ID: "active", Type: "command", Enabled: true, DependsOn: []string{"disabled"}, Command: &config.CommandStep{Command: "echo run"}},
+	}
 
 	graph, err := BuildDAG(steps)
 	require.Error(t, err)
