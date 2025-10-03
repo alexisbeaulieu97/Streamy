@@ -1,0 +1,43 @@
+version: "1.0"
+name: "Complex DAG"
+settings:
+  parallel: 3
+  timeout: 120
+steps:
+  - id: install_tools
+    type: package
+    packages:
+      - git
+      - curl
+  - id: fetch_repo
+    type: repo
+    depends_on:
+      - install_tools
+    url: "https://example.com/streamy.git"
+    destination: "~/streamy/examples"
+    branch: "main"
+  - id: create_symlink
+    type: symlink
+    depends_on:
+      - fetch_repo
+    source: "~/streamy/examples/.streamyrc"
+    target: "~/.streamyrc"
+    force: true
+  - id: copy_config
+    type: copy
+    depends_on:
+      - fetch_repo
+    source: "~/streamy/examples/config/sample.conf"
+    destination: "~/.config/streamy/sample.conf"
+    overwrite: true
+  - id: run_script
+    type: command
+    depends_on:
+      - copy_config
+    command: "echo running post-setup"
+validations:
+  - type: file_exists
+    path: "~/.streamyrc"
+  - type: path_contains
+    file: "~/.config/streamy/sample.conf"
+    text: "streamy"
