@@ -12,12 +12,12 @@ import (
 func TestGeneratePlan(t *testing.T) {
 	t.Parallel()
 
-    steps := []config.Step{
-        {ID: "install_git", Type: "package", Enabled: true, Package: &config.PackageStep{Packages: []string{"git"}}},
-        {ID: "install_curl", Type: "package", Enabled: true, Package: &config.PackageStep{Packages: []string{"curl"}}},
-        {ID: "clone_repo", Type: "repo", Enabled: true, DependsOn: []string{"install_git"}, Repo: &config.RepoStep{URL: "https://example.com/repo.git", Destination: "/tmp/repo"}},
-        {ID: "configure", Type: "command", Enabled: true, DependsOn: []string{"clone_repo", "install_curl"}, Command: &config.CommandStep{Command: "./configure"}},
-    }
+	steps := []config.Step{
+		{ID: "install_git", Type: "package", Enabled: true, Package: &config.PackageStep{Packages: []string{"git"}}},
+		{ID: "install_curl", Type: "package", Enabled: true, Package: &config.PackageStep{Packages: []string{"curl"}}},
+		{ID: "clone_repo", Type: "repo", Enabled: true, DependsOn: []string{"install_git"}, Repo: &config.RepoStep{URL: "https://example.com/repo.git", Destination: "/tmp/repo"}},
+		{ID: "configure", Type: "command", Enabled: true, DependsOn: []string{"clone_repo", "install_curl"}, Command: &config.CommandStep{Command: "./configure"}},
+	}
 
 	graph, err := BuildDAG(steps)
 	require.NoError(t, err)
@@ -39,10 +39,10 @@ func TestGeneratePlan(t *testing.T) {
 func TestGeneratePlan_String(t *testing.T) {
 	t.Parallel()
 
-    steps := []config.Step{
-        {ID: "a", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo a"}},
-        {ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}, Command: &config.CommandStep{Command: "echo b"}},
-    }
+	steps := []config.Step{
+		{ID: "a", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo a"}},
+		{ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}, Command: &config.CommandStep{Command: "echo b"}},
+	}
 
 	graph, err := BuildDAG(steps)
 	require.NoError(t, err)
