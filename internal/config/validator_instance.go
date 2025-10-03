@@ -13,7 +13,6 @@ var (
 
 	semverPattern   = regexp.MustCompile(`^\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
 	stepIDPattern   = regexp.MustCompile(`^[a-z0-9_]+$`)
-	stepTypes       = map[string]struct{}{"package": {}, "repo": {}, "symlink": {}, "copy": {}, "command": {}}
 	validationTypes = map[string]struct{}{"command_exists": {}, "file_exists": {}, "path_contains": {}}
 )
 
