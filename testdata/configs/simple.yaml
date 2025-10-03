@@ -1,0 +1,14 @@
+version: "1.0"
+name: "Simple Example"
+steps:
+  - id: say_hello
+    type: command
+    command: "echo hello"
+  - id: say_goodbye
+    type: command
+    depends_on:
+      - say_hello
+    command: "echo goodbye"
+validations:
+  - type: command_exists
+    command: echo

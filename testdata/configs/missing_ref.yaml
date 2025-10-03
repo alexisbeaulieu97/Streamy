@@ -1,0 +1,8 @@
+version: "1.0"
+name: Missing Reference
+steps:
+  - id: lone
+    type: command
+    command: "echo lone"
+    depends_on:
+      - missing_step
