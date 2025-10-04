@@ -55,6 +55,8 @@ As a Streamy user configuring team onboarding, I need to render configuration fi
 
 5. **Given** a template file references a variable that is not defined in inline vars or environment variables, **When** Streamy executes the template step, **Then** the step fails with a clear error message indicating which variable is missing.
 
+5a. **Given** a user provides an inline variable with an invalid name (violating Go identifier rules), **When** Streamy validates the configuration, **Then** the validation fails with a clear error message indicating the invalid variable name.
+
 6. **Given** the destination directory does not exist, **When** Streamy executes the template step, **Then** the system creates necessary parent directories before writing the rendered file.
 
 7. **Given** I run Streamy in dry-run mode with a template step, **When** the template step is processed, **Then** the system reports what would be rendered without actually creating or modifying files.
@@ -82,6 +84,12 @@ As a Streamy user configuring team onboarding, I need to render configuration fi
 - What happens when the rendered output would be identical to the template source (no variables to substitute)?
   → System creates the destination file with identical content (valid use case).
 
+- What happens when the template contains syntax errors (malformed Go template)?
+  → Step fails immediately with error message showing line/column location of the syntax error.
+
+- What happens when a variable name in inline vars violates Go identifier rules?
+  → Configuration validation fails with clear error indicating the invalid variable name.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -91,6 +99,8 @@ As a Streamy user configuring team onboarding, I need to render configuration fi
 - **FR-002**: System MUST accept a destination file path where the rendered output will be written.
 
 - **FR-003**: System MUST accept an optional inline variables map (key-value pairs) for variable substitution.
+
+- **FR-003a**: System MUST accept an optional file mode/permission specification for the rendered destination file (e.g., octal notation like 0644).
 
 - **FR-004**: System MUST substitute variables in the template with values from inline variables when provided.
 
@@ -124,21 +134,27 @@ As a Streamy user configuring team onboarding, I need to render configuration fi
 
 - **FR-019**: System MUST handle empty template files as valid input (rendering to empty output file).
 
-- **FR-020**: System MUST support a defined template syntax format for variable placeholders within template files. [NEEDS CLARIFICATION: specific template syntax not specified - Go templates, Mustache, simple ${VAR}, or other format?]
+- **FR-020**: System MUST support Go text/template syntax format for variable placeholders within template files (e.g., `{{.VAR}}` for simple variables, with support for conditionals and loops).
 
-- **FR-021**: System MUST handle template syntax errors gracefully with clear error messages indicating the issue and location in the template. [NEEDS CLARIFICATION: error handling severity and detail level for malformed templates]
+- **FR-021**: System MUST fail execution immediately when template syntax is malformed, providing an error message that includes the specific issue and the line/column location in the template file.
 
-- **FR-022**: System MUST preserve or set file permissions on the rendered destination file. [NEEDS CLARIFICATION: file permission behavior not specified - copy from template source, use default umask, or allow explicit configuration?]
+- **FR-022**: System MUST set file permissions on the rendered destination file by copying from the template source file when no explicit permission is specified.
+
+- **FR-023**: System MUST override default permissions and apply the explicitly specified file mode when provided in the step configuration.
+
+- **FR-024**: System MUST log minimal output during template rendering operations, reporting only success or failure status to maintain clean, production-friendly logs.
+
+- **FR-025**: System MUST validate that variable names in inline variables follow Go identifier rules (start with letter or underscore, followed by letters, digits, or underscores).
 
 ### Key Entities
 
-- **Template Step Configuration**: Represents a single template rendering operation defined in a Streamy configuration file. Contains source template path, destination file path, optional inline variables map, and standard step metadata (ID, description, dependencies).
+- **Template Step Configuration**: Represents a single template rendering operation defined in a Streamy configuration file. Contains source template path, destination file path, optional inline variables map, optional file mode/permission specification, and standard step metadata (ID, description, dependencies).
 
-- **Template Source File**: An existing file containing static content with variable placeholders following a defined syntax. Remains unchanged during execution.
+- **Template Source File**: An existing file containing static content with variable placeholders following Go text/template syntax (e.g., `{{.VariableName}}`). Remains unchanged during execution.
 
 - **Rendered Destination File**: The output file created by substituting variables in the template with actual values. May be newly created or overwritten based on idempotency check.
 
-- **Variable**: A named placeholder in a template that gets replaced with an actual value. Can be sourced from inline step configuration or environment variables, with inline taking precedence.
+- **Variable**: A named placeholder in a template that gets replaced with an actual value. Can be sourced from inline step configuration or environment variables, with inline taking precedence. Variable names must follow Go identifier rules (start with letter or underscore, followed by letters, digits, or underscores).
 
 ---
 
@@ -152,8 +168,8 @@ As a Streamy user configuring team onboarding, I need to render configuration fi
 - [x] All mandatory sections completed
 
 ### Requirement Completeness
-- [ ] No [NEEDS CLARIFICATION] markers remain (3 clarifications needed)
-- [x] Requirements are testable and unambiguous (except marked items)
+- [x] No [NEEDS CLARIFICATION] markers remain
+- [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Scope is clearly bounded (MVP: simple template rendering with variable substitution)
 - [x] Dependencies and assumptions identified (assumes file system access, environment variable access)
@@ -161,7 +177,7 @@ As a Streamy user configuring team onboarding, I need to render configuration fi
 ### Constitution Alignment
 - **Principle I (Minimal Dependencies)**: ✓ Template rendering can use standard library capabilities, no external dependencies required for MVP
 - **Principle II (Declarative Schema)**: ✓ Configuration is intuitive - source, destination, and variables are clear concepts
-- **Principle IV (Safe Defaults)**: ⚠ Needs clarification on file permission behavior to ensure safe defaults
+- **Principle IV (Safe Defaults)**: ✓ Permissions copied from source by default, with explicit override capability for security control
 - **Principle V (Performance)**: ✓ Template rendering expected to be fast for typical config files (< 1MB)
 
 ---
@@ -171,20 +187,22 @@ As a Streamy user configuring team onboarding, I need to render configuration fi
 
 - [x] User description parsed
 - [x] Key concepts extracted
-- [x] Ambiguities marked (3 clarifications needed)
+- [x] Ambiguities marked (all resolved via clarification session)
 - [x] User scenarios defined
 - [x] Requirements generated
 - [x] Entities identified
-- [ ] Review checklist passed (pending clarifications)
+- [x] Review checklist passed
 
 ---
 
-## Clarifications Needed Before Implementation
+## Clarifications
 
-1. **Template Syntax**: Which template syntax should be used for variable placeholders? Options include Go text/template syntax, simple shell-style `${VAR}` or `$VAR`, Mustache/Handlebars `{{VAR}}`, or other formats. Recommendation: Go text/template for consistency with Go ecosystem, but `${VAR}` for simplicity in MVP.
+### Session 2025-10-04
 
-2. **File Permissions**: How should file permissions be handled for rendered files? Options include: (a) use system default umask, (b) copy permissions from template source file, or (c) allow explicit permission configuration in step. Recommendation: Copy from source by default with optional explicit permission field.
-
-3. **Template Error Handling**: What level of detail should be provided when template syntax is malformed? Should execution continue with warnings or fail fast? Recommendation: Fail fast with clear error messages showing line/column of syntax errors for rapid debugging.
+- Q: Which template syntax format should be used for variable placeholders? → A: Go text/template `{{.VAR}}` - Go ecosystem standard, supports conditionals and loops, more powerful
+- Q: How should file permissions be handled for rendered destination files? → A: Allow explicit permission configuration in step (e.g., `mode: 0644`) with source file as fallback
+- Q: How should template syntax errors be handled when the template is malformed? → A: Fail fast with error showing line/column - stops execution immediately, precise debugging
+- Q: What information should be logged during template rendering operations? → A: Minimal: success/failure status only - least verbose, production-friendly
+- Q: Should variable names in templates have any naming constraints or validation rules? → A: Follow Go identifier rules - consistent with Go text/template conventions
 
 ---
