@@ -149,3 +149,126 @@ The template plugin renders destination files from Go `text/template` sources wi
 - Validate variable names with Go identifier rules (`^[a-zA-Z_][a-zA-Z0-9_]*$`).
 - Use dry-run (`streamy apply --dry-run`) to preview changes; look for `would_create` / `would_update` statuses.
 - Pair each template with table-driven tests using `t.TempDir()` to guarantee portability.
+
+## Line In File Plugin (`type: line_in_file`)
+
+The line_in_file plugin provides declarative, idempotent management of text file lines. It ensures specific lines exist or are removed, supports pattern-based replacement, and respects Streamy's safety features (dry-run, backups, verbose output).
+
+### Key Features
+
+- **Idempotent Operations**: Content comparison ensures no unnecessary file modifications on repeated runs.
+- **Pattern Matching**: Use regular expressions to find and replace specific lines or remove multiple matches.
+- **Multiple Match Strategies**: Configure how to handle multiple regex matches (first, all, error, or interactive prompt).
+- **Backup Support**: Automatic timestamped backups before destructive changes.
+- **Encoding Support**: Handle various text encodings (UTF-8, Latin-1, ASCII, etc.).
+- **Atomic Writes**: Safe file modifications using temp file + rename pattern.
+- **Dry-Run Preview**: Unified diff format shows exactly what changes will be made.
+
+### Configuration Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `file` | string | Yes | — | Path to target file (supports `~` expansion) |
+| `line` | string | Yes | — | Exact line content to add, replace, or remove |
+| `state` | string | No | `"present"` | `"present"` or `"absent"` - desired line state |
+| `match` | string | No | — | Regular expression pattern (required when `state: absent`) |
+| `on_multiple_matches` | string | No | `"prompt"` | `"first"`, `"all"`, `"error"`, or `"prompt"` |
+| `backup` | boolean | No | `false` | Create backup file before changes |
+| `backup_dir` | string | No | — | Directory for backup files (default: same as target) |
+| `encoding` | string | No | `"utf-8"` | File encoding (`utf-8`, `latin-1`, `ascii`, etc.) |
+
+### Usage Examples
+
+#### Add Line to File
+```yaml
+- id: add_path_export
+  type: line_in_file
+  file: "~/.bashrc"
+  line: 'export PATH="$PATH:$HOME/bin"'
+  state: present
+```
+
+#### Replace Matched Line
+```yaml
+- id: disable_debug
+  type: line_in_file
+  file: "/etc/app/config.ini"
+  line: "debug=false"
+  match: '^debug='
+  state: present
+  on_multiple_matches: first
+```
+
+#### Remove Line Pattern
+```yaml
+- id: cleanup_old_vars
+  type: line_in_file
+  file: "~/.profile"
+  match: '^export DEPRECATED_VAR='
+  state: absent
+```
+
+#### Backup Before Changes
+```yaml
+- id: update_hosts
+  type: line_in_file
+  file: "/etc/hosts"
+  line: "127.0.0.1 myapp.local"
+  backup: true
+  backup_dir: "/var/backups/streamy"
+```
+
+#### Handle Multiple Matches
+```yaml
+- id: update_all_paths
+  type: line_in_file
+  file: "/tmp/paths"
+  line: 'export PATH="/opt/bin:$PATH"'
+  match: '^export PATH='
+  on_multiple_matches: all  # Options: first, all, error, prompt
+```
+
+#### Encoding Support
+```yaml
+- id: update_legacy_config
+  type: line_in_file
+  file: "/legacy/app.conf"
+  line: "charset=utf-8"
+  encoding: "latin-1"
+  state: present
+```
+
+### Dry-Run Output
+
+Use `--dry-run` to preview changes:
+```bash
+streamy apply config.yaml --dry-run --verbose
+```
+
+Example dry-run output:
+```
+⊙ add_path_export — Would add 1 line to /home/user/.bashrc
+  + export PATH="$PATH:$HOME/bin"
+
+✓ disable_debug — Would replace 1 line in /etc/app/config.ini
+  - debug=true
+  + debug=false
+```
+
+### Best Practices
+
+- Always use `match` patterns when replacing existing lines to avoid duplicates.
+- Test with `--dry-run` first to verify changes before applying.
+- Use `backup: true` for critical system files.
+- Specify `on_multiple_matches` explicitly in automated scripts (avoid `prompt` in CI/CD).
+- Use anchored patterns (`^`, `$`) for faster and more precise matching.
+- Combine with `depends_on` to ensure files exist before modification.
+
+### Error Handling
+
+- **Permission Denied**: Clear error messages with suggestions (run with sudo, check permissions)
+- **Invalid Regex**: Detailed regex syntax errors during config validation
+- **Encoding Errors**: Clear messages when files can't be decoded with specified encoding
+- **Interactive Mode**: Graceful fallback when `prompt` strategy used in non-TTY environments
+
+For complete examples and validation scenarios, see `specs/003-add-built-in/quickstart.md`.
