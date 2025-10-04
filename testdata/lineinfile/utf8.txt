@@ -1,0 +1,3 @@
+# Fixture: UTF-8 encoded file containing non-ASCII characters
+welcome_message=こんにちは世界
+emoji=🤖

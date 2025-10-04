@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Line In File Plugin Configuration",
+  "description": "Configuration for the line_in_file plugin that provides declarative management of text file lines",
+  "type": "object",
+  "properties": {
+    "file": {
+      "type": "string",
+      "description": "Path to the target file. Supports tilde (~) expansion for home directory.",
+      "minLength": 1,
+      "examples": [
+        "~/.bashrc",
+        "/etc/hosts",
+        "./config.ini"
+      ]
+    },
+    "line": {
+      "type": "string", 
+      "description": "Exact line content to add, replace, or remove.",
+      "minLength": 1,
+      "examples": [
+        "export PATH=$PATH:/opt/bin",
+        "debug=false",
+        "# Custom configuration"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "description": "Whether the line should be present or absent in the file.",
+      "enum": ["present", "absent"],
+      "default": "present"
+    },
+    "match": {
+      "type": "string",
+      "description": "Regular expression pattern to match existing lines. Required when state is absent. Used for replacement when state is present.",
+      "examples": [
+        "^export PATH=",
+        "^debug=",
+        "^#.*Custom.*configuration"
+      ]
+    },
+    "on_multiple_matches": {
+      "type": "string",
+      "description": "How to handle multiple regex matches.",
+      "enum": ["first", "all", "error", "prompt"],
+      "default": "prompt"
+    },
+    "backup": {
+      "type": "boolean",
+      "description": "Create a backup file before making changes.",
+      "default": false
+    },
+    "backup_dir": {
+      "type": "string",
+      "description": "Directory to store backup files. If not specified, uses the same directory as the target file.",
+      "examples": [
+        "~/.config/backups",
+        "/var/backups/streamy",
+        "./backups"
+      ]
+    },
+    "encoding": {
+      "type": "string",
+      "description": "Text encoding of the file.",
+      "enum": ["utf-8", "utf8", "ascii", "latin-1", "latin1", "iso-8859-1", "latin-2", "latin2", "iso-8859-2", "windows-1252", "utf-16"],
+      "default": "utf-8"
+    }
+  },
+  "required": ["file", "line"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Add PATH export to bashrc",
+      "file": "~/.bashrc",
+      "line": "export PATH=$PATH:/opt/bin",
+      "state": "present"
+    },
+    {
+      "description": "Replace debug setting in config",
+      "file": "/etc/app/config.ini",
+      "line": "debug=false",
+      "match": "^debug=",
+      "state": "present",
+      "on_multiple_matches": "first"
+    },
+    {
+      "description": "Remove old environment variable",
+      "file": "~/.profile",
+      "match": "^export OLD_VAR=",
+      "state": "absent"
+    },
+    {
+      "description": "Add line with backup",
+      "file": "/etc/hosts",
+      "line": "127.0.0.1 myapp.local",
+      "backup": true,
+      "backup_dir": "/var/backups/streamy"
+    }
+  ]
+}

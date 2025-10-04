@@ -1,0 +1,1 @@
+# Fixture: Intended to simulate empty file scenarios
