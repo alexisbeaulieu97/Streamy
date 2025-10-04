@@ -7,4 +7,5 @@ import (
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/package"
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/repo"
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/symlink"
+	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/template"
 )

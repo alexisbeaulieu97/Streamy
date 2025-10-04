@@ -27,7 +27,7 @@ This task list implements the template plugin for Streamy based on:
 
 ## Phase 3.1: Foundation & Data Model
 
-### T001: Add TemplateStep struct to config types
+### T001 [X]: Add TemplateStep struct to config types
 **File**: `internal/config/types.go`  
 **Description**: Add TemplateStep struct definition with 6 fields following data-model.md specification:
 - `Source string` (required, yaml:"source")
@@ -47,7 +47,7 @@ Add struct tags with validation rules:
 
 ---
 
-### T002: Add Template field to Step struct
+### T002 [X]: Add Template field to Step struct
 **File**: `internal/config/types.go`  
 **Description**: Add inline Template field to Step struct:
 ```go
@@ -60,7 +60,7 @@ Add to the same location as other step type fields (Package, Copy, Command, etc.
 
 ---
 
-### T003: Add TemplateStep validation logic
+### T003 [X]: Add TemplateStep validation logic
 **File**: `internal/config/types.go` or `internal/config/step_validation.go`  
 **Description**: Implement UnmarshalYAML for TemplateStep (if needed, following pattern from CopyStep). Add validation for:
 - Variable names follow Go identifier rules: `^[a-zA-Z_][a-zA-Z0-9_]*$`
@@ -72,7 +72,7 @@ Add to the same location as other step type fields (Package, Copy, Command, etc.
 
 ---
 
-### T004 [P]: Create template plugin directory structure
+### T004 [X]: Create template plugin directory structure
 **Files**: 
 - `internal/plugins/template/` (directory)
 - `internal/plugins/template/template.go` (empty file)
@@ -87,7 +87,7 @@ Add to the same location as other step type fields (Package, Copy, Command, etc.
 
 ## Phase 3.2: Plugin Interface Implementation
 
-### T005: Implement templatePlugin struct and constructor
+### T005 [X]: Implement templatePlugin struct and constructor
 **File**: `internal/plugins/template/template.go`  
 **Description**: Create templatePlugin struct (empty, stateless) and New() constructor:
 ```go
@@ -104,7 +104,7 @@ Add package imports: context, fmt, os, path/filepath, crypto/sha256, text/templa
 
 ---
 
-### T006 [P]: Implement Metadata() method
+### T006 [X]: Implement Metadata() method
 **File**: `internal/plugins/template/template.go`  
 **Description**: Implement Metadata() method returning:
 - Name: "template-renderer"
@@ -118,7 +118,7 @@ Follow contract specification in contracts/plugin-interface.md.
 
 ---
 
-### T007 [P]: Implement Schema() method
+### T007 [X]: Implement Schema() method
 **File**: `internal/plugins/template/template.go`  
 **Description**: Implement Schema() method returning `config.TemplateStep{}` struct for documentation generation.
 
@@ -127,7 +127,7 @@ Follow contract specification in contracts/plugin-interface.md.
 
 ---
 
-### T008: Implement renderTemplate helper function
+### T008 [X]: Implement renderTemplate helper function
 **File**: `internal/plugins/template/template.go`  
 **Description**: Implement core template rendering logic:
 1. Read template source file
@@ -146,7 +146,7 @@ Handle errors with clear messages including line/column for syntax errors.
 
 ---
 
-### T009: Implement hashContent helper function
+### T009 [X]: Implement hashContent helper function
 **File**: `internal/plugins/template/template.go`  
 **Description**: Implement SHA-256 hashing helper:
 ```go
@@ -168,7 +168,7 @@ func hashFile(path string) ([32]byte, error) {
 
 ---
 
-### T010: Implement Check() method for idempotency
+### T010 [X]: Implement Check() method for idempotency
 **File**: `internal/plugins/template/template.go`  
 **Description**: Implement Check() method following contract:
 1. Validate source file exists and is readable
@@ -186,7 +186,7 @@ Must be fast (<50ms) and side-effect free.
 
 ---
 
-### T011: Implement Apply() method for rendering and writing
+### T011 [X]: Implement Apply() method for rendering and writing
 **File**: `internal/plugins/template/template.go`  
 **Description**: Implement Apply() method following contract:
 1. Call renderTemplate() to get rendered content
@@ -203,7 +203,7 @@ Handle all error cases with clear messages (source missing, write failed, etc.)
 
 ---
 
-### T012: Implement DryRun() method for preview
+### T012 [X]: Implement DryRun() method for preview
 **File**: `internal/plugins/template/template.go`  
 **Description**: Implement DryRun() method following contract:
 1. Call renderTemplate() to get rendered content (no file write)
@@ -220,7 +220,7 @@ Must not modify any files. Fast (<50ms).
 
 ---
 
-### T013: Add plugin registration in init()
+### T013 [X]: Add plugin registration in init()
 **File**: `internal/plugins/template/template.go`  
 **Description**: Add init() function with plugin registration:
 ```go
@@ -236,7 +236,7 @@ func init() {
 
 ---
 
-### T014: Import template plugin for registration
+### T014 [X]: Import template plugin for registration
 **File**: `cmd/streamy/plugins_import.go`  
 **Description**: Add import statement for template plugin:
 ```go
@@ -251,7 +251,7 @@ Add to existing plugin imports section.
 
 ## Phase 3.3: Testing (TDD - Tests First)
 
-### T015 [P]: Write test for Metadata() and Schema()
+### T015 [X]: Write test for Metadata() and Schema()
 **File**: `internal/plugins/template/template_test.go`  
 **Description**: Write table-driven tests verifying:
 - Metadata returns correct Name, Version, Type
@@ -263,7 +263,7 @@ Add to existing plugin imports section.
 
 ---
 
-### T016 [P]: Write tests for Check() idempotency
+### T016 [X]: Write tests for Check() idempotency
 **File**: `internal/plugins/template/template_test.go`  
 **Description**: Write table-driven tests for Check() covering:
 1. Source file missing → returns (false, error)
@@ -281,7 +281,7 @@ Use t.TempDir() for test isolation.
 
 ---
 
-### T017 [P]: Write tests for Apply() rendering
+### T017 [X]: Write tests for Apply() rendering
 **File**: `internal/plugins/template/template_test.go`  
 **Description**: Write table-driven tests for Apply() covering:
 1. Basic variable substitution (inline vars)
@@ -304,7 +304,7 @@ Use t.TempDir() for isolation. Verify file content and permissions.
 
 ---
 
-### T018 [P]: Write tests for DryRun() preview
+### T018 [X]: Write tests for DryRun() preview
 **File**: `internal/plugins/template/template_test.go`  
 **Description**: Write table-driven tests for DryRun() covering:
 1. Destination missing → StatusWouldCreate
@@ -320,7 +320,7 @@ Verify no files are created or modified during DryRun.
 
 ---
 
-### T019: Write integration test for quickstart scenarios
+### T019 [X]: Write integration test for quickstart scenarios
 **File**: `internal/plugins/template/template_integration_test.go` or add to existing integration tests  
 **Description**: Implement integration tests following quickstart.md scenarios:
 1. Basic inline variable substitution
@@ -341,7 +341,7 @@ Use real template files from t.TempDir(). Verify end-to-end behavior.
 
 ## Phase 3.4: Documentation & Examples
 
-### T020 [P]: Add template plugin documentation
+### T020 [X]: Add template plugin documentation
 **File**: `docs/plugins.md`  
 **Description**: Add comprehensive template plugin section covering:
 - Purpose and use cases
@@ -360,7 +360,7 @@ Follow format of existing plugin documentation.
 
 ---
 
-### T021 [P]: Add TemplateStep schema reference
+### T021 [X]: Add TemplateStep schema reference
 **File**: `docs/schema.md`  
 **Description**: Add TemplateStep schema documentation:
 - Field descriptions with types
@@ -374,7 +374,7 @@ Follow format of existing plugin documentation.
 
 ---
 
-### T022 [P]: Create example template configuration
+### T022 [X]: Create example template configuration
 **File**: `testdata/configs/template.yaml`  
 **Description**: Create comprehensive example config demonstrating:
 1. Simple template rendering
@@ -394,7 +394,7 @@ Include corresponding template files in `testdata/templates/`.
 
 ## Phase 3.5: Validation & Polish
 
-### T023: Run full test suite and verify coverage
+### T023 [X]: Run full test suite and verify coverage
 **Files**: All test files  
 **Command**: `go test ./internal/plugins/template/ -cover -v`  
 **Description**: 
