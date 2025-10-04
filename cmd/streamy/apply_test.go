@@ -128,7 +128,7 @@ func TestDispatchTuiMessage(t *testing.T) {
 		}
 
 		modelState := tui.NewModel(&config.Config{}, &engine.ExecutionPlan{}, true)
-		
+
 		// This should not panic and should call Update
 		dispatchTuiMessage(false, nil, &modelState, result)
 
@@ -146,7 +146,7 @@ func TestDispatchTuiMessage(t *testing.T) {
 		}
 
 		modelState := tui.NewModel(&config.Config{}, &engine.ExecutionPlan{}, false)
-		
+
 		// Should not panic when program is nil
 		dispatchTuiMessage(true, nil, &modelState, result)
 
