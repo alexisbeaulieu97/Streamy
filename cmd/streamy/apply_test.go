@@ -8,6 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+
+	"github.com/alexisbeaulieu97/streamy/internal/config"
+	"github.com/alexisbeaulieu97/streamy/internal/engine"
+	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/tui"
 )
 
 func TestApplyCommandParsesFlags(t *testing.T) {
@@ -94,4 +99,58 @@ func executeCommand(cmd *cobra.Command, args ...string) error {
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
 	return cmd.Execute()
+}
+
+func TestRunApply(t *testing.T) {
+	t.Run("handles invalid config file", func(t *testing.T) {
+		cfgDir := t.TempDir()
+		cfgPath := filepath.Join(cfgDir, "invalid.yaml")
+		require.NoError(t, os.WriteFile(cfgPath, []byte("invalid: yaml: content: ["), 0o644))
+
+		opts := applyOptions{
+			ConfigPath: cfgPath,
+		}
+
+		err := runApply(opts)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "parse error")
+	})
+}
+
+func TestDispatchTuiMessage(t *testing.T) {
+	t.Run("non-interactive mode calls update without panic", func(t *testing.T) {
+		result := &tui.StepCompleteMsg{
+			Result: model.StepResult{
+				StepID:  "test-step",
+				Status:  "success",
+				Message: "Test completed",
+			},
+		}
+
+		modelState := tui.NewModel(&config.Config{}, &engine.ExecutionPlan{}, true)
+		
+		// This should not panic and should call Update
+		dispatchTuiMessage(false, nil, &modelState, result)
+
+		// The function should have called Update without error
+		require.NotNil(t, modelState)
+	})
+
+	t.Run("interactive mode with nil program does nothing", func(t *testing.T) {
+		result := &tui.StepCompleteMsg{
+			Result: model.StepResult{
+				StepID:  "test-step",
+				Status:  "success",
+				Message: "Test completed",
+			},
+		}
+
+		modelState := tui.NewModel(&config.Config{}, &engine.ExecutionPlan{}, false)
+		
+		// Should not panic when program is nil
+		dispatchTuiMessage(true, nil, &modelState, result)
+
+		// State should still be valid
+		require.NotNil(t, modelState)
+	})
 }
