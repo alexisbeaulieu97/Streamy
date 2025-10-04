@@ -1,0 +1,2 @@
+# Fixture: Latin-1 encoded file with accented characters
+status=Señor García está listo

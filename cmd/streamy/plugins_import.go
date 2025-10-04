@@ -4,6 +4,7 @@ package main
 import (
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/command"
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/copy"
+	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/lineinfile"
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/package"
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/repo"
 	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/symlink"

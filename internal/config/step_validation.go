@@ -59,6 +59,13 @@ func ValidateStep(step Step) error {
 		if err := validateTemplateConfiguration(step); err != nil {
 			return err
 		}
+	case "line_in_file":
+		if step.LineInFile == nil {
+			return streamyerrors.NewValidationError(step.ID, "line_in_file configuration is required", nil)
+		}
+		if err := v.Struct(step.LineInFile); err != nil {
+			return convertValidationError(err)
+		}
 	default:
 		return streamyerrors.NewValidationError(step.ID, fmt.Sprintf("unknown step type %q", step.Type), nil)
 	}
