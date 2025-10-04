@@ -467,3 +467,280 @@ steps:
 		require.Len(t, cfg.Steps, 1)
 	})
 }
+
+func TestValidateTemplateConfiguration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid template configuration", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/template.tmpl",
+				Destination: "/path/to/output.txt",
+				Vars: map[string]string{
+					"VAR1": "value1",
+					"VAR2": "value2",
+				},
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.NoError(t, err)
+	})
+
+	t.Run("error when template configuration is nil", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:       "test-template",
+			Type:     "template",
+			Template: nil,
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template configuration is required")
+	})
+
+	t.Run("error when source is empty", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "",
+				Destination: "/path/to/output.txt",
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template source is required")
+	})
+
+	t.Run("error when source is whitespace", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "   ",
+				Destination: "/path/to/output.txt",
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template source is required")
+	})
+
+	t.Run("error when destination is empty", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/template.tmpl",
+				Destination: "",
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template destination is required")
+	})
+
+	t.Run("error when destination is whitespace", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/template.tmpl",
+				Destination: "   ",
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template destination is required")
+	})
+
+	t.Run("error when source equals destination", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/file.txt",
+				Destination: "/path/to/file.txt",
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template destination must differ from source")
+	})
+
+	t.Run("error when source equals destination with whitespace", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/file.txt",
+				Destination: "  /path/to/file.txt  ",
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template destination must differ from source")
+	})
+
+	t.Run("error when variable name is invalid - starts with number", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/template.tmpl",
+				Destination: "/path/to/output.txt",
+				Vars: map[string]string{
+					"123VAR": "value1",
+				},
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template variable \"123VAR\" is invalid")
+	})
+
+	t.Run("error when variable name is invalid - contains special chars", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/template.tmpl",
+				Destination: "/path/to/output.txt",
+				Vars: map[string]string{
+					"VAR!": "value1",
+				},
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template variable \"VAR!\" is invalid")
+	})
+
+	t.Run("valid variable names", func(t *testing.T) {
+		t.Parallel()
+		step := Step{
+			ID:   "test-template",
+			Type: "template",
+			Template: &TemplateStep{
+				Source:      "/path/to/template.tmpl",
+				Destination: "/path/to/output.txt",
+				Vars: map[string]string{
+					"VAR1":         "value1",
+					"my_var":       "value2",
+					"MyVar":        "value3",
+					"VAR_WITH_123": "value4",
+				},
+			},
+		}
+		err := validateTemplateConfiguration(step)
+		require.NoError(t, err)
+	})
+}
+
+func TestTemplateStepUnmarshalYAML(t *testing.T) {
+	t.Parallel()
+
+	t.Run("defaults env to true when not specified", func(t *testing.T) {
+		t.Parallel()
+		yamlStr := `
+source: /path/to/template.tmpl
+destination: /path/to/output.txt
+vars:
+  VAR1: value1
+`
+		var template TemplateStep
+		err := yaml.Unmarshal([]byte(yamlStr), &template)
+		require.NoError(t, err)
+		require.True(t, template.Env)
+		require.Equal(t, map[string]string{"VAR1": "value1"}, template.Vars)
+	})
+
+	t.Run("respects env=false when specified", func(t *testing.T) {
+		t.Parallel()
+		yamlStr := `
+source: /path/to/template.tmpl
+destination: /path/to/output.txt
+env: false
+`
+		var template TemplateStep
+		err := yaml.Unmarshal([]byte(yamlStr), &template)
+		require.NoError(t, err)
+		require.False(t, template.Env)
+	})
+
+	t.Run("respects env=true when specified", func(t *testing.T) {
+		t.Parallel()
+		yamlStr := `
+source: /path/to/template.tmpl
+destination: /path/to/output.txt
+env: true
+`
+		var template TemplateStep
+		err := yaml.Unmarshal([]byte(yamlStr), &template)
+		require.NoError(t, err)
+		require.True(t, template.Env)
+	})
+
+	t.Run("initializes vars map when not provided", func(t *testing.T) {
+		t.Parallel()
+		yamlStr := `
+source: /path/to/template.tmpl
+destination: /path/to/output.txt
+`
+		var template TemplateStep
+		err := yaml.Unmarshal([]byte(yamlStr), &template)
+		require.NoError(t, err)
+		require.NotNil(t, template.Vars)
+		require.Empty(t, template.Vars)
+	})
+
+	t.Run("preserves existing vars when provided", func(t *testing.T) {
+		t.Parallel()
+		yamlStr := `
+source: /path/to/template.tmpl
+destination: /path/to/output.txt
+vars:
+  VAR1: value1
+  VAR2: value2
+`
+		var template TemplateStep
+		err := yaml.Unmarshal([]byte(yamlStr), &template)
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{"VAR1": "value1", "VAR2": "value2"}, template.Vars)
+	})
+
+	t.Run("handles full template configuration", func(t *testing.T) {
+		t.Parallel()
+		yamlStr := `
+source: /path/to/template.tmpl
+destination: /path/to/output.txt
+env: false
+allow_missing: true
+vars:
+  NAME: test
+  VERSION: 1.0
+mode: 0644
+`
+		var template TemplateStep
+		err := yaml.Unmarshal([]byte(yamlStr), &template)
+		require.NoError(t, err)
+		require.Equal(t, "/path/to/template.tmpl", template.Source)
+		require.Equal(t, "/path/to/output.txt", template.Destination)
+		require.False(t, template.Env)
+		require.True(t, template.AllowMissing)
+		require.Equal(t, map[string]string{"NAME": "test", "VERSION": "1.0"}, template.Vars)
+		require.NotNil(t, template.Mode)
+		require.Equal(t, uint32(0o644), *template.Mode)
+	})
+}

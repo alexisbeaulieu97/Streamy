@@ -291,3 +291,36 @@ func TestExecute_ContinueOnError(t *testing.T) {
 	require.Contains(t, statuses, model.StatusFailed)
 	require.Contains(t, statuses, model.StatusSuccess)
 }
+
+func TestTimeoutResult(t *testing.T) {
+	t.Run("creates timeout result with nil error", func(t *testing.T) {
+		stepID := "test-step"
+
+		result, err := timeoutResult(stepID, nil)
+
+		require.Error(t, err)
+		require.IsType(t, &streamyerrors.ExecutionError{}, err)
+
+		require.NotNil(t, result)
+		require.Equal(t, stepID, result.StepID)
+		require.Equal(t, model.StatusFailed, result.Status)
+		require.Equal(t, "timeout exceeded", result.Message)
+		require.ErrorIs(t, result.Error, context.DeadlineExceeded)
+	})
+
+	t.Run("creates timeout result with provided error", func(t *testing.T) {
+		stepID := "test-step"
+		customErr := errors.New("custom timeout error")
+
+		result, err := timeoutResult(stepID, customErr)
+
+		require.Error(t, err)
+		require.IsType(t, &streamyerrors.ExecutionError{}, err)
+
+		require.NotNil(t, result)
+		require.Equal(t, stepID, result.StepID)
+		require.Equal(t, model.StatusFailed, result.Status)
+		require.Equal(t, "timeout exceeded", result.Message)
+		require.ErrorIs(t, result.Error, customErr)
+	})
+}

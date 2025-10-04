@@ -15,6 +15,10 @@ const (
 	StatusSkipped = "skipped"
 	// StatusFailed marks a failure during step execution.
 	StatusFailed = "failed"
+	// StatusWouldCreate indicates dry-run would create a resource.
+	StatusWouldCreate = "would_create"
+	// StatusWouldUpdate indicates dry-run would update a resource.
+	StatusWouldUpdate = "would_update"
 )
 
 // StepResult captures the outcome of executing a single step.
