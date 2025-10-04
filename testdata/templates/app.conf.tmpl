@@ -1,0 +1,13 @@
+# Generated application configuration
+app_name = {{.APP_NAME}}
+version = {{.VERSION}}
+
+{{if eq .ENVIRONMENT "production"}}
+log_level = warn
+max_connections = 100
+{{else}}
+log_level = debug
+max_connections = 10
+{{end}}
+
+database_url = {{.DATABASE_URL}}

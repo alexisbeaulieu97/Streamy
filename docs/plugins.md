@@ -92,3 +92,60 @@ Located at `internal/plugins/command/command.go`, this plugin:
 5. Add integration tests where appropriate.
 
 Following this guide ensures new plugins integrate seamlessly with Streamy's execution engine, validations, and user interfaces.
+
+## Template Plugin (`type: template`)
+
+The template plugin renders destination files from Go `text/template` sources with variable substitution. Use it when you need reproducible configuration files that vary per environment or developer.
+
+### Key Features
+
+- **Variable Resolution**: Inline `vars` take precedence over environment variables (`env: true` enables access). Missing variables trigger failures unless `allow_missing: true` is set.
+- **Idempotency**: `Check` and `Apply` compare SHA-256 hashes of rendered output versus the destination file to skip unchanged files.
+- **Dry-Run Support**: `DryRun` reports `would_create` or `would_update` without touching the filesystem.
+- **Permissions**: Copy permissions from the template source by default, or supply an explicit `mode`.
+- **Error Reporting**: Template parse/runtime errors include file name and line/column information for fast debugging.
+
+### Configuration Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `source` | string | Yes | Path to the `.tmpl` file rendered with Go template syntax |
+| `destination` | string | Yes | File path to write the rendered content |
+| `vars` | map[string]string | No | Inline variables; override environment values |
+| `env` | bool (default `true`) | No | Enable environment variable lookups |
+| `allow_missing` | bool (default `false`) | No | Skip errors for undefined variables (render as empty string) |
+| `mode` | octal (e.g., `0600`) | No | Explicit destination file permissions |
+
+### Example
+
+```yaml
+- id: render-config
+  type: template
+  source: templates/app.conf.tmpl
+  destination: config/app.conf
+  vars:
+    APP_NAME: Streamy
+    ENVIRONMENT: production
+    DEBUG_MODE: "false"
+  mode: 0644
+
+- id: render-secrets
+  type: template
+  source: templates/secret.env.tmpl
+  destination: config/secret.env
+  env: true           # pull API keys from the environment
+  mode: 0600          # tighten permissions for secrets
+
+- id: render-optional
+  type: template
+  source: templates/optional.conf.tmpl
+  destination: config/optional.conf
+  allow_missing: true # optional variables render as empty strings
+```
+
+### Best Practices
+
+- Keep templates deterministic—avoid timestamps or random values that break idempotency.
+- Validate variable names with Go identifier rules (`^[a-zA-Z_][a-zA-Z0-9_]*$`).
+- Use dry-run (`streamy apply --dry-run`) to preview changes; look for `would_create` / `would_update` statuses.
+- Pair each template with table-driven tests using `t.TempDir()` to guarantee portability.

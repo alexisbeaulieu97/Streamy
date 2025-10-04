@@ -1,0 +1,93 @@
+#!/bin/sh
+#
+# Pre-commit hook that runs goimports (and gofmt -s) on staged Go files.
+# If any files need formatting or simplification, the commit is aborted.
+#
+# To install this hook:
+#   cp pre-commit .git/hooks/
+#   chmod +x .git/hooks/pre-commit
+
+# Get a list of staged Go files (newline separated)
+gofiles=$(git diff --cached --name-only --diff-filter=ACM -- '*.go')
+
+if [ -z "$gofiles" ]; then
+    exit 0
+fi
+
+# Ensure goimports is available
+if ! command -v goimports >/dev/null 2>&1; then
+    echo "goimports is required by the pre-commit hook but was not found." >&2
+    echo "Install it with: go install golang.org/x/tools/cmd/goimports@latest" >&2
+    exit 1
+fi
+
+# Track files that need goimports formatting or gofmt -s simplification
+needs_imports=""
+simplified=""
+
+old_ifs=$IFS
+IFS=$(printf '\n')
+for file in $gofiles; do
+    if [ -z "$file" ]; then
+        continue
+    fi
+
+    if [ -n "$(goimports -l "$file")" ]; then
+        if [ -z "$needs_imports" ]; then
+            needs_imports="$file"
+        else
+            needs_imports="$needs_imports\n$file"
+        fi
+    fi
+
+    if [ -n "$(gofmt -s -l "$file")" ]; then
+        if [ -z "$simplified" ]; then
+            simplified="$file"
+        else
+            simplified="$simplified\n$file"
+        fi
+    fi
+done
+IFS=$old_ifs
+
+if [ -n "$needs_imports" ]; then
+    echo "Go files must be formatted with goimports. Please run:" >&2
+    echo "" >&2
+    IFS=$(printf '\n')
+    for file in $needs_imports; do
+        echo "  goimports -w \"$file\"" >&2
+    done
+    IFS=$old_ifs
+    echo "" >&2
+    echo "and then stage the changes again." >&2
+    echo "" >&2
+    echo "Files needing goimports:" >&2
+    IFS=$(printf '\n')
+    for file in $needs_imports; do
+        echo "  - $file" >&2
+    done
+    IFS=$old_ifs
+    exit 1
+fi
+
+if [ -n "$simplified" ]; then
+    echo "Go files can be simplified with gofmt -s. Please run:" >&2
+    echo "" >&2
+    IFS=$(printf '\n')
+    for file in $simplified; do
+        echo "  gofmt -s -w \"$file\"" >&2
+    done
+    IFS=$old_ifs
+    echo "" >&2
+    echo "and then stage the changes again." >&2
+    echo "" >&2
+    echo "Files that can be simplified:" >&2
+    IFS=$(printf '\n')
+    for file in $simplified; do
+        echo "  - $file" >&2
+    done
+    IFS=$old_ifs
+    exit 1
+fi
+
+exit 0

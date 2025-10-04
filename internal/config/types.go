@@ -1,10 +1,15 @@
 package config
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
+
+var templateVarNamePattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 // Config represents the full Streamy configuration document.
 type Config struct {
@@ -29,15 +34,16 @@ type Settings struct {
 type Step struct {
 	ID        string   `yaml:"id" validate:"required,step_id"`
 	Name      string   `yaml:"name,omitempty"`
-	Type      string   `yaml:"type" validate:"required,oneof=package repo symlink copy command"`
+	Type      string   `yaml:"type" validate:"required,oneof=package repo symlink copy command template"`
 	DependsOn []string `yaml:"depends_on,omitempty"`
 	Enabled   bool     `yaml:"enabled,omitempty"`
 
-	Package *PackageStep `yaml:",inline,omitempty"`
-	Repo    *RepoStep    `yaml:",inline,omitempty"`
-	Symlink *SymlinkStep `yaml:",inline,omitempty"`
-	Copy    *CopyStep    `yaml:",inline,omitempty"`
-	Command *CommandStep `yaml:",inline,omitempty"`
+	Package  *PackageStep  `yaml:",inline,omitempty"`
+	Repo     *RepoStep     `yaml:",inline,omitempty"`
+	Symlink  *SymlinkStep  `yaml:",inline,omitempty"`
+	Copy     *CopyStep     `yaml:",inline,omitempty"`
+	Command  *CommandStep  `yaml:",inline,omitempty"`
+	Template *TemplateStep `yaml:",inline,omitempty"`
 }
 
 // UnmarshalYAML customises step decoding to populate type-specific structures without conflicts.
@@ -70,6 +76,7 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	s.Symlink = nil
 	s.Copy = nil
 	s.Command = nil
+	s.Template = nil
 
 	switch base.Type {
 	case "package":
@@ -102,6 +109,12 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 			return err
 		}
 		s.Command = &cmd
+	case "template":
+		var tmpl TemplateStep
+		if err := value.Decode(&tmpl); err != nil {
+			return err
+		}
+		s.Template = &tmpl
 	}
 
 	return nil
@@ -119,6 +132,33 @@ func (c *CopyStep) UnmarshalYAML(value *yaml.Node) error {
 	if !c.PreserveModeSet {
 		c.PreserveMode = true
 	}
+	return nil
+}
+
+func validateTemplateConfiguration(step Step) error {
+	cfg := step.Template
+	if cfg == nil {
+		return streamyerrors.NewValidationError(step.ID, "template configuration is required", nil)
+	}
+
+	if strings.TrimSpace(cfg.Source) == "" {
+		return streamyerrors.NewValidationError(step.ID, "template source is required", nil)
+	}
+
+	if strings.TrimSpace(cfg.Destination) == "" {
+		return streamyerrors.NewValidationError(step.ID, "template destination is required", nil)
+	}
+
+	if strings.TrimSpace(cfg.Source) == strings.TrimSpace(cfg.Destination) {
+		return streamyerrors.NewValidationError(step.ID, "template destination must differ from source", nil)
+	}
+
+	for name := range cfg.Vars {
+		if !templateVarNamePattern.MatchString(name) {
+			return streamyerrors.NewValidationError(step.ID, fmt.Sprintf("template variable %q is invalid; must match %s", name, templateVarNamePattern.String()), nil)
+		}
+	}
+
 	return nil
 }
 
@@ -152,6 +192,36 @@ type CopyStep struct {
 	Recursive       bool   `yaml:"recursive,omitempty"`
 	PreserveMode    bool   `yaml:"preserve_mode,omitempty"`
 	PreserveModeSet bool   `yaml:"-"`
+}
+
+// TemplateStep renders a destination file from a template source with variable substitution.
+type TemplateStep struct {
+	Source       string            `yaml:"source" validate:"required"`
+	Destination  string            `yaml:"destination" validate:"required,nefield=Source"`
+	Vars         map[string]string `yaml:"vars,omitempty"`
+	Env          bool              `yaml:"env,omitempty"`
+	AllowMissing bool              `yaml:"allow_missing,omitempty"`
+	Mode         *uint32           `yaml:"mode,omitempty" validate:"omitempty,min=0,max=0777"`
+}
+
+// UnmarshalYAML applies defaults for template steps and ensures maps are initialised.
+func (t *TemplateStep) UnmarshalYAML(value *yaml.Node) error {
+	type rawTemplate TemplateStep
+	var temp rawTemplate
+	if err := value.Decode(&temp); err != nil {
+		return err
+	}
+
+	if temp.Vars == nil {
+		temp.Vars = make(map[string]string)
+	}
+
+	if !hasYAMLKey(value, "env") {
+		temp.Env = true
+	}
+
+	*t = TemplateStep(temp)
+	return nil
 }
 
 // CommandStep executes an arbitrary shell command.

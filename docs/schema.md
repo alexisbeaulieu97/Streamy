@@ -50,7 +50,7 @@ Each step entry must contain:
 | Field       | Type     | Required | Validation |
 |-------------|----------|----------|------------|
 | `id`        | string   | ✅       | Regex `^[a-z0-9_]+$`, unique per config |
-| `type`      | string   | ✅       | One of `package`, `repo`, `symlink`, `copy`, `command` |
+| `type`      | string   | ✅       | One of `package`, `repo`, `symlink`, `copy`, `command`, `template` |
 | `depends_on`| array    | ❌       | Existing step IDs, no cycles allowed |
 | `enabled`   | bool     | ❌       | Defaults to `true` |
 
@@ -149,6 +149,37 @@ Type-specific fields are inlined. Only the relevant section must be present.
 | `shell`  | string   | ❌       | Override default shell detection |
 | `workdir`| string   | ❌       | Working directory |
 | `env`    | map      | ❌       | Additional environment variables |
+
+### template Step
+
+```yaml
+- id: render_config
+  type: template
+  source: templates/app.conf.tmpl
+  destination: config/app.conf
+  vars:
+    APP_NAME: Streamy
+    ENVIRONMENT: production
+  env: true
+  allow_missing: false
+  mode: 0644
+```
+
+| Field           | Type                | Required | Notes |
+|-----------------|---------------------|----------|-------|
+| `source`        | string              | ✅       | Template file path; must exist and be readable |
+| `destination`   | string              | ✅       | Output file; must differ from `source` |
+| `vars`          | map[string]string   | ❌       | Inline variables (keys must match `^[a-zA-Z_][a-zA-Z0-9_]*$`) |
+| `env`           | bool                | ❌       | Defaults to `true`; include environment variables in context |
+| `allow_missing` | bool                | ❌       | Defaults to `false`; render missing variables as empty strings when `true` |
+| `mode`          | octal (0-0777)      | ❌       | Explicit destination permissions; falls back to source mode |
+
+**Validation**
+
+- `source` and `destination` are required and must differ.
+- Variable names are validated against Go identifier rules.
+- `mode` must be within `0`–`0777`.
+- At least one variable source (inline or environment) should be supplied for non-static templates.
 
 ## Validations
 
