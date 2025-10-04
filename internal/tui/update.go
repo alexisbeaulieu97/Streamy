@@ -25,7 +25,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.ensureStep(id)
 		existing := m.steps[id]
-		previouslyCompleted := existing.Status == model.StatusSuccess || existing.Status == model.StatusSkipped || existing.Status == model.StatusFailed
+		previouslyCompleted := existing.Status == model.StatusSuccess || existing.Status == model.StatusSkipped || existing.Status == model.StatusFailed || existing.Status == model.StatusWouldCreate || existing.Status == model.StatusWouldUpdate
 		m.steps[id] = msg.Result
 		if !previouslyCompleted {
 			m.completed++

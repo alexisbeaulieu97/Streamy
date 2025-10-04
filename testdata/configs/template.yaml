@@ -1,0 +1,30 @@
+version: "1.0"
+name: "Template Plugin Example"
+steps:
+  - id: render-app-config
+    type: template
+    source: testdata/templates/app.conf.tmpl
+    destination: build/app.conf
+    vars:
+      APP_NAME: Streamy
+      VERSION: "1.2.3"
+      ENVIRONMENT: production
+      DATABASE_URL: postgres://streamy/prod
+
+  - id: render-secrets
+    type: template
+    depends_on:
+      - render-app-config
+    source: testdata/templates/secret.env.tmpl
+    destination: build/secret.env
+    env: true
+    mode: 0600
+
+  - id: render-optional
+    type: template
+    source: testdata/templates/optional.txt.tmpl
+    destination: build/optional.txt
+    allow_missing: true
+    vars:
+      SERVICE_NAME: Streamy
+      FEATURE_FLAG: ""

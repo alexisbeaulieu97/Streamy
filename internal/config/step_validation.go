@@ -49,6 +49,16 @@ func ValidateStep(step Step) error {
 		if err := v.Struct(step.Command); err != nil {
 			return convertValidationError(err)
 		}
+	case "template":
+		if step.Template == nil {
+			return streamyerrors.NewValidationError(step.ID, "template configuration is required", nil)
+		}
+		if err := v.Struct(step.Template); err != nil {
+			return convertValidationError(err)
+		}
+		if err := validateTemplateConfiguration(step); err != nil {
+			return err
+		}
 	default:
 		return streamyerrors.NewValidationError(step.ID, fmt.Sprintf("unknown step type %q", step.Type), nil)
 	}

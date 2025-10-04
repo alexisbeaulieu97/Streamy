@@ -77,6 +77,10 @@ func StatusIcon(status string) string {
 		return failureStyle.Render("✗")
 	case model.StatusSkipped:
 		return skippedStyle.Render("⊘")
+	case model.StatusWouldCreate:
+		return pendingStyle.Render("✱")
+	case model.StatusWouldUpdate:
+		return pendingStyle.Render("↻")
 	default:
 		return pendingStyle.Render("…")
 	}
