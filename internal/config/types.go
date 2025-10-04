@@ -34,16 +34,17 @@ type Settings struct {
 type Step struct {
 	ID        string   `yaml:"id" validate:"required,step_id"`
 	Name      string   `yaml:"name,omitempty"`
-	Type      string   `yaml:"type" validate:"required,oneof=package repo symlink copy command template"`
+	Type      string   `yaml:"type" validate:"required,oneof=package repo symlink copy command template line_in_file"`
 	DependsOn []string `yaml:"depends_on,omitempty"`
 	Enabled   bool     `yaml:"enabled,omitempty"`
 
-	Package  *PackageStep  `yaml:",inline,omitempty"`
-	Repo     *RepoStep     `yaml:",inline,omitempty"`
-	Symlink  *SymlinkStep  `yaml:",inline,omitempty"`
-	Copy     *CopyStep     `yaml:",inline,omitempty"`
-	Command  *CommandStep  `yaml:",inline,omitempty"`
-	Template *TemplateStep `yaml:",inline,omitempty"`
+	Package    *PackageStep    `yaml:",inline,omitempty"`
+	Repo       *RepoStep       `yaml:",inline,omitempty"`
+	Symlink    *SymlinkStep    `yaml:",inline,omitempty"`
+	Copy       *CopyStep       `yaml:",inline,omitempty"`
+	Command    *CommandStep    `yaml:",inline,omitempty"`
+	Template   *TemplateStep   `yaml:",inline,omitempty"`
+	LineInFile *LineInFileStep `yaml:",inline,omitempty"`
 }
 
 // UnmarshalYAML customises step decoding to populate type-specific structures without conflicts.
@@ -77,6 +78,7 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	s.Copy = nil
 	s.Command = nil
 	s.Template = nil
+	s.LineInFile = nil
 
 	switch base.Type {
 	case "package":
@@ -115,6 +117,12 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 			return err
 		}
 		s.Template = &tmpl
+	case "line_in_file":
+		var lif LineInFileStep
+		if err := value.Decode(&lif); err != nil {
+			return err
+		}
+		s.LineInFile = &lif
 	}
 
 	return nil
@@ -202,6 +210,18 @@ type TemplateStep struct {
 	Env          bool              `yaml:"env,omitempty"`
 	AllowMissing bool              `yaml:"allow_missing,omitempty"`
 	Mode         *uint32           `yaml:"mode,omitempty" validate:"omitempty,min=0,max=0777"`
+}
+
+// LineInFileStep manages individual lines in text files.
+type LineInFileStep struct {
+	File              string `yaml:"file" validate:"required"`
+	Line              string `yaml:"line" validate:"required"`
+	State             string `yaml:"state,omitempty"`
+	Match             string `yaml:"match,omitempty"`
+	OnMultipleMatches string `yaml:"on_multiple_matches,omitempty"`
+	Backup            bool   `yaml:"backup,omitempty"`
+	BackupDir         string `yaml:"backup_dir,omitempty"`
+	Encoding          string `yaml:"encoding,omitempty"`
 }
 
 // UnmarshalYAML applies defaults for template steps and ensures maps are initialised.

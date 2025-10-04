@@ -1,0 +1,7 @@
+# Fixture: Multi-line configuration file with various settings
+[general]
+debug=true
+path=/usr/bin
+
+[extra]
+value=42
