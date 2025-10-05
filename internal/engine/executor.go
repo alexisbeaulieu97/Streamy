@@ -323,14 +323,29 @@ func (e *Executor) VerifySteps(ctx context.Context, steps []config.Step, default
 			cancel()
 
 			if verifyErr != nil {
-				result = &model.VerificationResult{
-					StepID:    step.ID,
-					Status:    model.StatusBlocked,
-					Message:   fmt.Sprintf("verification error: %v", verifyErr),
-					Error:     verifyErr,
-					Duration:  time.Since(stepStart),
-					Timestamp: time.Now(),
+				summary.Duration = time.Since(start)
+
+				var validationErr *streamyerrors.ValidationError
+				if errors.As(verifyErr, &validationErr) {
+					return summary, verifyErr
 				}
+
+				var parseErr *streamyerrors.ParseError
+				if errors.As(verifyErr, &parseErr) {
+					return summary, verifyErr
+				}
+
+				var execErr *streamyerrors.ExecutionError
+				if errors.As(verifyErr, &execErr) {
+					return summary, verifyErr
+				}
+
+				var pluginErr *streamyerrors.PluginError
+				if errors.As(verifyErr, &pluginErr) {
+					return summary, verifyErr
+				}
+
+				return summary, streamyerrors.NewExecutionError(step.ID, verifyErr)
 			}
 
 			if result == nil {
