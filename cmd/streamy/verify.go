@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/engine"
 	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 type verifyOptions struct {
@@ -92,6 +94,12 @@ func runVerify(opts verifyOptions) error {
 
 	summary, err := executor.VerifySteps(ctx, cfg.Steps, perStepTimeout)
 	if err != nil {
+		var validationErr *streamyerrors.ValidationError
+		if errors.As(err, &validationErr) {
+			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+			os.Exit(2)
+		}
+
 		fmt.Fprintf(os.Stderr, "Verification error: %v\n", err)
 		os.Exit(3)
 	}
