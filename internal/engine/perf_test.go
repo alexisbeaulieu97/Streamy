@@ -88,6 +88,13 @@ func (benchmarkPlugin) Schema() interface{} { return nil }
 func (benchmarkPlugin) Check(context.Context, *config.Step) (bool, error) {
 	return false, nil
 }
+func (benchmarkPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	return &model.VerificationResult{
+		StepID:  step.ID,
+		Status:  model.StatusSatisfied,
+		Message: "benchmark verification satisfied",
+	}, nil
+}
 func (benchmarkPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
 	return &model.StepResult{StepID: step.ID, Status: model.StatusSuccess}, nil
 }

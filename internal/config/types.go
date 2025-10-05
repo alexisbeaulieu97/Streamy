@@ -32,11 +32,12 @@ type Settings struct {
 
 // Step describes an individual unit of work in the DAG.
 type Step struct {
-	ID        string   `yaml:"id" validate:"required,step_id"`
-	Name      string   `yaml:"name,omitempty"`
-	Type      string   `yaml:"type" validate:"required,oneof=package repo symlink copy command template line_in_file"`
-	DependsOn []string `yaml:"depends_on,omitempty"`
-	Enabled   bool     `yaml:"enabled,omitempty"`
+	ID            string   `yaml:"id" validate:"required,step_id"`
+	Name          string   `yaml:"name,omitempty"`
+	Type          string   `yaml:"type" validate:"required,oneof=package repo symlink copy command template line_in_file"`
+	DependsOn     []string `yaml:"depends_on,omitempty"`
+	Enabled       bool     `yaml:"enabled,omitempty"`
+	VerifyTimeout int      `yaml:"verify_timeout,omitempty" validate:"omitempty,min=1,max=600"`
 
 	Package    *PackageStep    `yaml:",inline,omitempty"`
 	Repo       *RepoStep       `yaml:",inline,omitempty"`
