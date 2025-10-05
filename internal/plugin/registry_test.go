@@ -54,6 +54,14 @@ func (p *testRegistryPlugin) Check(ctx context.Context, step *config.Step) (bool
 	return false, nil
 }
 
+func (p *testRegistryPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	return &model.VerificationResult{
+		StepID:  step.ID,
+		Status:  model.StatusSatisfied,
+		Message: "test registry verification satisfied",
+	}, nil
+}
+
 func (p *testRegistryPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
 	return &model.StepResult{StepID: step.ID, Status: "success"}, nil
 }

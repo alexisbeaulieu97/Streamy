@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,4 +207,163 @@ func timeoutResult(stepID string, err error) (*model.StepResult, error) {
 		Error:   err,
 	}
 	return res, streamyerrors.NewExecutionError(stepID, err)
+}
+
+// Executor handles verification and apply operations
+type Executor struct {
+	logger interface{} // Logger interface (using interface{} for flexibility)
+}
+
+// NewExecutor creates a new executor instance
+func NewExecutor(logger interface{}) *Executor {
+	return &Executor{
+		logger: logger,
+	}
+}
+
+// VerifySteps performs verification on all steps and returns a summary
+func (e *Executor) VerifySteps(ctx context.Context, steps []config.Step, defaultTimeout time.Duration) (*model.VerificationSummary, error) {
+	start := time.Now()
+
+	stepIndex := make(map[string]*config.Step, len(steps))
+	enabledSteps := 0
+	for i := range steps {
+		if !steps[i].Enabled {
+			continue
+		}
+		step := &steps[i]
+		stepIndex[step.ID] = step
+		enabledSteps++
+	}
+
+	graph, err := BuildDAG(steps)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &model.VerificationSummary{
+		TotalSteps: enabledSteps,
+		Results:    make([]*model.VerificationResult, 0, enabledSteps),
+	}
+
+	if defaultTimeout <= 0 {
+		defaultTimeout = 30 * time.Second
+	}
+
+	resultsByID := make(map[string]*model.VerificationResult, enabledSteps)
+
+	for _, level := range graph.Levels {
+		for _, stepID := range level {
+			step, ok := stepIndex[stepID]
+			if !ok {
+				continue
+			}
+
+			if ctx.Err() != nil {
+				return summary, ctx.Err()
+			}
+
+			unsatisfied := make([]string, 0, len(step.DependsOn))
+			for _, depID := range step.DependsOn {
+				depResult, exists := resultsByID[depID]
+				if !exists {
+					continue
+				}
+				if depResult == nil || depResult.Status != model.StatusSatisfied {
+					status := model.StatusUnknown
+					if depResult != nil {
+						status = depResult.Status
+					}
+					unsatisfied = append(unsatisfied, fmt.Sprintf("%s (%s)", depID, status))
+				}
+			}
+
+			if len(unsatisfied) > 0 {
+				msg := fmt.Sprintf("blocked: dependencies not satisfied: %s", strings.Join(unsatisfied, ", "))
+				err := fmt.Errorf("dependencies not satisfied: %s", strings.Join(unsatisfied, ", "))
+				result := &model.VerificationResult{
+					StepID:    step.ID,
+					Status:    model.StatusBlocked,
+					Message:   msg,
+					Error:     err,
+					Duration:  0,
+					Timestamp: time.Now(),
+				}
+				summary.Results = append(summary.Results, result)
+				summary.Blocked++
+				resultsByID[step.ID] = result
+				continue
+			}
+
+			p, err := plugin.GetPlugin(step.Type)
+			if err != nil {
+				result := &model.VerificationResult{
+					StepID:    step.ID,
+					Status:    model.StatusBlocked,
+					Message:   fmt.Sprintf("plugin not found for type %s", step.Type),
+					Error:     err,
+					Duration:  0,
+					Timestamp: time.Now(),
+				}
+				summary.Results = append(summary.Results, result)
+				summary.Blocked++
+				resultsByID[step.ID] = result
+				continue
+			}
+
+			timeout := defaultTimeout
+			if step.VerifyTimeout > 0 {
+				timeout = time.Duration(step.VerifyTimeout) * time.Second
+			}
+
+			stepStart := time.Now()
+			stepCtx, cancel := context.WithTimeout(ctx, timeout)
+
+			result, verifyErr := p.Verify(stepCtx, step)
+			cancel()
+
+			if verifyErr != nil {
+				result = &model.VerificationResult{
+					StepID:    step.ID,
+					Status:    model.StatusBlocked,
+					Message:   fmt.Sprintf("verification error: %v", verifyErr),
+					Error:     verifyErr,
+					Duration:  time.Since(stepStart),
+					Timestamp: time.Now(),
+				}
+			}
+
+			if result == nil {
+				result = &model.VerificationResult{StepID: step.ID}
+			}
+			if result.StepID == "" {
+				result.StepID = step.ID
+			}
+			if result.Timestamp.IsZero() {
+				result.Timestamp = time.Now()
+			}
+			if result.Duration == 0 {
+				result.Duration = time.Since(stepStart)
+			}
+
+			summary.Results = append(summary.Results, result)
+			resultsByID[step.ID] = result
+
+			switch result.Status {
+			case model.StatusSatisfied:
+				summary.Satisfied++
+			case model.StatusMissing:
+				summary.Missing++
+			case model.StatusDrifted:
+				summary.Drifted++
+			case model.StatusBlocked:
+				summary.Blocked++
+			case model.StatusUnknown:
+				summary.Unknown++
+			}
+		}
+	}
+
+	summary.Duration = time.Since(start)
+	return summary, nil
 }
