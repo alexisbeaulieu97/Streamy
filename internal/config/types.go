@@ -51,11 +51,12 @@ type Step struct {
 // UnmarshalYAML customises step decoding to populate type-specific structures without conflicts.
 func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	type baseStep struct {
-		ID        string   `yaml:"id"`
-		Name      string   `yaml:"name"`
-		Type      string   `yaml:"type"`
-		DependsOn []string `yaml:"depends_on"`
-		Enabled   *bool    `yaml:"enabled"`
+		ID            string   `yaml:"id"`
+		Name          string   `yaml:"name"`
+		Type          string   `yaml:"type"`
+		DependsOn     []string `yaml:"depends_on"`
+		Enabled       *bool    `yaml:"enabled"`
+		VerifyTimeout *int     `yaml:"verify_timeout"`
 	}
 
 	var base baseStep
@@ -71,6 +72,11 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 		s.Enabled = *base.Enabled
 	} else {
 		s.Enabled = true
+	}
+	if base.VerifyTimeout != nil {
+		s.VerifyTimeout = *base.VerifyTimeout
+	} else {
+		s.VerifyTimeout = 0
 	}
 
 	s.Package = nil
