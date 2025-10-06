@@ -26,7 +26,9 @@ func GeneratePlan(graph *Graph) (*ExecutionPlan, error) {
 	levels := make([]ExecutionLevel, 0, len(graph.Levels))
 	for _, ids := range graph.Levels {
 		level := ExecutionLevel{
-			StepIDs:           append([]string(nil), ids...),
+			StepIDs: append([]string(nil), ids...),
+			// Rough estimate: 1 second per step + 500ms overhead
+			// This helps with progress indication but is not used for actual timeouts
 			EstimatedDuration: time.Duration(len(ids))*time.Second + 500*time.Millisecond,
 		}
 		if level.EstimatedDuration <= 0 {

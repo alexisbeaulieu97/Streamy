@@ -13,6 +13,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	"github.com/alexisbeaulieu97/streamy/internal/plugins/internalexec"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
@@ -63,10 +64,14 @@ func (p *commandPlugin) Check(ctx context.Context, step *config.Step) (bool, err
 		cmd.Dir = cfg.WorkDir
 	}
 
-	if err := cmd.Run(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return false, nil
+		}
+		if len(output) > 0 {
+			return false, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("%w: %s", err, string(output)))
 		}
 		return false, streamyerrors.NewExecutionError(step.ID, err)
 	}
@@ -92,7 +97,13 @@ func (p *commandPlugin) Apply(ctx context.Context, step *config.Step) (*model.St
 		cmd.Dir = cfg.WorkDir
 	}
 
-	if err := cmd.Run(); err != nil {
+	streamResult, err := internalexec.RunStreaming(cmd)
+	if err != nil {
+		combinedOutput := internalexec.PrimaryOutput(streamResult)
+		if combinedOutput != "" {
+			err = fmt.Errorf("%w: %s", err, combinedOutput)
+		}
+
 		result := &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: err}
 		return result, streamyerrors.NewExecutionError(step.ID, err)
 	}
