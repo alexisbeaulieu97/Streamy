@@ -210,3 +210,166 @@ func writeScript(t *testing.T, dir, name, contents string) {
 	path := filepath.Join(dir, name)
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o755))
 }
+
+func TestCommandPlugin_Verify(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell assumptions do not hold on Windows")
+	}
+
+	t.Run("returns satisfied when check command succeeds", func(t *testing.T) {
+		binDir := t.TempDir()
+		writeScript(t, binDir, "check-script", `#!/bin/sh
+exit 0
+`)
+
+		originalPath := os.Getenv("PATH")
+		t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+		require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "run_command",
+			Type: "command",
+			Command: &config.CommandStep{
+				Command: "echo hello",
+				Check:   "check-script",
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "satisfied", string(result.Status))
+		require.Contains(t, result.Message, "succeeded")
+	})
+
+	t.Run("returns missing when check command fails", func(t *testing.T) {
+		binDir := t.TempDir()
+		writeScript(t, binDir, "check-script", `#!/bin/sh
+exit 1
+`)
+
+		originalPath := os.Getenv("PATH")
+		t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+		require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "run_command",
+			Type: "command",
+			Command: &config.CommandStep{
+				Command: "echo hello",
+				Check:   "check-script",
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "missing", string(result.Status))
+		require.Contains(t, result.Message, "failed")
+	})
+
+	t.Run("returns unknown when no check command specified", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:   "run_command",
+			Type: "command",
+			Command: &config.CommandStep{
+				Command: "echo hello",
+				Check:   "",
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "unknown", string(result.Status))
+		require.Contains(t, result.Message, "no verification command")
+	})
+
+	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:   "run_command",
+			Type: "command",
+			Command: &config.CommandStep{
+				Command: "echo hello",
+				Check:   "test -f /tmp/file",
+			},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		result, err := p.Verify(ctx, step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "blocked", string(result.Status))
+		require.Contains(t, result.Message, "cancelled")
+		require.NotNil(t, result.Error)
+	})
+
+	t.Run("returns error when command config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:      "run_command",
+			Type:    "command",
+			Command: nil,
+		}
+
+		_, err := p.Verify(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "command configuration missing")
+	})
+
+	t.Run("uses custom env and workdir for check", func(t *testing.T) {
+		workDir := t.TempDir()
+		testFile := filepath.Join(workDir, "test.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("content"), 0o644))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "run_command",
+			Type: "command",
+			Command: &config.CommandStep{
+				Command: "echo hello",
+				Check:   "test -f test.txt",
+				WorkDir: workDir,
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, "satisfied", string(result.Status))
+	})
+}
+
+func TestCommandPlugin_Apply_ErrorHandling(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell assumptions do not hold on Windows")
+	}
+
+	t.Run("returns error when command fails", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:   "run_command",
+			Type: "command",
+			Command: &config.CommandStep{
+				Command: "exit 1",
+			},
+		}
+
+		result, err := p.Apply(context.Background(), step)
+		require.Error(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, "failed", result.Status)
+	})
+}
