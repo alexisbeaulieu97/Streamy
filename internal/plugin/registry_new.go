@@ -14,6 +14,7 @@ type PluginRegistry struct {
 	mu                sync.RWMutex
 	plugins           map[string]Plugin
 	metadata          map[string]PluginMetadata
+	typeToName        map[string]string // Maps legacy Type to Name for backward compatibility
 	dependencyGraph   *DependencyGraph
 	statefulInstances map[string]map[string]Plugin
 	disabled          map[string]bool
@@ -30,6 +31,7 @@ func NewPluginRegistry(config *RegistryConfig, log *logger.Logger) *PluginRegist
 	return &PluginRegistry{
 		plugins:           make(map[string]Plugin),
 		metadata:          make(map[string]PluginMetadata),
+		typeToName:        make(map[string]string),
 		dependencyGraph:   NewDependencyGraph(),
 		statefulInstances: make(map[string]map[string]Plugin),
 		disabled:          make(map[string]bool),
@@ -62,6 +64,11 @@ func (r *PluginRegistry) Register(p Plugin) error {
 	r.plugins[meta.Name] = p
 	r.metadata[meta.Name] = meta
 	r.dependencyGraph.AddNode(meta.Name)
+
+	// For legacy plugins, map Type -> Name for backward compatibility
+	if meta.Description != "" {
+		r.typeToName[meta.Description] = meta.Name
+	}
 
 	if meta.Stateful {
 		r.statefulInstances[meta.Name] = make(map[string]Plugin)
@@ -197,16 +204,26 @@ func (r *PluginRegistry) InitializePlugins() error {
 	return nil
 }
 
-// Get retrieves a plugin by name.
-func (r *PluginRegistry) Get(name string) (Plugin, error) {
+// Get retrieves a plugin by name or type (for legacy plugins).
+func (r *PluginRegistry) Get(nameOrType string) (Plugin, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	plugin, exists := r.plugins[name]
-	if !exists || r.disabled[name] {
-		return nil, ErrPluginNotFound{Name: name}
+	// First try direct name lookup
+	plugin, exists := r.plugins[nameOrType]
+	if exists && !r.disabled[nameOrType] {
+		return plugin, nil
 	}
-	return plugin, nil
+
+	// For backward compatibility, try type->name mapping
+	if name, ok := r.typeToName[nameOrType]; ok {
+		plugin, exists = r.plugins[name]
+		if exists && !r.disabled[name] {
+			return plugin, nil
+		}
+	}
+
+	return nil, ErrPluginNotFound{Name: nameOrType}
 }
 
 // GetForDependent retrieves a dependency for a specific plugin, enforcing policies.

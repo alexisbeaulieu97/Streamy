@@ -6,6 +6,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 )
 
 // ExecutionContext contains runtime state shared across executor workers.
@@ -18,4 +19,5 @@ type ExecutionContext struct {
 	Results         map[string]*model.StepResult
 	Logger          *logger.Logger
 	Context         context.Context
+	Registry        *plugin.PluginRegistry
 }

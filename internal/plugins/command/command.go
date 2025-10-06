@@ -24,12 +24,6 @@ func New() plugin.Plugin {
 	return &commandPlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin("command", New()); err != nil {
-		panic(err)
-	}
-}
-
 func (p *commandPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "shell-command",

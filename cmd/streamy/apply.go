@@ -106,6 +106,7 @@ func runApply(opts applyOptions) error {
 		Results:         make(map[string]*model.StepResult),
 		Logger:          log,
 		Context:         ctx,
+		Registry:        getAppRegistry(),
 	}
 
 	modelState := tui.NewModel(cfg, plan, opts.NonInteractive)

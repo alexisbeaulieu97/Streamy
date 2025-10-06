@@ -60,7 +60,7 @@ YAML Config → config.ParseConfig → config.ValidateConfig → engine.BuildDAG
 
 ## Extensibility Points
 
-- **Step Types**: Add new plugin implementations under `internal/plugins/<type>` and register them via `plugin.RegisterPlugin` in an `init()` block.
+- **Step Types**: Add new plugin implementations under `internal/plugins/<type>` with a `New()` constructor and register them in `cmd/streamy/plugins_import.go` via the `RegisterPlugins()` function.
 - **Validations**: Extend `internal/validation` by adding new helpers and wiring them into `RunValidations`.
 - **CLI**: Additional commands/subcommands can be added in `cmd/streamy` while reusing core packages.
 
