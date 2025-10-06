@@ -20,12 +20,6 @@ func New() plugin.Plugin {
 	return &symlinkPlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin("symlink", New()); err != nil {
-		panic(err)
-	}
-}
-
 func (p *symlinkPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "symlink",

@@ -11,14 +11,29 @@ import (
 	streamengine "github.com/alexisbeaulieu97/streamy/internal/engine"
 	streamlogger "github.com/alexisbeaulieu97/streamy/internal/logger"
 	streammodel "github.com/alexisbeaulieu97/streamy/internal/model"
+	streamplugin "github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamvalidation "github.com/alexisbeaulieu97/streamy/internal/validation"
 
-	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/command"
-	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/copy"
-	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/package"
-	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/repo"
-	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/symlink"
+	commandplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/command"
+	copyplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/copy"
+	packageplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/package"
+	repoplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/repo"
+	symlinkplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/symlink"
 )
+
+// testRegistry creates a registry with all built-in plugins registered
+func testRegistry(t *testing.T, logger *streamlogger.Logger) *streamplugin.PluginRegistry {
+	t.Helper()
+	registry := streamplugin.NewPluginRegistry(streamplugin.DefaultConfig(), logger)
+	require.NoError(t, registry.Register(commandplugin.New()))
+	require.NoError(t, registry.Register(copyplugin.New()))
+	require.NoError(t, registry.Register(packageplugin.New()))
+	require.NoError(t, registry.Register(repoplugin.New()))
+	require.NoError(t, registry.Register(symlinkplugin.New()))
+	require.NoError(t, registry.ValidateDependencies())
+	require.NoError(t, registry.InitializePlugins())
+	return registry
+}
 
 func TestIntegrationSimpleExecution(t *testing.T) {
 	cfg := loadConfig(t, "simple.yaml")
@@ -26,6 +41,7 @@ func TestIntegrationSimpleExecution(t *testing.T) {
 	plan := generatePlan(t, graph)
 
 	logger := testLogger(t)
+	registry := testRegistry(t, logger)
 	ctx := &streamengine.ExecutionContext{
 		Config:     cfg,
 		DryRun:     false,
@@ -33,6 +49,7 @@ func TestIntegrationSimpleExecution(t *testing.T) {
 		Results:    make(map[string]*streammodel.StepResult),
 		Logger:     logger,
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	results, err := streamengine.Execute(ctx, plan)
@@ -64,6 +81,7 @@ func TestIntegrationDryRunSkipsExecution(t *testing.T) {
 	plan := generatePlan(t, graph)
 
 	logger := testLogger(t)
+	registry := testRegistry(t, logger)
 	ctx := &streamengine.ExecutionContext{
 		Config:     cfg,
 		DryRun:     true,
@@ -71,6 +89,7 @@ func TestIntegrationDryRunSkipsExecution(t *testing.T) {
 		Results:    make(map[string]*streammodel.StepResult),
 		Logger:     logger,
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	results, err := streamengine.Execute(ctx, plan)
@@ -87,6 +106,7 @@ func TestIntegrationIdempotentRuns(t *testing.T) {
 	plan := generatePlan(t, graph)
 
 	logger := testLogger(t)
+	registry := testRegistry(t, logger)
 	ctx := &streamengine.ExecutionContext{
 		Config:     cfg,
 		DryRun:     false,
@@ -94,6 +114,7 @@ func TestIntegrationIdempotentRuns(t *testing.T) {
 		Results:    make(map[string]*streammodel.StepResult),
 		Logger:     logger,
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	_, err := streamengine.Execute(ctx, plan)
@@ -124,6 +145,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	plan := generatePlan(t, graph)
 
 	logger := testLogger(t)
+	registry := testRegistry(t, logger)
 	ctx := &streamengine.ExecutionContext{
 		Config:     cfg,
 		DryRun:     false,
@@ -131,6 +153,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 		Results:    make(map[string]*streammodel.StepResult),
 		Logger:     logger,
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	results, err := streamengine.Execute(ctx, plan)

@@ -222,3 +222,37 @@ Validations run after step execution.
 - Set `settings.parallel` based on workload characteristics; defaults to 4.
 
 For end-to-end examples, see `testdata/configs/` and `docs/quickstart.md` (if present). Update this schema file when adding new step types or validation rules.
+
+## Plugin Metadata (for Plugin Authors)
+
+Plugin authors expose metadata to the runtime registry via `PluginMetadata()` (see `internal/plugin/metadata.go`). The structure mirrors the JSON below.
+
+```json
+{
+  "name": "shell_profile",
+  "version": "1.0.0",
+  "api_version": "1.x",
+  "dependencies": [
+    {
+      "name": "line_in_file",
+      "version_constraint": "1.x"
+    }
+  ],
+  "stateful": false,
+  "description": "Provides shell profile composition using line_in_file."
+}
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `name` | string | ✅ | Unique plugin identifier; should match the step `type`. |
+| `version` | string | ✅ | Semantic version `X.Y.Z`. |
+| `api_version` | string | ✅ | Major version compatibility in `N.x` format. |
+| `dependencies` | array | ❌ | Declared dependencies on other plugins (empty array by default). |
+| `dependencies[].name` | string | ✅ | Name of required plugin. |
+| `dependencies[].version_constraint` | string | ❌ | Major version constraint (`N.x`). |
+| `stateful` | bool | ❌ | `true` if the registry should create per-dependent instances. |
+| `description` | string | ❌ | Human-readable summary used in logs and diagnostics. |
+
+The registry validates these fields at startup, detects missing or incompatible dependencies, and computes an initialisation order using the dependency graph.
+

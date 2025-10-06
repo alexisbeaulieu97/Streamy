@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
+	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
-	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
@@ -132,7 +132,7 @@ func executeStep(ctx context.Context, execCtx *ExecutionContext, step *config.St
 		}
 	}
 
-	impl, err := plugin.GetPlugin(step.Type)
+	impl, err := execCtx.Registry.Get(step.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -209,20 +209,20 @@ func timeoutResult(stepID string, err error) (*model.StepResult, error) {
 	return res, streamyerrors.NewExecutionError(stepID, err)
 }
 
-// Executor handles verification and apply operations
+// Executor handles verification and apply operations.
 type Executor struct {
-	logger interface{} // Logger interface (using interface{} for flexibility)
+	logger *logger.Logger
 }
 
-// NewExecutor creates a new executor instance
-func NewExecutor(logger interface{}) *Executor {
+// NewExecutor creates a new executor instance.
+func NewExecutor(log *logger.Logger) *Executor {
 	return &Executor{
-		logger: logger,
+		logger: log,
 	}
 }
 
 // VerifySteps performs verification on all steps and returns a summary
-func (e *Executor) VerifySteps(ctx context.Context, steps []config.Step, defaultTimeout time.Duration) (*model.VerificationSummary, error) {
+func (e *Executor) VerifySteps(ctx *ExecutionContext, steps []config.Step, defaultTimeout time.Duration) (*model.VerificationSummary, error) {
 	start := time.Now()
 
 	stepIndex := make(map[string]*config.Step, len(steps))
@@ -259,8 +259,8 @@ func (e *Executor) VerifySteps(ctx context.Context, steps []config.Step, default
 				continue
 			}
 
-			if ctx.Err() != nil {
-				return summary, ctx.Err()
+			if ctx.Context.Err() != nil {
+				return summary, ctx.Context.Err()
 			}
 
 			unsatisfied := make([]string, 0, len(step.DependsOn))
@@ -295,7 +295,7 @@ func (e *Executor) VerifySteps(ctx context.Context, steps []config.Step, default
 				continue
 			}
 
-			p, err := plugin.GetPlugin(step.Type)
+			p, err := ctx.Registry.Get(step.Type)
 			if err != nil {
 				result := &model.VerificationResult{
 					StepID:    step.ID,
@@ -317,7 +317,7 @@ func (e *Executor) VerifySteps(ctx context.Context, steps []config.Step, default
 			}
 
 			stepStart := time.Now()
-			stepCtx, cancel := context.WithTimeout(ctx, timeout)
+			stepCtx, cancel := context.WithTimeout(ctx.Context, timeout)
 
 			result, verifyErr := p.Verify(stepCtx, step)
 			cancel()

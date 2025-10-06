@@ -17,9 +17,9 @@ import (
 )
 
 func TestExecute_SequentialLevels(t *testing.T) {
-	plugin.ResetRegistry()
 	fp := &fakePlugin{}
-	require.NoError(t, plugin.RegisterPlugin("command", fp))
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	require.NoError(t, registry.Register(fp))
 
 	cfg := &config.Config{
 		Version: "1.0",
@@ -42,6 +42,7 @@ func TestExecute_SequentialLevels(t *testing.T) {
 		WorkerPool: make(chan struct{}, 1),
 		Results:    make(map[string]*model.StepResult),
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	results, err := Execute(ctx, plan)
@@ -57,9 +58,9 @@ func TestExecute_SequentialLevels(t *testing.T) {
 }
 
 func TestExecute_ParallelLevels(t *testing.T) {
-	plugin.ResetRegistry()
 	fp := &fakePlugin{delay: 50 * time.Millisecond}
-	require.NoError(t, plugin.RegisterPlugin("command", fp))
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	require.NoError(t, registry.Register(fp))
 
 	cfg := &config.Config{
 		Version: "1.0",
@@ -82,6 +83,7 @@ func TestExecute_ParallelLevels(t *testing.T) {
 		WorkerPool: make(chan struct{}, 2),
 		Results:    make(map[string]*model.StepResult),
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	start := time.Now()
@@ -94,9 +96,9 @@ func TestExecute_ParallelLevels(t *testing.T) {
 }
 
 func TestExecute_FailFastOnError(t *testing.T) {
-	plugin.ResetRegistry()
 	fp := &fakePlugin{failStep: "step2"}
-	require.NoError(t, plugin.RegisterPlugin("command", fp))
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	require.NoError(t, registry.Register(fp))
 
 	cfg := &config.Config{
 		Version: "1.0",
@@ -119,6 +121,7 @@ func TestExecute_FailFastOnError(t *testing.T) {
 		WorkerPool: make(chan struct{}, 1),
 		Results:    make(map[string]*model.StepResult),
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	results, err := Execute(ctx, plan)
@@ -132,9 +135,9 @@ func TestExecute_FailFastOnError(t *testing.T) {
 }
 
 func TestExecute_RespectsTimeout(t *testing.T) {
-	plugin.ResetRegistry()
 	fp := &fakePlugin{delay: 2 * time.Second}
-	require.NoError(t, plugin.RegisterPlugin("command", fp))
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	require.NoError(t, registry.Register(fp))
 
 	cfg := &config.Config{
 		Version: "1.0",
@@ -158,6 +161,7 @@ func TestExecute_RespectsTimeout(t *testing.T) {
 		WorkerPool: make(chan struct{}, 1),
 		Results:    make(map[string]*model.StepResult),
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	results, err := Execute(ctx, plan)
@@ -167,9 +171,9 @@ func TestExecute_RespectsTimeout(t *testing.T) {
 }
 
 func TestExecute_HandlesCancellation(t *testing.T) {
-	plugin.ResetRegistry()
 	fp := &fakePlugin{delay: 200 * time.Millisecond}
-	require.NoError(t, plugin.RegisterPlugin("command", fp))
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	require.NoError(t, registry.Register(fp))
 
 	cfg := &config.Config{
 		Version: "1.0",
@@ -193,6 +197,7 @@ func TestExecute_HandlesCancellation(t *testing.T) {
 		WorkerPool: make(chan struct{}, 1),
 		Results:    make(map[string]*model.StepResult),
 		Context:    ctxWithCancel,
+		Registry:   registry,
 	}
 
 	results, err := Execute(ctx, plan)
@@ -213,8 +218,9 @@ type fakePlugin struct {
 
 func (p *fakePlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
-		Name: "fake",
-		Type: "command",
+		Name:    "fake",
+		Version: "1.0.0",
+		Type:    "command",
 	}
 }
 
@@ -301,9 +307,9 @@ func (p *fakePlugin) verifyOrder() []string {
 }
 
 func TestExecute_ContinueOnError(t *testing.T) {
-	plugin.ResetRegistry()
 	fp := &fakePlugin{failStep: "step1"}
-	require.NoError(t, plugin.RegisterPlugin("command", fp))
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	require.NoError(t, registry.Register(fp))
 
 	cfg := &config.Config{
 		Version: "1.0",
@@ -329,6 +335,7 @@ func TestExecute_ContinueOnError(t *testing.T) {
 		WorkerPool:      make(chan struct{}, 1),
 		Results:         make(map[string]*model.StepResult),
 		Context:         context.Background(),
+		Registry:        registry,
 	}
 
 	results, err := Execute(ctx, plan)
@@ -373,7 +380,6 @@ func TestTimeoutResult(t *testing.T) {
 }
 
 func TestVerifySteps_BlocksDependentsWhenPrerequisitesUnsatisfied(t *testing.T) {
-	plugin.ResetRegistry()
 	fp := &fakePlugin{
 		verifyStatuses: map[string]model.VerificationStatus{
 			"provision_vm": model.StatusMissing,
@@ -382,7 +388,10 @@ func TestVerifySteps_BlocksDependentsWhenPrerequisitesUnsatisfied(t *testing.T) 
 			"provision_vm": "resource missing",
 		},
 	}
-	require.NoError(t, plugin.RegisterPlugin("command", fp))
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	if err := registry.Register(fp); err != nil {
+		t.Fatalf("failed to register fake plugin: %v", err)
+	}
 
 	steps := []config.Step{
 		{ID: "provision_vm", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
@@ -390,7 +399,11 @@ func TestVerifySteps_BlocksDependentsWhenPrerequisitesUnsatisfied(t *testing.T) 
 	}
 
 	executor := NewExecutor(nil)
-	summary, err := executor.VerifySteps(context.Background(), steps, time.Second)
+	execCtx := &ExecutionContext{
+		Registry: registry,
+		Context:  context.Background(),
+	}
+	summary, err := executor.VerifySteps(execCtx, steps, time.Second)
 	require.NoError(t, err)
 
 	require.Len(t, summary.Results, 2)
@@ -408,21 +421,27 @@ func TestVerifySteps_BlocksDependentsWhenPrerequisitesUnsatisfied(t *testing.T) 
 
 func TestVerifySteps_PropagatesPluginVerificationErrors(t *testing.T) {
 	t.Run("returns validation errors", func(t *testing.T) {
-		plugin.ResetRegistry()
 		validationErr := &streamyerrors.ValidationError{Field: "pattern", Message: "invalid regex"}
 		fp := &fakePlugin{
 			verifyErrors: map[string]error{
 				"lint": validationErr,
 			},
 		}
-		require.NoError(t, plugin.RegisterPlugin("command", fp))
+		registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+		if err := registry.Register(fp); err != nil {
+			t.Fatalf("failed to register fake plugin: %v", err)
+		}
 
 		steps := []config.Step{
 			{ID: "lint", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
 		}
 
 		executor := NewExecutor(nil)
-		summary, err := executor.VerifySteps(context.Background(), steps, time.Second)
+		execCtx := &ExecutionContext{
+			Registry: registry,
+			Context:  context.Background(),
+		}
+		summary, err := executor.VerifySteps(execCtx, steps, time.Second)
 
 		require.NotNil(t, summary)
 		require.Error(t, err)
@@ -431,21 +450,25 @@ func TestVerifySteps_PropagatesPluginVerificationErrors(t *testing.T) {
 	})
 
 	t.Run("wraps unexpected errors as execution errors", func(t *testing.T) {
-		plugin.ResetRegistry()
 		underlying := errors.New("verify failed")
 		fp := &fakePlugin{
 			verifyErrors: map[string]error{
 				"lint": underlying,
 			},
 		}
-		require.NoError(t, plugin.RegisterPlugin("command", fp))
+		registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+		require.NoError(t, registry.Register(fp))
 
 		steps := []config.Step{
 			{ID: "lint", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
 		}
 
 		executor := NewExecutor(nil)
-		summary, err := executor.VerifySteps(context.Background(), steps, time.Second)
+		execCtx := &ExecutionContext{
+			Registry: registry,
+			Context:  context.Background(),
+		}
+		summary, err := executor.VerifySteps(execCtx, steps, time.Second)
 
 		require.NotNil(t, summary)
 		require.Error(t, err)
