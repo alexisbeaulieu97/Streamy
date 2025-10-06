@@ -12,6 +12,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	"github.com/alexisbeaulieu97/streamy/internal/plugins/internalexec"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
@@ -95,13 +96,14 @@ func (p *commandPlugin) Apply(ctx context.Context, step *config.Step) (*model.St
 		cmd.Dir = cfg.WorkDir
 	}
 
-	output, err := cmd.CombinedOutput()
+	streamResult, err := internalexec.RunStreaming(cmd)
 	if err != nil {
-		errMsg := err.Error()
-		if len(output) > 0 {
-			errMsg = fmt.Sprintf("%s: %s", err.Error(), string(output))
+		combinedOutput := internalexec.CombinedOutput(streamResult)
+		if combinedOutput != "" {
+			err = fmt.Errorf("%w: %s", err, combinedOutput)
 		}
-		result := &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: errMsg, Error: err}
+
+		result := &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: err}
 		return result, streamyerrors.NewExecutionError(step.ID, err)
 	}
 
