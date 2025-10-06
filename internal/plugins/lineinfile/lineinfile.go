@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
@@ -234,6 +235,68 @@ func (p *lineInFilePlugin) evaluate(ctx context.Context, stepID string, cfg *Lin
 		content:   newContent,
 		original:  originalContent,
 		changeSet: changeSet,
+	}, nil
+}
+
+func (p *lineInFilePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	start := time.Now()
+	cfg, err := newConfigFromStep(step)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for context cancellation
+	select {
+	case <-ctx.Done():
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   "verification cancelled",
+			Error:     ctx.Err(),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	default:
+	}
+
+	result, err := p.evaluate(ctx, step.ID, cfg)
+	if err != nil {
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   fmt.Sprintf("evaluation error: %v", err),
+			Error:     err,
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if !result.state.Exists {
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusMissing,
+			Message:   fmt.Sprintf("file %s does not exist", cfg.File),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	if result.changed {
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusDrifted,
+			Message:   fmt.Sprintf("line needs to be %s in %s", result.action, cfg.File),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	return &model.VerificationResult{
+		StepID:    step.ID,
+		Status:    model.StatusSatisfied,
+		Message:   fmt.Sprintf("line is correctly configured in %s", cfg.File),
+		Duration:  time.Since(start),
+		Timestamp: time.Now(),
 	}, nil
 }
 

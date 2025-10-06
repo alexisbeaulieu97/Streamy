@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
@@ -137,4 +138,92 @@ func buildEnv(custom map[string]string) []string {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	return env
+}
+
+func (p *commandPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	start := time.Now()
+	cfg := step.Command
+	if cfg == nil {
+		return nil, streamyerrors.NewValidationError(step.ID, "command configuration missing", nil)
+	}
+
+	// Check for context cancellation
+	select {
+	case <-ctx.Done():
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   "verification cancelled",
+			Error:     ctx.Err(),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	default:
+	}
+
+	// If no Check command is specified, return unknown status
+	if strings.TrimSpace(cfg.Check) == "" {
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusUnknown,
+			Message:   "no verification command specified (use 'check' field to enable verification)",
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	// Execute the check command
+	shell, shellArgs, err := determineShell(cfg.Shell)
+	if err != nil {
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   fmt.Sprintf("cannot determine shell: %v", err),
+			Error:     err,
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	args := append(shellArgs, cfg.Check)
+	cmd := exec.CommandContext(ctx, shell, args...)
+	cmd.Env = buildEnv(cfg.Env)
+	if cfg.WorkDir != "" {
+		cmd.Dir = cfg.WorkDir
+	}
+
+	err = cmd.Run()
+	if err == nil {
+		// Exit code 0 = satisfied
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusSatisfied,
+			Message:   "check command succeeded (exit code 0)",
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	// Check for exit error vs other errors
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		// Non-zero exit code = missing
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusMissing,
+			Message:   fmt.Sprintf("check command failed (exit code %d)", exitErr.ExitCode()),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	// Other errors (command not found, timeout, etc.) = blocked
+	return &model.VerificationResult{
+		StepID:    step.ID,
+		Status:    model.StatusBlocked,
+		Message:   fmt.Sprintf("check command error: %v", err),
+		Error:     err,
+		Duration:  time.Since(start),
+		Timestamp: time.Now(),
+	}, nil
 }

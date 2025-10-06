@@ -242,3 +242,170 @@ func TestSymlinkPlugin_ApplyFailsWhenTargetExistsWithoutForce(t *testing.T) {
 	require.Equal(t, "link_file", res.StepID)
 	require.Equal(t, "failed", res.Status)
 }
+
+func TestSymlinkPlugin_Verify(t *testing.T) {
+	t.Run("returns satisfied when symlink exists and matches", func(t *testing.T) {
+		source := filepath.Join(t.TempDir(), "source.txt")
+		require.NoError(t, os.WriteFile(source, []byte("content"), 0o644))
+		target := filepath.Join(t.TempDir(), "target.txt")
+		require.NoError(t, os.Symlink(source, target))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "link_file",
+			Type: "symlink",
+			Symlink: &config.SymlinkStep{
+				Source: source,
+				Target: target,
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "satisfied", string(result.Status))
+		require.Contains(t, result.Message, "correctly points to")
+	})
+
+	t.Run("returns missing when symlink does not exist", func(t *testing.T) {
+		source := filepath.Join(t.TempDir(), "source.txt")
+		target := filepath.Join(t.TempDir(), "target.txt")
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "link_file",
+			Type: "symlink",
+			Symlink: &config.SymlinkStep{
+				Source: source,
+				Target: target,
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "missing", string(result.Status))
+		require.Contains(t, result.Message, "does not exist")
+	})
+
+	t.Run("returns drifted when target is not a symlink", func(t *testing.T) {
+		source := filepath.Join(t.TempDir(), "source.txt")
+		target := filepath.Join(t.TempDir(), "target.txt")
+		require.NoError(t, os.WriteFile(target, []byte("regular file"), 0o644))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "link_file",
+			Type: "symlink",
+			Symlink: &config.SymlinkStep{
+				Source: source,
+				Target: target,
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "drifted", string(result.Status))
+		require.Contains(t, result.Message, "is not a symlink")
+	})
+
+	t.Run("returns drifted when symlink points to wrong target", func(t *testing.T) {
+		source := filepath.Join(t.TempDir(), "source.txt")
+		wrongSource := filepath.Join(t.TempDir(), "wrong.txt")
+		target := filepath.Join(t.TempDir(), "target.txt")
+		require.NoError(t, os.Symlink(wrongSource, target))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "link_file",
+			Type: "symlink",
+			Symlink: &config.SymlinkStep{
+				Source: source,
+				Target: target,
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "drifted", string(result.Status))
+		require.Contains(t, result.Message, "points to")
+	})
+
+	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
+		source := filepath.Join(t.TempDir(), "source.txt")
+		target := filepath.Join(t.TempDir(), "target.txt")
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "link_file",
+			Type: "symlink",
+			Symlink: &config.SymlinkStep{
+				Source: source,
+				Target: target,
+			},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		result, err := p.Verify(ctx, step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "blocked", string(result.Status))
+		require.Contains(t, result.Message, "cancelled")
+		require.NotNil(t, result.Error)
+	})
+
+	t.Run("returns error when symlink config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:      "link_file",
+			Type:    "symlink",
+			Symlink: nil,
+		}
+
+		_, err := p.Verify(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "symlink configuration missing")
+	})
+}
+
+func TestSymlinkPlugin_Check_Errors(t *testing.T) {
+	t.Run("returns error when symlink config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:      "check_link",
+			Type:    "symlink",
+			Symlink: nil,
+		}
+
+		_, err := p.Check(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "symlink configuration missing")
+	})
+}
+
+func TestSymlinkPlugin_Apply_Errors(t *testing.T) {
+	t.Run("returns error when symlink config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:      "link_file",
+			Type:    "symlink",
+			Symlink: nil,
+		}
+
+		_, err := p.Apply(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "symlink configuration missing")
+	})
+}

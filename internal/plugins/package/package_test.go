@@ -233,3 +233,160 @@ func writeScript(t *testing.T, dir, name, contents string) {
 	path := filepath.Join(dir, name)
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o755))
 }
+
+func TestPackagePlugin_Verify(t *testing.T) {
+	t.Run("returns satisfied when all packages installed", func(t *testing.T) {
+		binDir := t.TempDir()
+		writeScript(t, binDir, "dpkg-query", `#!/bin/sh
+echo "install ok installed"
+exit 0
+`)
+
+		originalPath := os.Getenv("PATH")
+		t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+		require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "install_packages",
+			Type: "package",
+			Package: &config.PackageStep{
+				Packages: []string{"git", "curl"},
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "satisfied", string(result.Status))
+		require.Contains(t, result.Message, "all packages installed")
+	})
+
+	t.Run("returns missing when packages not installed", func(t *testing.T) {
+		binDir := t.TempDir()
+		writeScript(t, binDir, "dpkg-query", `#!/bin/sh
+if echo "$@" | grep -q "vim"; then
+  exit 1
+fi
+echo "install ok installed"
+exit 0
+`)
+
+		originalPath := os.Getenv("PATH")
+		t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+		require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "install_packages",
+			Type: "package",
+			Package: &config.PackageStep{
+				Packages: []string{"git", "vim"},
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "missing", string(result.Status))
+		require.Contains(t, result.Message, "packages not installed")
+		require.Contains(t, result.Message, "vim")
+	})
+
+	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:   "install_packages",
+			Type: "package",
+			Package: &config.PackageStep{
+				Packages: []string{"git"},
+			},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		result, err := p.Verify(ctx, step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "blocked", string(result.Status))
+		require.Contains(t, result.Message, "cancelled")
+		require.NotNil(t, result.Error)
+	})
+
+	t.Run("returns error when package config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:      "install_packages",
+			Type:    "package",
+			Package: nil,
+		}
+
+		_, err := p.Verify(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "package configuration missing")
+	})
+}
+
+func TestPackagePlugin_Check_Errors(t *testing.T) {
+	t.Run("returns error when package config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:      "check_packages",
+			Type:    "package",
+			Package: nil,
+		}
+
+		_, err := p.Check(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "package configuration missing")
+	})
+}
+
+func TestPackagePlugin_Apply_Errors(t *testing.T) {
+	t.Run("returns error when package config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:      "install_packages",
+			Type:    "package",
+			Package: nil,
+		}
+
+		_, err := p.Apply(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "package configuration missing")
+	})
+
+	t.Run("returns error when apt-get fails", func(t *testing.T) {
+		binDir := t.TempDir()
+		writeScript(t, binDir, "apt-get", `#!/bin/sh
+echo "Failed to install"
+exit 1
+`)
+
+		originalPath := os.Getenv("PATH")
+		t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+		require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "install_packages",
+			Type: "package",
+			Package: &config.PackageStep{
+				Packages: []string{"nonexistent"},
+			},
+		}
+
+		result, err := p.Apply(context.Background(), step)
+		require.Error(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, "failed", result.Status)
+	})
+}

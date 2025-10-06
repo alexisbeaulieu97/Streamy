@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -200,10 +201,14 @@ func TestExecute_HandlesCancellation(t *testing.T) {
 }
 
 type fakePlugin struct {
-	mu       sync.Mutex
-	calls    []string
-	failStep string
-	delay    time.Duration
+	mu             sync.Mutex
+	calls          []string
+	failStep       string
+	delay          time.Duration
+	verifyStatuses map[string]model.VerificationStatus
+	verifyMessages map[string]string
+	verifyErrors   map[string]error
+	verifyCalls    []string
 }
 
 func (p *fakePlugin) Metadata() plugin.Metadata {
@@ -219,6 +224,40 @@ func (p *fakePlugin) Schema() interface{} {
 
 func (p *fakePlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
 	return false, nil
+}
+
+func (p *fakePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.verifyCalls = append(p.verifyCalls, step.ID)
+
+	if err, ok := p.verifyErrors[step.ID]; ok {
+		return nil, err
+	}
+
+	if status, ok := p.verifyStatuses[step.ID]; ok {
+		message := p.verifyMessages[step.ID]
+		if message == "" {
+			message = fmt.Sprintf("fake verification %s", status)
+		}
+		return &model.VerificationResult{
+			StepID:  step.ID,
+			Status:  status,
+			Message: message,
+		}, nil
+	}
+
+	return &model.VerificationResult{
+		StepID:  step.ID,
+		Status:  model.StatusSatisfied,
+		Message: "fake verification satisfied",
+	}, nil
 }
 
 func (p *fakePlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
@@ -250,6 +289,14 @@ func (p *fakePlugin) applyOrder() []string {
 	defer p.mu.Unlock()
 	out := make([]string, len(p.calls))
 	copy(out, p.calls)
+	return out
+}
+
+func (p *fakePlugin) verifyOrder() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]string, len(p.verifyCalls))
+	copy(out, p.verifyCalls)
 	return out
 }
 
@@ -322,5 +369,91 @@ func TestTimeoutResult(t *testing.T) {
 		require.Equal(t, model.StatusFailed, result.Status)
 		require.Equal(t, "timeout exceeded", result.Message)
 		require.ErrorIs(t, result.Error, customErr)
+	})
+}
+
+func TestVerifySteps_BlocksDependentsWhenPrerequisitesUnsatisfied(t *testing.T) {
+	plugin.ResetRegistry()
+	fp := &fakePlugin{
+		verifyStatuses: map[string]model.VerificationStatus{
+			"provision_vm": model.StatusMissing,
+		},
+		verifyMessages: map[string]string{
+			"provision_vm": "resource missing",
+		},
+	}
+	require.NoError(t, plugin.RegisterPlugin("command", fp))
+
+	steps := []config.Step{
+		{ID: "provision_vm", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
+		{ID: "deploy_app", Type: "command", Enabled: true, DependsOn: []string{"provision_vm"}, Command: &config.CommandStep{Command: "echo"}},
+	}
+
+	executor := NewExecutor(nil)
+	summary, err := executor.VerifySteps(context.Background(), steps, time.Second)
+	require.NoError(t, err)
+
+	require.Len(t, summary.Results, 2)
+	require.Equal(t, "provision_vm", summary.Results[0].StepID)
+	require.Equal(t, model.StatusMissing, summary.Results[0].Status)
+	require.Equal(t, "deploy_app", summary.Results[1].StepID)
+	require.Equal(t, model.StatusBlocked, summary.Results[1].Status)
+	require.Contains(t, summary.Results[1].Message, "dependencies not satisfied")
+	require.NotNil(t, summary.Results[1].Error)
+	require.Equal(t, 1, summary.Missing)
+	require.Equal(t, 1, summary.Blocked)
+
+	require.Equal(t, []string{"provision_vm"}, fp.verifyOrder())
+}
+
+func TestVerifySteps_PropagatesPluginVerificationErrors(t *testing.T) {
+	t.Run("returns validation errors", func(t *testing.T) {
+		plugin.ResetRegistry()
+		validationErr := &streamyerrors.ValidationError{Field: "pattern", Message: "invalid regex"}
+		fp := &fakePlugin{
+			verifyErrors: map[string]error{
+				"lint": validationErr,
+			},
+		}
+		require.NoError(t, plugin.RegisterPlugin("command", fp))
+
+		steps := []config.Step{
+			{ID: "lint", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
+		}
+
+		executor := NewExecutor(nil)
+		summary, err := executor.VerifySteps(context.Background(), steps, time.Second)
+
+		require.NotNil(t, summary)
+		require.Error(t, err)
+		require.ErrorIs(t, err, validationErr)
+		require.Empty(t, summary.Results)
+	})
+
+	t.Run("wraps unexpected errors as execution errors", func(t *testing.T) {
+		plugin.ResetRegistry()
+		underlying := errors.New("verify failed")
+		fp := &fakePlugin{
+			verifyErrors: map[string]error{
+				"lint": underlying,
+			},
+		}
+		require.NoError(t, plugin.RegisterPlugin("command", fp))
+
+		steps := []config.Step{
+			{ID: "lint", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
+		}
+
+		executor := NewExecutor(nil)
+		summary, err := executor.VerifySteps(context.Background(), steps, time.Second)
+
+		require.NotNil(t, summary)
+		require.Error(t, err)
+
+		execErr := &streamyerrors.ExecutionError{}
+		require.ErrorAs(t, err, &execErr)
+		require.Equal(t, "lint", execErr.StepID)
+		require.ErrorIs(t, err, underlying)
+		require.Empty(t, summary.Results)
 	})
 }

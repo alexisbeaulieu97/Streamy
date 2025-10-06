@@ -21,4 +21,5 @@ type Plugin interface {
 	Check(ctx context.Context, step *config.Step) (bool, error)
 	Apply(ctx context.Context, step *config.Step) (*model.StepResult, error)
 	DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error)
+	Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error)
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
@@ -94,4 +95,63 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = os.Environ()
 	return cmd.Run()
+}
+
+func (p *packagePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	start := time.Now()
+	pkgCfg := step.Package
+	if pkgCfg == nil {
+		return nil, streamyerrors.NewValidationError(step.ID, "package configuration missing", nil)
+	}
+
+	// Check for context cancellation
+	select {
+	case <-ctx.Done():
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   "verification cancelled",
+			Error:     ctx.Err(),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	default:
+	}
+
+	var missingPackages []string
+	for _, name := range pkgCfg.Packages {
+		if err := runCommand(ctx, "dpkg-query", "-W", name); err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				missingPackages = append(missingPackages, name)
+			} else {
+				return &model.VerificationResult{
+					StepID:    step.ID,
+					Status:    model.StatusBlocked,
+					Message:   fmt.Sprintf("cannot query package %s: %v", name, err),
+					Error:     err,
+					Duration:  time.Since(start),
+					Timestamp: time.Now(),
+				}, nil
+			}
+		}
+	}
+
+	if len(missingPackages) > 0 {
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusMissing,
+			Message:   fmt.Sprintf("packages not installed: %s", strings.Join(missingPackages, ", ")),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	return &model.VerificationResult{
+		StepID:    step.ID,
+		Status:    model.StatusSatisfied,
+		Message:   fmt.Sprintf("all packages installed: %s", strings.Join(pkgCfg.Packages, ", ")),
+		Duration:  time.Since(start),
+		Timestamp: time.Now(),
+	}, nil
 }

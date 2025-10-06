@@ -8,10 +8,12 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/go-playground/validator/v10 v10.27.0
+	github.com/pmezard/go-difflib v1.0.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/term v0.35.0
+	golang.org/x/text v0.29.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -51,7 +53,6 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/pjbgf/sha1cd v0.5.0 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
@@ -61,6 +62,5 @@ require (
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )

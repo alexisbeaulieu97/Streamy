@@ -1060,3 +1060,161 @@ func readFile(t *testing.T, path string) string {
 	require.NoError(t, err)
 	return string(bytes)
 }
+
+func TestTemplatePlugin_Verify(t *testing.T) {
+	t.Run("returns satisfied when rendered template matches destination", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		templateSrc := filepath.Join(tmpDir, "template.tmpl")
+		destination := filepath.Join(tmpDir, "output.txt")
+
+		writeFile(t, templateSrc, "Hello {{ .name }}!", 0o644)
+		writeFile(t, destination, "Hello World!", 0o644)
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "render_template",
+			Type: "template",
+			Template: &config.TemplateStep{
+				Source:      templateSrc,
+				Destination: destination,
+				Vars: map[string]string{
+					"name": "World",
+				},
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "satisfied", string(result.Status))
+		require.Contains(t, result.Message, "matches")
+	})
+
+	t.Run("returns missing when destination does not exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		templateSrc := filepath.Join(tmpDir, "template.tmpl")
+		destination := filepath.Join(tmpDir, "nonexistent.txt")
+
+		writeFile(t, templateSrc, "Hello {{ .name }}!", 0o644)
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "render_template",
+			Type: "template",
+			Template: &config.TemplateStep{
+				Source:      templateSrc,
+				Destination: destination,
+				Vars: map[string]string{
+					"name": "World",
+				},
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "missing", string(result.Status))
+		require.Contains(t, result.Message, "does not exist")
+	})
+
+	t.Run("returns drifted when rendered content differs from destination", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		templateSrc := filepath.Join(tmpDir, "template.tmpl")
+		destination := filepath.Join(tmpDir, "output.txt")
+
+		writeFile(t, templateSrc, "Hello {{ .name }}!", 0o644)
+		writeFile(t, destination, "Hello Universe!", 0o644)
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "render_template",
+			Type: "template",
+			Template: &config.TemplateStep{
+				Source:      templateSrc,
+				Destination: destination,
+				Vars: map[string]string{
+					"name": "World",
+				},
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "drifted", string(result.Status))
+		require.Contains(t, result.Message, "differs")
+	})
+
+	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		templateSrc := filepath.Join(tmpDir, "template.tmpl")
+		destination := filepath.Join(tmpDir, "output.txt")
+
+		writeFile(t, templateSrc, "Hello!", 0o644)
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "render_template",
+			Type: "template",
+			Template: &config.TemplateStep{
+				Source:      templateSrc,
+				Destination: destination,
+			},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		result, err := p.Verify(ctx, step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "blocked", string(result.Status))
+		require.Contains(t, result.Message, "cancelled")
+		require.NotNil(t, result.Error)
+	})
+
+	t.Run("returns error when template config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:       "render_template",
+			Type:     "template",
+			Template: nil,
+		}
+
+		_, err := p.Verify(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "template configuration missing")
+	})
+
+	t.Run("returns blocked when template rendering fails", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		templateSrc := filepath.Join(tmpDir, "template.tmpl")
+		destination := filepath.Join(tmpDir, "output.txt")
+
+		// Template with error - undefined variable
+		writeFile(t, templateSrc, "Hello {{ .undefined }}!", 0o644)
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "render_template",
+			Type: "template",
+			Template: &config.TemplateStep{
+				Source:      templateSrc,
+				Destination: destination,
+				Vars:        map[string]string{},
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "blocked", string(result.Status))
+		require.Contains(t, result.Message, "cannot render template")
+	})
+}

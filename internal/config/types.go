@@ -32,11 +32,12 @@ type Settings struct {
 
 // Step describes an individual unit of work in the DAG.
 type Step struct {
-	ID        string   `yaml:"id" validate:"required,step_id"`
-	Name      string   `yaml:"name,omitempty"`
-	Type      string   `yaml:"type" validate:"required,oneof=package repo symlink copy command template line_in_file"`
-	DependsOn []string `yaml:"depends_on,omitempty"`
-	Enabled   bool     `yaml:"enabled,omitempty"`
+	ID            string   `yaml:"id" validate:"required,step_id"`
+	Name          string   `yaml:"name,omitempty"`
+	Type          string   `yaml:"type" validate:"required,oneof=package repo symlink copy command template line_in_file"`
+	DependsOn     []string `yaml:"depends_on,omitempty"`
+	Enabled       bool     `yaml:"enabled,omitempty"`
+	VerifyTimeout int      `yaml:"verify_timeout,omitempty" validate:"omitempty,min=1,max=600"`
 
 	Package    *PackageStep    `yaml:",inline,omitempty"`
 	Repo       *RepoStep       `yaml:",inline,omitempty"`
@@ -50,11 +51,12 @@ type Step struct {
 // UnmarshalYAML customises step decoding to populate type-specific structures without conflicts.
 func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 	type baseStep struct {
-		ID        string   `yaml:"id"`
-		Name      string   `yaml:"name"`
-		Type      string   `yaml:"type"`
-		DependsOn []string `yaml:"depends_on"`
-		Enabled   *bool    `yaml:"enabled"`
+		ID            string   `yaml:"id"`
+		Name          string   `yaml:"name"`
+		Type          string   `yaml:"type"`
+		DependsOn     []string `yaml:"depends_on"`
+		Enabled       *bool    `yaml:"enabled"`
+		VerifyTimeout *int     `yaml:"verify_timeout"`
 	}
 
 	var base baseStep
@@ -70,6 +72,11 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 		s.Enabled = *base.Enabled
 	} else {
 		s.Enabled = true
+	}
+	if base.VerifyTimeout != nil {
+		s.VerifyTimeout = *base.VerifyTimeout
+	} else {
+		s.VerifyTimeout = 0
 	}
 
 	s.Package = nil
