@@ -7,9 +7,10 @@ Streamy transforms declarative YAML configuration files into a dependency-aware 
 1. **Configuration Parsing**: `internal/config` parses YAML into strongly typed Go structs (see `types.go`) and performs schema validation (required fields, dependency references, ID format, etc.).
 2. **Graph Construction**: `internal/engine/dag.go` + `dag_builder.go` turn the list of steps into a directed acyclic graph (DAG) while detecting cycles and missing dependencies.
 3. **Execution Planning**: `internal/engine/planner.go` performs a topological sort to produce level-based execution groups for parallelism and time estimation.
-4. **Execution**: `internal/engine/executor.go` consumes the plan with a worker pool, dispatching steps to their registered plugins, capturing `StepResult` metadata and supporting dry-run mode.
-5. **Validations**: `internal/validation` runs post-execution checks (command_exists, file_exists, path_contains) and aggregates results.
-6. **Presentation**: `internal/tui` renders progress using Bubbletea, falling back to a textual summary when no TTY is available. CLI commands (`cmd/streamy`) orchestrate these steps.
+4. **Plugin Dependency Validation**: `internal/plugin.PluginRegistry` loads plugin metadata, ensures all dependencies exist, checks version constraints, and resolves initialisation order.
+5. **Execution**: `internal/engine/executor.go` consumes the plan with a worker pool, dispatching steps to their registered plugins, capturing `StepResult` metadata and supporting dry-run mode.
+6. **Validations**: `internal/validation` runs post-execution checks (command_exists, file_exists, path_contains) and aggregates results.
+7. **Presentation**: `internal/tui` renders progress using Bubbletea, falling back to a textual summary when no TTY is available. CLI commands (`cmd/streamy`) orchestrate these steps.
 
 ## Key Packages
 
@@ -25,9 +26,10 @@ Streamy transforms declarative YAML configuration files into a dependency-aware 
 - **Context** (`context.go`): Holds shared execution state (config, dry-run flag, worker semaphore, logger, results map).
 
 ### internal/plugin & internal/plugins
-- `plugin/interface.go` defines the plugin contract (`Metadata`, `Schema`, `Check`, `Apply`, `DryRun`).
-- `plugin/registry.go` keeps global plugin registrations.
-- Concrete implementations under `internal/plugins/` (package, repo, symlink, copy, command) encapsulate system-specific behaviour and idempotency checks.
+- `plugin/interface.go` defines the plugin contracts (core `Plugin`, dependency-aware `MetadataProvider`, optional `PluginInitializer`).
+- `plugin/registry_new.go` implements the dependency-aware `PluginRegistry`, handling registration, validation, initialisation order, access policies, and stateful instance management.
+- `plugin/dependency_graph.go`, `metadata.go`, `version.go`, and `config.go` provide supporting types for constraints, policies, and graph algorithms.
+- Concrete implementations under `internal/plugins/` expose constructors and rich metadata via `PluginMetadata()` while remaining side-effect free; registration now happens in `cmd/streamy/plugins_import.go`.
 
 ### internal/logger
 - Wrapper around Zerolog for consistent structured logging with optional human-readable output.
@@ -41,8 +43,9 @@ Streamy transforms declarative YAML configuration files into a dependency-aware 
 - Components (progress bar, step list, summary) encapsulate presentation primitives.
 
 ### cmd/streamy
-- Cobra CLI (`main.go`, `root.go`) exposes `streamy apply` and `streamy version` commands.
-- `apply.go` wires together parsing, validation, execution, TUI display, and validation results.
+- Cobra CLI (`main.go`, `root.go`) exposes `streamy apply`, `streamy verify`, and `streamy version` commands.
+- `main.go` creates the logger, instantiates the `PluginRegistry`, invokes `RegisterPlugins()` to wire built-ins, validates dependencies, initialises plugins in dependency order, and then hands control to Cobra.
+- `apply.go` and `verify.go` wire together parsing, validation, execution, TUI display, and validation results while retrieving plugins from the registry at runtime.
 - Flags (`flags.go`) enforce config presence and sensible defaults.
 
 ## Data Flow Diagram
