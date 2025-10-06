@@ -31,6 +31,35 @@ func stripANSICodes(s string) string {
 	return result
 }
 
+func projectRootDir(t *testing.T) string {
+	t.Helper()
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+
+	root := filepath.Dir(wd)
+	_, statErr := os.Stat(filepath.Join(root, "go.mod"))
+	require.NoError(t, statErr)
+
+	return root
+}
+
+func newStreamyCmd(t *testing.T, args ...string) *exec.Cmd {
+	t.Helper()
+
+	cmd := exec.Command("go", append([]string{"run", "./cmd/streamy"}, args...)...)
+	cmd.Dir = projectRootDir(t)
+	return cmd
+}
+
+func newStreamyCmdContext(ctx context.Context, t *testing.T, args ...string) *exec.Cmd {
+	t.Helper()
+
+	cmd := exec.CommandContext(ctx, "go", append([]string{"run", "./cmd/streamy"}, args...)...)
+	cmd.Dir = projectRootDir(t)
+	return cmd
+}
+
 func TestVerify_Integration_AllSatisfied(t *testing.T) {
 	t.Parallel()
 
@@ -56,8 +85,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", configFile)
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err)
 
@@ -88,8 +116,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", configFile)
 	output, err := cmd.CombinedOutput()
 
 	// Should exit with code 1 (missing steps)
@@ -128,8 +155,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", configFile)
 	output, err := cmd.CombinedOutput()
 
 	// Should exit with code 1 (drifted steps)
@@ -169,8 +195,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", configFile)
 	output, err := cmd.CombinedOutput()
 
 	// Should exit with code 1 (blocked/missing steps)
@@ -202,8 +227,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", configFile)
 	output, err := cmd.CombinedOutput()
 
 	// Should exit with code 1 (unknown steps)
@@ -249,8 +273,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", configFile)
 	output, err := cmd.CombinedOutput()
 
 	// Should exit with code 1 (missing/blocked steps)
@@ -280,8 +303,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command with verbose flag
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", "--verbose", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", "--verbose", configFile)
 	output, err := cmd.CombinedOutput()
 
 	// Should exit with code 1 (unknown steps)
@@ -316,8 +338,7 @@ steps:
 	require.NoError(t, err)
 
 	// Run verify command with JSON flag
-	cmd := exec.Command("go", "run", "./cmd/streamy", "verify", "--json", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmd(t, "verify", "--json", configFile)
 	output, err := cmd.CombinedOutput()
 
 	// Should exit with code 1 (unknown steps)
@@ -402,8 +423,7 @@ steps:
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "go", "run", "./cmd/streamy", "verify", configFile)
-	cmd.Dir = "/home/alexis/Projects/Streamy"
+	cmd := newStreamyCmdContext(ctx, t, "verify", configFile)
 	_, err = cmd.CombinedOutput()
 
 	// Should complete quickly due to timeout
