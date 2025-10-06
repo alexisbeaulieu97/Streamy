@@ -2,6 +2,8 @@ package lineinfileplugin
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -224,4 +226,208 @@ func newLineInFileStep(id string, cfg *config.LineInFileStep) *config.Step {
 		Type:       "line_in_file",
 		LineInFile: cfg,
 	}
+}
+
+func TestLineInFilePlugin_Schema(t *testing.T) {
+	t.Parallel()
+
+	p := New()
+	schema := p.Schema()
+
+	require.NotNil(t, schema)
+	_, ok := schema.(config.LineInFileStep)
+	require.True(t, ok, "schema should be of type LineInFileStep")
+}
+
+func TestLineInFilePlugin_Check(t *testing.T) {
+	t.Run("returns true when line already exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("existing line\nother content\n"), 0o644))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "ensure_line",
+			Type: "line_in_file",
+			LineInFile: &config.LineInFileStep{
+				File:  testFile,
+				Line:  "existing line",
+				State: "present",
+			},
+		}
+
+		ok, err := p.Check(context.Background(), step)
+		require.NoError(t, err)
+		require.True(t, ok)
+	})
+
+	t.Run("returns false when line needs to be added", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("other content\n"), 0o644))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "ensure_line",
+			Type: "line_in_file",
+			LineInFile: &config.LineInFileStep{
+				File:  testFile,
+				Line:  "new line",
+				State: "present",
+			},
+		}
+
+		ok, err := p.Check(context.Background(), step)
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("returns error when line_in_file config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:         "ensure_line",
+			Type:       "line_in_file",
+			LineInFile: nil,
+		}
+
+		_, err := p.Check(context.Background(), step)
+		require.Error(t, err)
+	})
+}
+
+func TestLineInFilePlugin_Verify(t *testing.T) {
+	t.Run("returns satisfied when line is present as expected", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("existing line\n"), 0o644))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "ensure_line",
+			Type: "line_in_file",
+			LineInFile: &config.LineInFileStep{
+				File:  testFile,
+				Line:  "existing line",
+				State: "present",
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "satisfied", string(result.Status))
+	})
+
+	t.Run("returns drifted when line needs to be added", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("other content\n"), 0o644))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "ensure_line",
+			Type: "line_in_file",
+			LineInFile: &config.LineInFileStep{
+				File:  testFile,
+				Line:  "new line",
+				State: "present",
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "drifted", string(result.Status))
+	})
+
+	t.Run("returns missing when file does not exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "nonexistent.txt")
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "ensure_line",
+			Type: "line_in_file",
+			LineInFile: &config.LineInFileStep{
+				File:  testFile,
+				Line:  "new line",
+				State: "present",
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "missing", string(result.Status))
+	})
+
+	t.Run("returns satisfied when line correctly absent", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("other content\n"), 0o644))
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "ensure_line_absent",
+			Type: "line_in_file",
+			LineInFile: &config.LineInFileStep{
+				File:  testFile,
+				Line:  "unwanted line",
+				State: "absent",
+				Match: "unwanted line",
+			},
+		}
+
+		result, err := p.Verify(context.Background(), step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "satisfied", string(result.Status))
+	})
+
+	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.txt")
+
+		p := New()
+
+		step := &config.Step{
+			ID:   "ensure_line",
+			Type: "line_in_file",
+			LineInFile: &config.LineInFileStep{
+				File:  testFile,
+				Line:  "new line",
+				State: "present",
+			},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		result, err := p.Verify(ctx, step)
+		require.NoError(t, err)
+		require.Equal(t, step.ID, result.StepID)
+		require.Equal(t, "blocked", string(result.Status))
+		require.Contains(t, result.Message, "cancelled")
+		require.NotNil(t, result.Error)
+	})
+
+	t.Run("returns error when line_in_file config is nil", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:         "ensure_line",
+			Type:       "line_in_file",
+			LineInFile: nil,
+		}
+
+		_, err := p.Verify(context.Background(), step)
+		require.Error(t, err)
+	})
 }

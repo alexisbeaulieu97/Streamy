@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	"github.com/alexisbeaulieu97/streamy/pkg/diff"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
@@ -325,4 +327,84 @@ func determineFileMode(cfg *config.TemplateStep) (os.FileMode, error) {
 	}
 
 	return info.Mode(), nil
+}
+
+func (p *templatePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	start := time.Now()
+	cfg := step.Template
+	if cfg == nil {
+		return nil, streamyerrors.NewValidationError(step.ID, "template configuration missing", nil)
+	}
+
+	// Check for context cancellation
+	select {
+	case <-ctx.Done():
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   "verification cancelled",
+			Error:     ctx.Err(),
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	default:
+	}
+
+	// Render template in-memory
+	rendered, err := p.renderTemplate(ctx, cfg)
+	if err != nil {
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   fmt.Sprintf("cannot render template: %v", err),
+			Error:     err,
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	// Check if destination exists
+	destContent, err := os.ReadFile(cfg.Destination)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &model.VerificationResult{
+				StepID:    step.ID,
+				Status:    model.StatusMissing,
+				Message:   fmt.Sprintf("destination file %s does not exist", cfg.Destination),
+				Duration:  time.Since(start),
+				Timestamp: time.Now(),
+			}, nil
+		}
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusBlocked,
+			Message:   fmt.Sprintf("cannot read destination %s: %v", cfg.Destination, err),
+			Error:     err,
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	// Compare rendered content with destination
+	if !bytes.Equal(rendered, destContent) {
+		// Generate diff
+		diffOutput := diff.GenerateUnifiedDiff(destContent, rendered, cfg.Destination, "rendered template")
+
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusDrifted,
+			Message:   fmt.Sprintf("rendered template differs from %s", cfg.Destination),
+			Details:   diffOutput,
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	return &model.VerificationResult{
+		StepID:    step.ID,
+		Status:    model.StatusSatisfied,
+		Message:   fmt.Sprintf("template output matches %s", cfg.Destination),
+		Duration:  time.Since(start),
+		Timestamp: time.Now(),
+	}, nil
 }

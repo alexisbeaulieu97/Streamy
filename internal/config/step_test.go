@@ -132,3 +132,101 @@ func TestValidateStepWithNilPointer(t *testing.T) {
 	err := ValidateStep(step)
 	require.Error(t, err)
 }
+
+func TestValidateStep_TemplateAndLineInFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		step      Step
+		wantError bool
+	}{
+		{
+			name: "template step valid",
+			step: Step{
+				ID:   "render_template",
+				Type: "template",
+				Template: &TemplateStep{
+					Source:      "/tmp/template.tmpl",
+					Destination: "/tmp/output.txt",
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "template step missing source",
+			step: Step{
+				ID:   "render_template",
+				Type: "template",
+				Template: &TemplateStep{
+					Destination: "/tmp/output.txt",
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "template step nil config",
+			step: Step{
+				ID:       "render_template",
+				Type:     "template",
+				Template: nil,
+			},
+			wantError: true,
+		},
+		{
+			name: "line_in_file step valid",
+			step: Step{
+				ID:   "ensure_line",
+				Type: "line_in_file",
+				LineInFile: &LineInFileStep{
+					File:  "/tmp/file.txt",
+					Line:  "some line",
+					State: "present",
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "line_in_file step missing file",
+			step: Step{
+				ID:   "ensure_line",
+				Type: "line_in_file",
+				LineInFile: &LineInFileStep{
+					Line:  "some line",
+					State: "present",
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "line_in_file step nil config",
+			step: Step{
+				ID:         "ensure_line",
+				Type:       "line_in_file",
+				LineInFile: nil,
+			},
+			wantError: true,
+		},
+		{
+			name: "unknown step type",
+			step: Step{
+				ID:   "test",
+				Type: "unknown_type",
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateStep(tt.step)
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

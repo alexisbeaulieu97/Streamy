@@ -23,6 +23,7 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&flags.dryRun, "dry-run", false, "Preview execution without making changes")
 
 	cmd.AddCommand(newApplyCmd(flags))
+	cmd.AddCommand(newVerifyCmd(flags))
 	cmd.AddCommand(newVersionCmd())
 
 	return cmd

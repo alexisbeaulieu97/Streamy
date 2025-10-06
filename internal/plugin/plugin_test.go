@@ -33,6 +33,14 @@ func (p *testPlugin) Check(ctx context.Context, step *config.Step) (bool, error)
 	return false, nil
 }
 
+func (p *testPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
+	return &model.VerificationResult{
+		StepID:  step.ID,
+		Status:  model.StatusSatisfied,
+		Message: "test verification satisfied",
+	}, nil
+}
+
 func (p *testPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
 	return &model.StepResult{StepID: step.ID, Status: "success", Message: "applied"}, nil
 }
