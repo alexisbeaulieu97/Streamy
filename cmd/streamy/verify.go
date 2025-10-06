@@ -25,8 +25,6 @@ type verifyOptions struct {
 	Timeout    time.Duration
 }
 
-var verifyCmdRunner = runVerify
-
 func newVerifyCmd(root *rootFlags) *cobra.Command {
 	opts := verifyOptions{}
 
@@ -41,7 +39,7 @@ exit code 1 if any changes are needed.`,
 			opts.ConfigPath = args[0]
 			opts.Verbose = root.verbose
 
-			return verifyCmdRunner(opts)
+			return runVerify(opts)
 		},
 	}
 

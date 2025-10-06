@@ -16,19 +16,6 @@ import (
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
-// newTestRegistry creates a new plugin registry for testing with a fake plugin registered
-func newTestRegistry(t *testing.T) *plugin.PluginRegistry {
-	t.Helper()
-
-	// Create a fake plugin with "command" type to match what tests expect
-	fp := &fakePlugin{}
-	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
-	if err := registry.Register(fp); err != nil {
-		t.Fatalf("failed to register fake plugin: %v", err)
-	}
-	return registry
-}
-
 func TestExecute_SequentialLevels(t *testing.T) {
 	fp := &fakePlugin{}
 	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)

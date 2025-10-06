@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
+	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
@@ -208,15 +209,15 @@ func timeoutResult(stepID string, err error) (*model.StepResult, error) {
 	return res, streamyerrors.NewExecutionError(stepID, err)
 }
 
-// Executor handles verification and apply operations
+// Executor handles verification and apply operations.
 type Executor struct {
-	logger interface{} // Logger interface (using interface{} for flexibility)
+	logger *logger.Logger
 }
 
-// NewExecutor creates a new executor instance
-func NewExecutor(logger interface{}) *Executor {
+// NewExecutor creates a new executor instance.
+func NewExecutor(log *logger.Logger) *Executor {
 	return &Executor{
-		logger: logger,
+		logger: log,
 	}
 }
 
