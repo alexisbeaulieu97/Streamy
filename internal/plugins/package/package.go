@@ -23,12 +23,6 @@ func New() plugin.Plugin {
 	return &packagePlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin("package", New()); err != nil {
-		panic(err)
-	}
-}
-
 func (p *packagePlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "apt-packages",

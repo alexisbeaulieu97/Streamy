@@ -19,12 +19,6 @@ func New() plugin.Plugin {
 	return &lineInFilePlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin("line_in_file", New()); err != nil {
-		panic(err)
-	}
-}
-
 func (p *lineInFilePlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "line-in-file",

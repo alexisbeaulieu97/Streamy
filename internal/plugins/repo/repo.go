@@ -23,12 +23,6 @@ func New() plugin.Plugin {
 	return &repoPlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin("repo", New()); err != nil {
-		panic(err)
-	}
-}
-
 func (p *repoPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "git-repo",

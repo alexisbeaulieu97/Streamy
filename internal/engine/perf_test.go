@@ -21,8 +21,8 @@ func BenchmarkBuildDAGLarge(b *testing.B) {
 }
 
 func BenchmarkExecuteDryRunLarge(b *testing.B) {
-	plugin.ResetRegistry()
-	if err := plugin.RegisterPlugin("command", &benchmarkPlugin{}); err != nil {
+	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
+	if err := registry.Register(&benchmarkPlugin{}); err != nil {
 		b.Fatalf("register plugin: %v", err)
 	}
 
@@ -50,6 +50,7 @@ func BenchmarkExecuteDryRunLarge(b *testing.B) {
 		WorkerPool: make(chan struct{}, cfg.Settings.Parallel),
 		Results:    make(map[string]*model.StepResult),
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	b.ResetTimer()
