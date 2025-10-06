@@ -48,23 +48,23 @@
 
 ## Phase 3.1: Setup & Foundation (T001-T005)
 
-- [ ] **T001** [P] Create error types in `internal/plugin/errors.go`
+- [X] **T001** [P] Create error types in `internal/plugin/errors.go`
   - Define `ErrPluginNotFound`, `ErrCircularDependency`, `ErrVersionConflict`, `ErrUndeclaredDependency`, `ErrMissingDependency`
   - Implement `Error()` methods with actionable messages per Constitution Principle II
   - Include remediation hints in error messages
 
-- [ ] **T002** [P] Create metadata types in `internal/plugin/metadata.go`
+- [X] **T002** [P] Create metadata types in `internal/plugin/metadata.go`
   - Define `PluginMetadata` struct with Name, Version, APIVersion, Dependencies, Stateful, Description
   - Define `Dependency` struct with Name and VersionConstraint
   - Add validation methods for metadata fields
 
-- [ ] **T003** [P] Create version constraint in `internal/plugin/version.go`
+- [X] **T003** [P] Create version constraint in `internal/plugin/version.go`
   - Define `VersionConstraint` struct with MajorVersion field
   - Implement `ParseVersionConstraint(s string)` for "N.x" format
   - Implement `Satisfies(version string) bool` method
   - Add unit tests in `internal/plugin/version_test.go`
 
-- [ ] **T004** [P] Create configuration types in `internal/plugin/config.go`
+- [X] **T004** [P] Create configuration types in `internal/plugin/config.go`
   - Define `RegistryConfig` with DependencyPolicy and AccessPolicy
   - Define policy constants: PolicyStrict, PolicyGraceful, AccessStrict, AccessWarn, AccessOff
   - Implement `DefaultConfig()` with environment detection (CI vs interactive)
@@ -72,7 +72,7 @@
   - Test that each env var triggers strict policy mode
   - Test that absence of CI vars triggers graceful policy mode
 
-- [ ] **T005** [P] Create dependency graph structure in `internal/plugin/dependency_graph.go`
+- [X] **T005** [P] Create dependency graph structure in `internal/plugin/dependency_graph.go`
   - Define `DependencyGraph` struct with nodes, incoming, outgoing maps
   - Implement `AddNode(name string)` method
   - Implement `AddEdge(dependent, dependency string)` method
@@ -83,34 +83,34 @@
 ## Phase 3.2: Tests First (TDD) ⚠️ MUST COMPLETE BEFORE 3.3
 **CRITICAL: These tests MUST be written and MUST FAIL before ANY implementation**
 
-- [ ] **T006** [P] Contract test: Register and Get in `internal/plugin/registry_test.go`
+- [X] **T006** [P] Contract test: Register and Get in `internal/plugin/registry_test.go`
   - Test registry creation with `NewPluginRegistry()`
   - Test plugin registration with `Register()`
   - Test plugin retrieval with `Get()`
   - Verify error when getting non-existent plugin
   - **MUST FAIL** initially (no implementation yet)
 
-- [ ] **T007** [P] Contract test: Missing dependency detection in `internal/plugin/registry_test.go`
+- [X] **T007** [P] Contract test: Missing dependency detection in `internal/plugin/registry_test.go`
   - Test plugin with dependency on non-existent plugin
   - Call `ValidateDependencies()` expecting error
   - Verify `ErrMissingDependency` type
   - **MUST FAIL** initially
 
-- [ ] **T008** [P] Contract test: Circular dependency detection in `internal/plugin/registry_test.go`
+- [X] **T008** [P] Contract test: Circular dependency detection in `internal/plugin/registry_test.go`
   - Create 3 plugins in circular dependency (A→B→C→A)
   - Register all three plugins
   - Call `ValidateDependencies()` expecting error
   - Verify `ErrCircularDependency` with cycle list
   - **MUST FAIL** initially
 
-- [ ] **T009** [P] Contract test: Initialization order in `internal/plugin/registry_test.go`
+- [X] **T009** [P] Contract test: Initialization order in `internal/plugin/registry_test.go`
   - Create plugin A with no dependencies, plugin B depending on A
   - Track initialization order
   - Call `InitializePlugins()`
   - Verify A initialized before B
   - **MUST FAIL** initially
 
-- [ ] **T010** [P] Contract test: Version constraint validation in `internal/plugin/version_test.go`
+- [X] **T010** [P] Contract test: Version constraint validation in `internal/plugin/version_test.go`
   - Test `ParseVersionConstraint("1.x")` success
   - Test `ParseVersionConstraint("invalid")` error
   - Test `Satisfies("1.2.3")` returns true for "1.x" constraint
@@ -121,20 +121,20 @@
 
 ## Phase 3.3: Dependency Graph Implementation (T011-T013)
 
-- [ ] **T011** Implement cycle detection in `internal/plugin/dependency_graph.go`
+- [X] **T011** Implement cycle detection in `internal/plugin/dependency_graph.go`
   - Implement `DetectCycles() ([]string, error)` using DFS with recursion stack
   - Return ordered list of nodes in cycle if found
   - Add comprehensive test cases in `internal/plugin/dependency_graph_test.go`
   - Verify T008 contract test now passes
 
-- [ ] **T012** Implement topological sort in `internal/plugin/dependency_graph.go`
+- [X] **T012** Implement topological sort in `internal/plugin/dependency_graph.go`
   - Implement `TopologicalSort() ([]string, error)` using Kahn's algorithm
   - Calculate in-degrees, process queue, detect remaining nodes
   - Return ordered list of plugins (dependencies before dependents)
   - Add test cases for various graph structures
   - Verify T009 contract test now passes
 
-- [ ] **T013** [P] Add graph utility methods in `internal/plugin/dependency_graph.go`
+- [X] **T013** [P] Add graph utility methods in `internal/plugin/dependency_graph.go`
   - Implement `GetDependencies(node string) []string`
   - Implement `GetDependents(node string) []string`
   - Implement `HasNode(node string) bool`
@@ -144,13 +144,13 @@
 
 ## Phase 3.4: Core Registry Implementation (T014-T021)
 
-- [ ] **T014** Create registry structure in `internal/plugin/registry.go`
+- [X] **T014** Create registry structure in `internal/plugin/registry.go`
   - Define `PluginRegistry` struct with mu (RWMutex), plugins map, dependencyGraph, statefulInstances, logger, config
   - Implement `NewPluginRegistry(config *RegistryConfig, logger *logger.Logger) *PluginRegistry`
   - Initialize maps and dependency graph
   - Verify T006 contract test progresses
 
-- [ ] **T015** Implement Register method in `internal/plugin/registry.go`
+- [X] **T015** Implement Register method in `internal/plugin/registry.go`
   - Implement `Register(p Plugin) error` with mutex lock
   - Validate metadata (non-empty name, valid version)
   - Check for duplicate plugin names
@@ -159,7 +159,7 @@
   - Log backward compatibility warnings for missing metadata
   - Verify T006, T007 contract tests progress
 
-- [ ] **T016** Implement ValidateDependencies in `internal/plugin/registry.go`
+- [X] **T016** Implement ValidateDependencies in `internal/plugin/registry.go`
   - Implement `ValidateDependencies() error`
   - Check all declared dependencies exist in registry
   - Check version constraints are satisfied
@@ -169,7 +169,7 @@
   - Log clear error messages with remediation hints
   - Verify T007, T008 contract tests now pass
 
-- [ ] **T017** Implement InitializePlugins in `internal/plugin/registry.go`
+- [X] **T017** Implement InitializePlugins in `internal/plugin/registry.go`
   - Implement `InitializePlugins() error`
   - Call `dependencyGraph.TopologicalSort()` to get ordered list
   - For each plugin in order, check if implements `PluginInitializer`
@@ -178,14 +178,14 @@
   - Propagate initialization errors
   - Verify T009 contract test now passes
 
-- [ ] **T018** Implement Get method in `internal/plugin/registry.go`
+- [X] **T018** Implement Get method in `internal/plugin/registry.go`
   - Implement `Get(name string) (Plugin, error)` with RLock
   - Look up plugin in map
   - Return `ErrPluginNotFound` if not exists
   - Thread-safe for concurrent access
   - Verify T006 contract test fully passes
 
-- [ ] **T019** Implement GetForDependent in `internal/plugin/registry.go`
+- [X] **T019** Implement GetForDependent in `internal/plugin/registry.go`
   - Implement `GetForDependent(dependentName, pluginName string) (Plugin, error)`
   - Check if dependency declared in dependent's metadata
   - Apply access policy (strict, warn, off)
@@ -194,12 +194,12 @@
   - Return singleton or create per-dependent instance
   - Add unit tests for access policy enforcement
 
-- [ ] **T020** [P] Implement List method in `internal/plugin/registry.go`
+- [X] **T020** [P] Implement List method in `internal/plugin/registry.go`
   - Implement `List() []string` with RLock
   - Return sorted list of plugin names
   - Add unit test
 
-- [ ] **T021** [P] Add registry helper methods in `internal/plugin/registry.go`
+- [X] **T021** [P] Add registry helper methods in `internal/plugin/registry.go`
   - Implement `isDependencyDeclared(caller Plugin, depName string) bool`
   - Implement `disableAffectedPlugins(err error)`
   - Implement `createPluginInstance(name string) Plugin` for stateful plugins
@@ -209,19 +209,19 @@
 
 ## Phase 3.5: Plugin Interface Updates (T022-T024)
 
-- [ ] **T022** Add PluginInitializer interface in `internal/plugin/interface.go`
+- [X] **T022** Add PluginInitializer interface in `internal/plugin/interface.go`
   - Define optional `PluginInitializer` interface with `Init(registry *PluginRegistry) error`
   - Document backward compatibility (type assertion checks)
   - Update interface documentation with examples
   - Add contract test for optional interface pattern
 
-- [ ] **T023** Update Plugin interface documentation in `internal/plugin/interface.go`
+- [X] **T023** Update Plugin interface documentation in `internal/plugin/interface.go`
   - Document `Metadata()` return expectations including Dependencies
   - Add examples of declaring dependencies
   - Document stateful vs stateless plugins
   - Include migration guide comments for existing plugins
 
-- [ ] **T024** Create mock plugin for testing in `internal/plugin/mock_plugin_test.go`
+- [X] **T024** Create mock plugin for testing in `internal/plugin/mock_plugin_test.go`
   - Implement `MockPlugin` with configurable metadata
   - Support optional Init() implementation
   - Track method calls for verification
@@ -231,7 +231,7 @@
 
 ## Phase 3.6: Integration Tests (T025-T028)
 
-- [ ] **T025** [P] Integration test: Shell profile composition in `tests/integration_plugin_dependency_test.go`
+- [X] **T025** [P] Integration test: Shell profile composition in `tests/integration_plugin_dependency_test.go`
   - Implement test from quickstart.md scenario
   - Create mock `line_in_file` and `shell_profile` plugins
   - Register both plugins with dependency declaration
@@ -239,21 +239,21 @@
   - Call `shell_profile.Apply()` and verify delegation
   - Assert `line_in_file` receives correct configuration
 
-- [ ] **T026** [P] Integration test: Transitive dependencies in `tests/integration_plugin_dependency_test.go`
+- [X] **T026** [P] Integration test: Transitive dependencies in `tests/integration_plugin_dependency_test.go`
   - Create 3-plugin chain: A → B → C
   - Register all plugins
   - Validate and initialize
   - Verify initialization order (C, B, A)
   - Test that A can transitively access C through B
 
-- [ ] **T027** [P] Integration test: Policy modes in `tests/integration_plugin_dependency_test.go`
+- [X] **T027** [P] Integration test: Policy modes in `tests/integration_plugin_dependency_test.go`
   - Test strict mode with missing dependency (should abort)
   - Test graceful mode with missing dependency (should skip affected, continue)
   - Test strict mode with circular dependency (should abort)
   - Test graceful mode with undeclared access (should warn)
   - Test strict mode with undeclared access (should error)
 
-- [ ] **T028** [P] Integration test: Backward compatibility in `tests/integration_plugin_dependency_test.go`
+- [X] **T028** [P] Integration test: Backward compatibility in `tests/integration_plugin_dependency_test.go`
   - Create legacy plugin without Dependencies field
   - Create legacy plugin without Init() method
   - Register alongside new dependency-aware plugins
@@ -265,14 +265,14 @@
 
 ## Phase 3.7: Main Integration (T029-T030)
 
-- [ ] **T029** Update main.go to create registry in `cmd/streamy/main.go`
+- [X] **T029** Update main.go to create registry in `cmd/streamy/main.go`
   - Import plugin registry package
   - Create `RegistryConfig` with `DefaultConfig()`
   - Create `PluginRegistry` with config and logger
   - Store registry reference for plugin registration
   - Add error handling with clear messages
 
-- [ ] **T030** Update plugin registration in `cmd/streamy/plugins_import.go`
+- [X] **T030** Update plugin registration in `cmd/streamy/plugins_import.go`
   - Modify `RegisterPlugins()` to accept registry parameter
   - Call `registry.Register()` for each plugin
   - Call `registry.ValidateDependencies()` after all registrations
@@ -284,7 +284,7 @@
 
 ## Phase 3.8: Plugin Migration Examples (T031)
 
-- [ ] **T031** [P] Add dependency declarations to example plugin in `internal/plugins/lineinfile/plugin.go`
+- [X] **T031** [P] Add dependency declarations to example plugin in `internal/plugins/lineinfile/plugin.go`
   - Update `Metadata()` to include empty Dependencies list
   - Add APIVersion field
   - Add Description field
@@ -295,14 +295,14 @@
 
 ## Phase 3.9: Performance & Polish (T032-T035)
 
-- [ ] **T032** [P] Add performance tests in `internal/plugin/registry_perf_test.go`
+- [X] **T032** [P] Add performance tests in `internal/plugin/registry_perf_test.go`
   - Benchmark dependency resolution for 10, 50, 100 plugins
   - Benchmark registry lookup (Get) operations
   - Verify <50ms validation for 20-plugin graph
   - Verify <1μs lookup time
   - Test memory usage (O(n) verification)
 
-- [ ] **T033** [P] Update plugin documentation in `docs/plugins.md`
+- [X] **T033** [P] Update plugin documentation in `docs/plugins.md`
   - Add "Plugin Dependencies" section
   - Document how to declare dependencies in metadata
   - Document Init() method pattern
@@ -311,7 +311,7 @@
   - Add troubleshooting section for common errors
   - Include migration guide for existing plugins
 
-- [ ] **T034** [P] Update architecture documentation in `docs/architecture.md`
+- [X] **T034** [P] Update architecture documentation in `docs/architecture.md`
   - Add "Plugin Registry" section
   - Document dependency resolution flow
   - Include dependency graph diagram (text-based)
@@ -319,7 +319,7 @@
   - Document thread safety guarantees
   - Add performance characteristics
 
-- [ ] **T035** [P] Add registry JSON schema in `docs/schema.md`
+- [X] **T035** [P] Add registry JSON schema in `docs/schema.md`
   - Document PluginMetadata JSON schema
   - Document Dependency structure
   - Document VersionConstraint format
