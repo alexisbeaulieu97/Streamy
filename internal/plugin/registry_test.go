@@ -160,7 +160,11 @@ func TestPluginRegistry_GetForDependentStatefulInstances(t *testing.T) {
 }
 
 func TestPluginRegistry_ListSortedAndFiltersDisabled(t *testing.T) {
-	registry := NewPluginRegistry(DefaultConfig(), nil)
+	// Use graceful policy to allow missing dependencies and filter out affected plugins
+	registry := NewPluginRegistry(&RegistryConfig{
+		DependencyPolicy: PolicyGraceful,
+		AccessPolicy:     AccessWarn,
+	}, nil)
 
 	alpha := NewMockPlugin("alpha")
 	beta := NewMockPlugin("beta", WithDependencies(Dependency{Name: "missing"}))

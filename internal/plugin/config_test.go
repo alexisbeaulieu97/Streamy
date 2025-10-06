@@ -25,6 +25,10 @@ func TestDefaultConfigCIEnforcesStrictPolicies(t *testing.T) {
 }
 
 func TestDefaultConfigInteractiveDefaults(t *testing.T) {
+	// Test interactive defaults by ensuring we're not in CI environment
+	t.Setenv("CI", "")
+	t.Setenv("GITHUB_ACTIONS", "")
+	
 	cfg := DefaultConfig()
 
 	require.Equal(t, PolicyGraceful, cfg.DependencyPolicy)
