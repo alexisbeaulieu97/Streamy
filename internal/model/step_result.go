@@ -62,8 +62,8 @@ type VerificationResult struct {
 	StepID    string
 	Status    VerificationStatus
 	Message   string
-	Details   string        // Unified diff for drifted status
-	Error     error         // Populated for blocked status
+	Details   string // Unified diff for drifted status
+	Error     error  // Populated for blocked status
 	Duration  time.Duration
 	Timestamp time.Time
 }

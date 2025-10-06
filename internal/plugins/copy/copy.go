@@ -13,8 +13,8 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
-	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 	"github.com/alexisbeaulieu97/streamy/pkg/diff"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 type copyPlugin struct{}
@@ -360,4 +360,3 @@ func (p *copyPlugin) Verify(ctx context.Context, step *config.Step) (*model.Veri
 		Timestamp: time.Now(),
 	}, nil
 }
-

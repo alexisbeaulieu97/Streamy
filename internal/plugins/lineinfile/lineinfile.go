@@ -301,4 +301,3 @@ func (p *lineInFilePlugin) Verify(ctx context.Context, step *config.Step) (*mode
 }
 
 var _ plugin.Plugin = (*lineInFilePlugin)(nil)
-
