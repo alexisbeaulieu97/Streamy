@@ -15,8 +15,8 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
-	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 	"github.com/alexisbeaulieu97/streamy/pkg/diff"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 const templatePluginType = "template"
@@ -408,4 +408,3 @@ func (p *templatePlugin) Verify(ctx context.Context, step *config.Step) (*model.
 		Timestamp: time.Now(),
 	}, nil
 }
-

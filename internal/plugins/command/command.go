@@ -227,4 +227,3 @@ func (p *commandPlugin) Verify(ctx context.Context, step *config.Step) (*model.V
 		Timestamp: time.Now(),
 	}, nil
 }
-

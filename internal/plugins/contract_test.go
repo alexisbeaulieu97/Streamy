@@ -367,8 +367,8 @@ func createTestStep(pluginType, tmpDir, testFile string) *config.Step {
 			ID:   "test",
 			Type: "copy",
 			Copy: &config.CopyStep{
-				Source: sourceFile,
-				Destination:   testFile,
+				Source:      sourceFile,
+				Destination: testFile,
 			},
 		}
 
@@ -392,8 +392,8 @@ func createTestStep(pluginType, tmpDir, testFile string) *config.Step {
 			ID:   "test",
 			Type: "command",
 			Command: &config.CommandStep{
-				Command:    "echo test",
-				Check: "test -f " + testFile,
+				Command: "echo test",
+				Check:   "test -f " + testFile,
 			},
 		}
 
@@ -414,9 +414,9 @@ func createTestStep(pluginType, tmpDir, testFile string) *config.Step {
 			ID:   "test",
 			Type: "repo",
 			Repo: &config.RepoStep{
-				URL:    "https://github.com/test/repo.git",
-				Destination:   repoPath,
-				Branch: "main",
+				URL:         "https://github.com/test/repo.git",
+				Destination: repoPath,
+				Branch:      "main",
 			},
 		}
 

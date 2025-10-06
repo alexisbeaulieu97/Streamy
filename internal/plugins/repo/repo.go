@@ -198,4 +198,3 @@ func (p *repoPlugin) Verify(ctx context.Context, step *config.Step) (*model.Veri
 		Timestamp: time.Now(),
 	}, nil
 }
-
