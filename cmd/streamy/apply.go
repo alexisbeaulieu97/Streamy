@@ -24,8 +24,6 @@ type applyOptions struct {
 	NonInteractive bool
 }
 
-var applyCmdRunner = runApply
-
 func newApplyCmd(root *rootFlags) *cobra.Command {
 	opts := applyOptions{}
 
@@ -41,7 +39,7 @@ func newApplyCmd(root *rootFlags) *cobra.Command {
 				return err
 			}
 
-			return applyCmdRunner(opts)
+			return runApply(opts)
 		},
 	}
 
