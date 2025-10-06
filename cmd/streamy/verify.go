@@ -116,7 +116,10 @@ func runVerify(opts verifyOptions) error {
 
 	// Output results
 	if opts.JSON {
-		printJSONOutput(summary, opts.ConfigPath)
+		if err := printJSONOutput(summary, opts.ConfigPath); err != nil {
+			log.Error(err, "Failed to generate JSON output")
+			os.Exit(3)
+		}
 	} else if opts.Verbose {
 		printVerboseOutput(summary)
 	} else {
@@ -194,7 +197,7 @@ func printVerboseOutput(summary *model.VerificationSummary) {
 	}
 }
 
-func printJSONOutput(summary *model.VerificationSummary, configPath string) {
+func printJSONOutput(summary *model.VerificationSummary, configPath string) error {
 	// Convert to JSON-friendly format
 	type JSONResult struct {
 		StepID    string  `json:"step_id"`
@@ -253,7 +256,11 @@ func printJSONOutput(summary *model.VerificationSummary, configPath string) {
 
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	encoder.Encode(jsonOutput)
+
+	if err := encoder.Encode(jsonOutput); err != nil {
+		return err
+	}
+	return nil
 }
 
 func getStatusSymbol(status model.VerificationStatus) string {

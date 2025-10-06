@@ -86,6 +86,23 @@ go test ./...
 
 Use `go test ./... -run Integration` to focus on integration tests under `tests/`. The project expects `goimports` formatting and follows standard Go module layout.
 
+### Testing
+
+The project maintains **85.5% test coverage** on core business logic (see [docs/testing-strategy.md](docs/testing-strategy.md)):
+
+```bash
+# Run all tests including integration tests
+go test ./...
+
+# Run tests with coverage for core packages
+go test ./internal/... ./pkg/... -coverprofile=coverage.out -covermode=atomic
+
+# View coverage report
+go tool cover -html=coverage.out
+```
+
+CI enforces 80% minimum coverage on `internal/` and `pkg/` packages. The `cmd/` package (CLI layer) is excluded as it's a thin wrapper around tested business logic.
+
 ## Extending Streamy
 
 1. Define new step fields in `internal/config/types.go` and extend validation.
