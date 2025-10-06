@@ -97,7 +97,7 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 
 	streamResult, err := internalexec.RunStreaming(cmd)
 	if err != nil {
-		combinedOutput := internalexec.CombinedOutput(streamResult)
+		combinedOutput := internalexec.PrimaryOutput(streamResult)
 		if combinedOutput != "" {
 			return fmt.Errorf("%w: %s", err, combinedOutput)
 		}
