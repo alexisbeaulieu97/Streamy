@@ -12,6 +12,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	"github.com/alexisbeaulieu97/streamy/internal/plugins/internalexec"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
@@ -94,7 +95,17 @@ func (p *packagePlugin) DryRun(ctx context.Context, step *config.Step) (*model.S
 func runCommand(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = os.Environ()
-	return cmd.Run()
+
+	streamResult, err := internalexec.RunStreaming(cmd)
+	if err != nil {
+		combinedOutput := internalexec.PrimaryOutput(streamResult)
+		if combinedOutput != "" {
+			return fmt.Errorf("%w: %s", err, combinedOutput)
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (p *packagePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
