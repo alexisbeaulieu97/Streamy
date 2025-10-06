@@ -98,7 +98,7 @@ func (p *commandPlugin) Apply(ctx context.Context, step *config.Step) (*model.St
 
 	streamResult, err := internalexec.RunStreaming(cmd)
 	if err != nil {
-		combinedOutput := internalexec.CombinedOutput(streamResult)
+		combinedOutput := internalexec.PrimaryOutput(streamResult)
 		if combinedOutput != "" {
 			err = fmt.Errorf("%w: %s", err, combinedOutput)
 		}
