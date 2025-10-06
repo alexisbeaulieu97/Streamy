@@ -13,8 +13,9 @@ import (
 	streamengine "github.com/alexisbeaulieu97/streamy/internal/engine"
 	streamlogger "github.com/alexisbeaulieu97/streamy/internal/logger"
 	streammodel "github.com/alexisbeaulieu97/streamy/internal/model"
+	streamplugin "github.com/alexisbeaulieu97/streamy/internal/plugin"
 
-	_ "github.com/alexisbeaulieu97/streamy/internal/plugins/lineinfile"
+	linefileinplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/lineinfile"
 )
 
 func TestIntegration_LineInFile_FreshProfile(t *testing.T) {
@@ -262,6 +263,11 @@ func runLineInFilePlan(t *testing.T, cfg *streamconfig.Config, dryRun bool) []st
 		require.NoError(t, err)
 	}
 
+	registry := streamplugin.NewPluginRegistry(streamplugin.DefaultConfig(), logger)
+	require.NoError(t, registry.Register(linefileinplugin.New()))
+	require.NoError(t, registry.ValidateDependencies())
+	require.NoError(t, registry.InitializePlugins())
+
 	execCtx := &streamengine.ExecutionContext{
 		Config:     cfg,
 		DryRun:     dryRun,
@@ -269,6 +275,7 @@ func runLineInFilePlan(t *testing.T, cfg *streamconfig.Config, dryRun bool) []st
 		Results:    make(map[string]*streammodel.StepResult),
 		Logger:     logger,
 		Context:    context.Background(),
+		Registry:   registry,
 	}
 
 	results, err := streamengine.Execute(execCtx, plan)

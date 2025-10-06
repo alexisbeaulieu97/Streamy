@@ -25,8 +25,6 @@ type verifyOptions struct {
 	Timeout    time.Duration
 }
 
-var verifyCmdRunner = runVerify
-
 func newVerifyCmd(root *rootFlags) *cobra.Command {
 	opts := verifyOptions{}
 
@@ -41,7 +39,7 @@ exit code 1 if any changes are needed.`,
 			opts.ConfigPath = args[0]
 			opts.Verbose = root.verbose
 
-			return verifyCmdRunner(opts)
+			return runVerify(opts)
 		},
 	}
 
@@ -92,7 +90,17 @@ func runVerify(opts verifyOptions) error {
 		"steps":  len(cfg.Steps),
 	}).Info("Starting verification")
 
-	summary, err := executor.VerifySteps(ctx, cfg.Steps, perStepTimeout)
+	// Create execution context for verification
+	execCtx := &engine.ExecutionContext{
+		Config:   cfg,
+		DryRun:   true, // Verification is always dry-run
+		Verbose:  opts.Verbose,
+		Logger:   log,
+		Context:  ctx,
+		Registry: getAppRegistry(),
+	}
+
+	summary, err := executor.VerifySteps(execCtx, cfg.Steps, perStepTimeout)
 	if err != nil {
 		var validationErr *streamyerrors.ValidationError
 		if errors.As(err, &validationErr) {

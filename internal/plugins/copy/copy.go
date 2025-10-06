@@ -24,12 +24,6 @@ func New() plugin.Plugin {
 	return &copyPlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin("copy", New()); err != nil {
-		panic(err)
-	}
-}
-
 func (p *copyPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "file-copy",

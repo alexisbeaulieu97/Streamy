@@ -19,17 +19,27 @@ func New() plugin.Plugin {
 	return &lineInFilePlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin("line_in_file", New()); err != nil {
-		panic(err)
-	}
-}
-
 func (p *lineInFilePlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "line-in-file",
 		Version: "1.0.0",
 		Type:    "line_in_file",
+	}
+}
+
+// PluginMetadata describes the plugin for the dependency registry.
+//
+// The empty Dependencies slice documents that line_in_file does not require other plugins and
+// demonstrates the pattern new plugins should follow when there are no dependency edges.
+// APIVersion pins compatibility with other plugins using the registry-provided interface.
+func (p *lineInFilePlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{
+		Name:         "line_in_file",
+		Version:      "1.0.0",
+		APIVersion:   "1.x",
+		Dependencies: []plugin.Dependency{},
+		Stateful:     false,
+		Description:  "Manages ensuring specific lines exist within files.",
 	}
 }
 

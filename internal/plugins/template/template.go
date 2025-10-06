@@ -28,12 +28,6 @@ func New() plugin.Plugin {
 	return &templatePlugin{}
 }
 
-func init() {
-	if err := plugin.RegisterPlugin(templatePluginType, New()); err != nil {
-		panic(err)
-	}
-}
-
 var _ plugin.Plugin = (*templatePlugin)(nil)
 
 func (p *templatePlugin) Metadata() plugin.Metadata {
