@@ -57,14 +57,26 @@ func runApply(opts applyOptions) error {
 		return err
 	}
 
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	graph, err := engine.BuildDAG(cfg.Steps)
 	if err != nil {
 		return err
 	}
 
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	plan, err := engine.GeneratePlan(graph)
 	if err != nil {
 		return err
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	effectiveDryRun := opts.DryRun || cfg.Settings.DryRun
@@ -93,7 +105,7 @@ func runApply(opts applyOptions) error {
 		WorkerPool:      make(chan struct{}, parallel),
 		Results:         make(map[string]*model.StepResult),
 		Logger:          log,
-		Context:         context.Background(),
+		Context:         ctx,
 	}
 
 	modelState := tui.NewModel(cfg, plan, opts.NonInteractive)
@@ -118,7 +130,7 @@ func runApply(opts applyOptions) error {
 
 	var valErr error
 	if len(cfg.Validations) > 0 {
-		validationResults, err := validationpkg.RunValidations(context.Background(), cfg.Validations)
+		validationResults, err := validationpkg.RunValidations(ctx, cfg.Validations)
 		valErr = err
 		for _, vr := range validationResults {
 			dispatchTuiMessage(interactive, program, &modelState, tui.ValidationMsg{Passed: vr.Passed, Message: vr.Message})
@@ -126,7 +138,9 @@ func runApply(opts applyOptions) error {
 	}
 
 	if interactive {
-		program.Send(tea.QuitMsg{})
+		if program != nil {
+			program.Send(tea.QuitMsg{})
+		}
 		<-done
 		if programErr != nil {
 			return programErr

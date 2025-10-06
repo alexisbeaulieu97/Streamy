@@ -93,5 +93,12 @@ func (p *packagePlugin) DryRun(ctx context.Context, step *config.Step) (*model.S
 func runCommand(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = os.Environ()
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if len(output) > 0 {
+			return fmt.Errorf("%w: %s", err, string(output))
+		}
+		return err
+	}
+	return nil
 }

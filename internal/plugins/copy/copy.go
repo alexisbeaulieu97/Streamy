@@ -169,6 +169,7 @@ func copyFile(src, dst string, preserveMode bool, overwrite bool) error {
 		return err
 	}
 
+	// Ensure mode is set correctly (OpenFile uses umask)
 	if preserveMode {
 		if err := os.Chmod(dst, srcInfo.Mode()); err != nil {
 			return err

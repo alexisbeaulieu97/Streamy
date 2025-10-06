@@ -62,10 +62,14 @@ func (p *commandPlugin) Check(ctx context.Context, step *config.Step) (bool, err
 		cmd.Dir = cfg.WorkDir
 	}
 
-	if err := cmd.Run(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return false, nil
+		}
+		if len(output) > 0 {
+			return false, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("%w: %s", err, string(output)))
 		}
 		return false, streamyerrors.NewExecutionError(step.ID, err)
 	}
@@ -91,8 +95,13 @@ func (p *commandPlugin) Apply(ctx context.Context, step *config.Step) (*model.St
 		cmd.Dir = cfg.WorkDir
 	}
 
-	if err := cmd.Run(); err != nil {
-		result := &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: err}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		errMsg := err.Error()
+		if len(output) > 0 {
+			errMsg = fmt.Sprintf("%s: %s", err.Error(), string(output))
+		}
+		result := &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: errMsg, Error: err}
 		return result, streamyerrors.NewExecutionError(step.ID, err)
 	}
 
