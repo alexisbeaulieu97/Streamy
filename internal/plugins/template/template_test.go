@@ -1207,7 +1207,7 @@ func TestTemplatePlugin_Verify(t *testing.T) {
 			Template: &config.TemplateStep{
 				Source:      templateSrc,
 				Destination: destination,
-				Vars:     map[string]string{},
+				Vars:        map[string]string{},
 			},
 		}
 
