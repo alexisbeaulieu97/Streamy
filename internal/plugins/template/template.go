@@ -29,6 +29,7 @@ func New() plugin.Plugin {
 }
 
 var _ plugin.Plugin = (*templatePlugin)(nil)
+var _ plugin.MetadataProvider = (*templatePlugin)(nil)
 
 func (p *templatePlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
