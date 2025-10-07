@@ -24,6 +24,9 @@ func New() plugin.Plugin {
 	return &copyPlugin{}
 }
 
+var _ plugin.Plugin = (*copyPlugin)(nil)
+var _ plugin.MetadataProvider = (*copyPlugin)(nil)
+
 func (p *copyPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "file-copy",

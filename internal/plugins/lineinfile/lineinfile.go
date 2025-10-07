@@ -19,6 +19,9 @@ func New() plugin.Plugin {
 	return &lineInFilePlugin{}
 }
 
+var _ plugin.Plugin = (*lineInFilePlugin)(nil)
+var _ plugin.MetadataProvider = (*lineInFilePlugin)(nil)
+
 func (p *lineInFilePlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "line-in-file",

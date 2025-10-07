@@ -20,6 +20,9 @@ func New() plugin.Plugin {
 	return &symlinkPlugin{}
 }
 
+var _ plugin.Plugin = (*symlinkPlugin)(nil)
+var _ plugin.MetadataProvider = (*symlinkPlugin)(nil)
+
 func (p *symlinkPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "symlink",
