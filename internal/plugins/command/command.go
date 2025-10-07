@@ -32,6 +32,21 @@ func (p *commandPlugin) Metadata() plugin.Metadata {
 	}
 }
 
+// PluginMetadata describes the plugin for the dependency registry.
+//
+// The empty Dependencies slice documents that command does not require other plugins.
+// APIVersion pins compatibility with other plugins using the registry-provided interface.
+func (p *commandPlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{
+		Name:         "command",
+		Version:      "1.0.0",
+		APIVersion:   "1.x",
+		Dependencies: []plugin.Dependency{},
+		Stateful:     false,
+		Description:  "Executes shell commands with environment and working directory control.",
+	}
+}
+
 func (p *commandPlugin) Schema() interface{} {
 	return config.CommandStep{}
 }

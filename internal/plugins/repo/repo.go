@@ -31,6 +31,21 @@ func (p *repoPlugin) Metadata() plugin.Metadata {
 	}
 }
 
+// PluginMetadata describes the plugin for the dependency registry.
+//
+// The empty Dependencies slice documents that repo does not require other plugins.
+// APIVersion pins compatibility with other plugins using the registry-provided interface.
+func (p *repoPlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{
+		Name:         "repo",
+		Version:      "1.0.0",
+		APIVersion:   "1.x",
+		Dependencies: []plugin.Dependency{},
+		Stateful:     false,
+		Description:  "Manages git repositories with clone and update support.",
+	}
+}
+
 func (p *repoPlugin) Schema() interface{} {
 	return config.RepoStep{}
 }
