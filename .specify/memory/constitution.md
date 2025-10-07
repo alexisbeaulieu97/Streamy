@@ -61,8 +61,9 @@ The Go core is lightweight (DAG execution, logging, validation). All environment
 - Plugins implement well-defined interfaces with semantic versioning
 - Core MUST NOT contain domain-specific logic (package managers, git operations, etc.)
 - Plugins MAY be bundled in core binary for MVP, but architecture supports external distribution
-- Plugin API contracts MUST be backward compatible within major versions
+- Plugin API contracts MUST be backward compatible within major versions (see exception below)
 - Breaking plugin API changes require core major version bump and migration tooling
+- **Pre-1.0 Exception**: During pre-1.0 development (versions 0.x.y), plugin API breaking changes are permitted without backward compatibility when no external plugin ecosystem exists and all built-in plugins migrate simultaneously
 
 **Rationale:** A plugin architecture enables independent evolution of connectors, 
 community contributions, and domain-specific optimizations without destabilizing the 
