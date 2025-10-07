@@ -184,14 +184,15 @@ func (p *commandPlugin) Verify(ctx context.Context, step *config.Step) (*model.V
 	default:
 	}
 
-	// If no Check command is specified, default to checking if the command exists
+	// If no Check command is specified, we cannot verify the step
 	if strings.TrimSpace(cfg.Check) == "" {
-		// Default verification: check if the command exists using command -v or which
-		checkCmd := "command"
-		if runtime.GOOS == "windows" {
-			checkCmd = "where"
-		}
-		cfg.Check = fmt.Sprintf("%s %s", checkCmd, strings.Fields(cfg.Command)[0])
+		return &model.VerificationResult{
+			StepID:    step.ID,
+			Status:    model.StatusUnknown,
+			Message:   "no verification command specified",
+			Duration:  time.Since(start),
+			Timestamp: time.Now(),
+		}, nil
 	}
 
 	// Execute the check command
