@@ -23,6 +23,9 @@ func New() plugin.Plugin {
 	return &packagePlugin{}
 }
 
+var _ plugin.Plugin = (*packagePlugin)(nil)
+var _ plugin.MetadataProvider = (*packagePlugin)(nil)
+
 func (p *packagePlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "apt-packages",
