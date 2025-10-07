@@ -24,6 +24,9 @@ func New() plugin.Plugin {
 	return &commandPlugin{}
 }
 
+var _ plugin.Plugin = (*commandPlugin)(nil)
+var _ plugin.MetadataProvider = (*commandPlugin)(nil)
+
 func (p *commandPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "shell-command",
@@ -181,12 +184,12 @@ func (p *commandPlugin) Verify(ctx context.Context, step *config.Step) (*model.V
 	default:
 	}
 
-	// If no Check command is specified, return unknown status
+	// If no Check command is specified, we cannot verify the step
 	if strings.TrimSpace(cfg.Check) == "" {
 		return &model.VerificationResult{
 			StepID:    step.ID,
 			Status:    model.StatusUnknown,
-			Message:   "no verification command specified (use 'check' field to enable verification)",
+			Message:   "no verification command specified",
 			Duration:  time.Since(start),
 			Timestamp: time.Now(),
 		}, nil

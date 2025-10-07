@@ -12,7 +12,7 @@ var (
 	validateInst  *validator.Validate
 
 	semverPattern   = regexp.MustCompile(`^\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
-	stepIDPattern   = regexp.MustCompile(`^[a-z0-9_]+$`)
+	stepIDPattern   = regexp.MustCompile(`^[a-z0-9_-]+$`)
 	validationTypes = map[string]struct{}{"command_exists": {}, "file_exists": {}, "path_contains": {}}
 )
 

@@ -23,6 +23,9 @@ func New() plugin.Plugin {
 	return &repoPlugin{}
 }
 
+var _ plugin.Plugin = (*repoPlugin)(nil)
+var _ plugin.MetadataProvider = (*repoPlugin)(nil)
+
 func (p *repoPlugin) Metadata() plugin.Metadata {
 	return plugin.Metadata{
 		Name:    "git-repo",
