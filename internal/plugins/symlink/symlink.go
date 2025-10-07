@@ -28,6 +28,21 @@ func (p *symlinkPlugin) Metadata() plugin.Metadata {
 	}
 }
 
+// PluginMetadata describes the plugin for the dependency registry.
+//
+// The empty Dependencies slice documents that symlink does not require other plugins.
+// APIVersion pins compatibility with other plugins using the registry-provided interface.
+func (p *symlinkPlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{
+		Name:         "symlink",
+		Version:      "1.0.0",
+		APIVersion:   "1.x",
+		Dependencies: []plugin.Dependency{},
+		Stateful:     false,
+		Description:  "Manages symbolic links with target validation.",
+	}
+}
+
 func (p *symlinkPlugin) Schema() interface{} {
 	return config.SymlinkStep{}
 }

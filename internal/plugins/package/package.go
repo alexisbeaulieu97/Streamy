@@ -31,6 +31,21 @@ func (p *packagePlugin) Metadata() plugin.Metadata {
 	}
 }
 
+// PluginMetadata describes the plugin for the dependency registry.
+//
+// The empty Dependencies slice documents that package does not require other plugins.
+// APIVersion pins compatibility with other plugins using the registry-provided interface.
+func (p *packagePlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{
+		Name:         "package",
+		Version:      "1.0.0",
+		APIVersion:   "1.x",
+		Dependencies: []plugin.Dependency{},
+		Stateful:     false,
+		Description:  "Manages system packages using apt package manager.",
+	}
+}
+
 func (p *packagePlugin) Schema() interface{} {
 	return config.PackageStep{}
 }
