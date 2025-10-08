@@ -45,6 +45,7 @@ var _ plugin.Plugin = (*copyPlugin)(nil)
 func (p *copyPlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "copy",
+		Type:         "copy",
 		Version:      "1.0.0",
 		APIVersion:   "1.x",
 		Dependencies: []plugin.Dependency{},

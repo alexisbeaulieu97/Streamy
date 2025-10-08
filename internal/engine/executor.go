@@ -143,6 +143,17 @@ func executeStep(ctx context.Context, execCtx *ExecutionContext, step *config.St
 	// First evaluate the step
 	evalResult, err := impl.Evaluate(stepCtx, step)
 	if err != nil {
+		// If we got an evaluation result despite the error (e.g., timeout), create a failed result
+		if evalResult != nil {
+			return &model.StepResult{
+				StepID:    evalResult.StepID,
+				Status:    model.StatusFailed,
+				Message:   fmt.Sprintf("Evaluation failed: %v", err),
+				Duration:  time.Since(start),
+				Timestamp: time.Now(),
+				Error:     err,
+			}, fmt.Errorf("evaluation failed for step %s: %w", step.ID, err)
+		}
 		return nil, fmt.Errorf("evaluation failed for step %s: %w", step.ID, err)
 	}
 

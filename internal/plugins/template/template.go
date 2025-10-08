@@ -46,6 +46,7 @@ var _ plugin.Plugin = (*templatePlugin)(nil)
 func (p *templatePlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "template",
+		Type:         "template",
 		Version:      "1.0.0",
 		APIVersion:   "1.x",
 		Dependencies: []plugin.Dependency{},

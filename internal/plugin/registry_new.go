@@ -66,8 +66,8 @@ func (r *PluginRegistry) Register(p Plugin) error {
 	r.dependencyGraph.AddNode(meta.Name)
 
 	// For legacy plugins, map Type -> Name for backward compatibility
-	if meta.Description != "" {
-		r.typeToName[meta.Description] = meta.Name
+	if meta.Type != "" {
+		r.typeToName[meta.Type] = meta.Name
 	}
 
 	if meta.Stateful {

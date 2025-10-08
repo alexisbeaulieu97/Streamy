@@ -32,6 +32,7 @@ var _ plugin.Plugin = (*commandPlugin)(nil)
 func (p *commandPlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "command",
+		Type:         "command",
 		Version:      "1.0.0",
 		APIVersion:   "1.x",
 		Dependencies: []plugin.Dependency{},

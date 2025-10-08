@@ -32,6 +32,7 @@ var _ plugin.Plugin = (*repoPlugin)(nil)
 func (p *repoPlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "repo",
+		Type:         "repo",
 		Version:      "1.0.0",
 		APIVersion:   "1.x",
 		Dependencies: []plugin.Dependency{},

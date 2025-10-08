@@ -28,6 +28,7 @@ var _ plugin.Plugin = (*lineInFilePlugin)(nil)
 func (p *lineInFilePlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "line_in_file",
+		Type:         "line_in_file",
 		Version:      "1.0.0",
 		APIVersion:   "1.x",
 		Dependencies: []plugin.Dependency{},

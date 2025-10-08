@@ -23,6 +23,7 @@ var _ plugin.Plugin = (*symlinkPlugin)(nil)
 func (p *symlinkPlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "symlink",
+		Type:         "symlink",
 		Version:      "1.0.0",
 		APIVersion:   "1.x",
 		Dependencies: []plugin.Dependency{},
