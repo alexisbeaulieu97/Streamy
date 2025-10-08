@@ -17,8 +17,8 @@ func TestCopyBasicFunctionality(t *testing.T) {
 
 	// Test metadata
 	meta := p.PluginMetadata()
-	if meta.Name != "file-copy" {
-		t.Errorf("Expected plugin name 'file-copy', got '%s'", meta.Name)
+	if meta.Name != "copy" {
+		t.Errorf("Expected plugin name 'copy', got '%s'", meta.Name)
 	}
 
 	// Test schema

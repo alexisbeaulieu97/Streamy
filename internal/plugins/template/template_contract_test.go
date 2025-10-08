@@ -1,6 +1,7 @@
 package templateplugin
 
 import (
+	"context"
 	"testing"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
@@ -17,8 +18,8 @@ func TestTemplateBasicFunctionality(t *testing.T) {
 
 	// Test metadata
 	meta := p.PluginMetadata()
-	if meta.Name != "template-renderer" {
-		t.Errorf("Expected plugin name 'template-renderer', got '%s'", meta.Name)
+	if meta.Name != "template" {
+		t.Errorf("Expected plugin name 'template', got '%s'", meta.Name)
 	}
 
 	// Test schema
@@ -36,7 +37,7 @@ func TestTemplateBasicFunctionality(t *testing.T) {
 		},
 	}
 
-	evalResult, err := p.Evaluate(nil, step)
+	evalResult, err := p.Evaluate(context.TODO(), step)
 	if err != nil {
 		t.Fatalf("Evaluate() returned error: %v", err)
 	}

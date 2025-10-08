@@ -16,10 +16,8 @@ type MockPlugin struct {
 	pluginType string
 	calls      []string
 	schema     interface{}
-	checkFn    func(context.Context, *config.Step) (bool, error)
-	applyFn    func(context.Context, *config.Step) (*model.StepResult, error)
-	dryRunFn   func(context.Context, *config.Step) (*model.StepResult, error)
-	verifyFn   func(context.Context, *config.Step) (*model.VerificationResult, error)
+	evaluateFn func(context.Context, *config.Step) (*model.EvaluationResult, error)
+	applyFn    func(context.Context, *model.EvaluationResult, *config.Step) (*model.StepResult, error)
 }
 
 func NewMockPlugin(name string, opts ...MockPluginOption) *MockPlugin {
@@ -74,27 +72,15 @@ func WithSchema(schema interface{}) MockPluginOption {
 	}
 }
 
-func WithCheckFunc(fn func(context.Context, *config.Step) (bool, error)) MockPluginOption {
+func WithEvaluateFunc(fn func(context.Context, *config.Step) (*model.EvaluationResult, error)) MockPluginOption {
 	return func(mp *MockPlugin) {
-		mp.checkFn = fn
+		mp.evaluateFn = fn
 	}
 }
 
-func WithApplyFunc(fn func(context.Context, *config.Step) (*model.StepResult, error)) MockPluginOption {
+func WithApplyFunc(fn func(context.Context, *model.EvaluationResult, *config.Step) (*model.StepResult, error)) MockPluginOption {
 	return func(mp *MockPlugin) {
 		mp.applyFn = fn
-	}
-}
-
-func WithDryRunFunc(fn func(context.Context, *config.Step) (*model.StepResult, error)) MockPluginOption {
-	return func(mp *MockPlugin) {
-		mp.dryRunFn = fn
-	}
-}
-
-func WithVerifyFunc(fn func(context.Context, *config.Step) (*model.VerificationResult, error)) MockPluginOption {
-	return func(mp *MockPlugin) {
-		mp.verifyFn = fn
 	}
 }
 
@@ -107,36 +93,25 @@ func (m *MockPlugin) Schema() any {
 	return m.schema
 }
 
-func (m *MockPlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
-	m.recordCall("Check")
-	if m.checkFn != nil {
-		return m.checkFn(ctx, step)
+func (m *MockPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	m.recordCall("Evaluate")
+	if m.evaluateFn != nil {
+		return m.evaluateFn(ctx, step)
 	}
-	return false, nil
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusSatisfied,
+		RequiresAction: false,
+		Message:        "mock evaluation",
+	}, nil
 }
 
-func (m *MockPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (m *MockPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	m.recordCall("Apply")
 	if m.applyFn != nil {
-		return m.applyFn(ctx, step)
+		return m.applyFn(ctx, evalResult, step)
 	}
 	return &model.StepResult{StepID: step.ID, Status: "success"}, nil
-}
-
-func (m *MockPlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	m.recordCall("DryRun")
-	if m.dryRunFn != nil {
-		return m.dryRunFn(ctx, step)
-	}
-	return &model.StepResult{StepID: step.ID, Status: "skipped"}, nil
-}
-
-func (m *MockPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	m.recordCall("Verify")
-	if m.verifyFn != nil {
-		return m.verifyFn(ctx, step)
-	}
-	return &model.VerificationResult{StepID: step.ID, Status: model.StatusSatisfied}, nil
 }
 
 func (m *MockPlugin) Calls() []string {

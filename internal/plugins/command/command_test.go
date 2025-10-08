@@ -52,7 +52,7 @@ exit 0
 	require.NoError(t, os.Setenv("EXPECT_FAIL", "1"))
 	evalResult, err = p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
 	require.True(t, evalResult.RequiresAction)
 }
 
@@ -113,7 +113,7 @@ func TestCommandPlugin_EvaluateForDryRun(t *testing.T) {
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.Equal(t, model.StatusUnknown, evalResult.CurrentState)
 	require.True(t, evalResult.RequiresAction)
 }
 
@@ -194,7 +194,7 @@ fi
 	// Test when check command fails (file doesn't exist)
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
 	require.True(t, evalResult.RequiresAction)
 	require.Contains(t, evalResult.Message, "file missing")
 
@@ -207,7 +207,7 @@ fi
 	require.NoError(t, err)
 	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
 	require.False(t, evalResult.RequiresAction)
-	require.Contains(t, evalResult.Message, "file exists")
+	require.Contains(t, evalResult.Message, "check command succeeded")
 }
 
 func TestCommandPlugin_EvaluateWithoutCheckCommand(t *testing.T) {
@@ -223,9 +223,9 @@ func TestCommandPlugin_EvaluateWithoutCheckCommand(t *testing.T) {
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.Equal(t, model.StatusUnknown, evalResult.CurrentState)
 	require.True(t, evalResult.RequiresAction)
-	require.Contains(t, evalResult.Message, "No check command provided")
+	require.Contains(t, evalResult.Message, "no verification command specified")
 }
 
 func TestCommandPlugin_EvaluateWithErrorInCheckCommand(t *testing.T) {
@@ -245,7 +245,7 @@ func TestCommandPlugin_EvaluateWithErrorInCheckCommand(t *testing.T) {
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, model.StatusUnknown, evalResult.CurrentState)
-	require.False(t, evalResult.RequiresAction)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
 	require.Contains(t, evalResult.Message, "check command failed")
 }
