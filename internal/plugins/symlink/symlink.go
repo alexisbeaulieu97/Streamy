@@ -19,6 +19,7 @@ func New() plugin.Plugin {
 }
 
 var _ plugin.Plugin = (*symlinkPlugin)(nil)
+
 func (p *symlinkPlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "symlink",

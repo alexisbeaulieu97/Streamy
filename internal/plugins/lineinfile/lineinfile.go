@@ -323,4 +323,3 @@ func (p *lineInFilePlugin) evaluate(ctx context.Context, stepID string, cfg *Lin
 		changeSet: changeSet,
 	}, nil
 }
-
