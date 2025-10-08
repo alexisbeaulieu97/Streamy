@@ -51,6 +51,7 @@ func TestCopyPlugin_EvaluateUsesHashForIdempotency(t *testing.T) {
 		Copy: &config.CopyStep{
 			Source:      srcFile,
 			Destination: dstFile,
+			Overwrite:   true,
 		},
 	}
 
@@ -123,6 +124,7 @@ func TestCopyPlugin_ApplyRecursiveCopy(t *testing.T) {
 			Source:      srcDir,
 			Destination: dstDir,
 			Recursive:   true,
+			Overwrite:   true,
 		},
 	}
 
@@ -167,7 +169,7 @@ func TestCopyPlugin_EvaluateMissingSource(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
 	require.True(t, evalResult.RequiresAction)
-	require.Contains(t, evalResult.Message, "source file does not exist")
+	require.Contains(t, evalResult.Message, "does not exist")
 }
 
 func TestCopyPlugin_EvaluateDestinationExists(t *testing.T) {

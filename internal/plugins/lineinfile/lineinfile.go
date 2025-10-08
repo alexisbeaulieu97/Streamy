@@ -69,7 +69,11 @@ func convertEvaluationResult(stepID string, result *evaluationResult) (*model.Ev
 		}, nil
 	}
 
-	if result.changed {
+	if !result.state.Exists {
+		currentState = model.StatusMissing
+		requiresAction = true
+		message = "file does not exist"
+	} else if result.changed {
 		currentState = model.StatusDrifted
 		requiresAction = true
 		message = fmt.Sprintf("line action needed: %s", result.action)
@@ -127,9 +131,12 @@ func (p *lineInFilePlugin) Apply(ctx context.Context, evalResult *model.Evaluati
 
 	// Use evaluation data to avoid recomputation
 	var data *lineInFileEvaluationData
-	if evalResult.InternalData != nil {
-		data = evalResult.InternalData.(*lineInFileEvaluationData)
-	} else {
+	if evalResult != nil {
+		if typed, ok := evalResult.InternalData.(*lineInFileEvaluationData); ok {
+			data = typed
+		}
+	}
+	if data == nil {
 		// Fallback to re-evaluating
 		result, err := p.evaluate(ctx, step.ID, cfg)
 		if err != nil {
@@ -204,7 +211,7 @@ func convertError(stepID string, err error) error {
 	// Convert legacy streamyerrors to new plugin errors
 	var valErr *streamyerrors.ValidationError
 	if errors.As(err, &valErr) {
-		return plugin.NewValidationError(stepID, valErr.Err)
+		return plugin.NewValidationError(stepID, errors.New(valErr.Message))
 	}
 
 	var execErr *streamyerrors.ExecutionError

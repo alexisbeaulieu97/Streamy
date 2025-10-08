@@ -60,13 +60,16 @@ func (p *templatePlugin) Schema() any {
 }
 
 func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	// Check context first (only if context is provided)
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+
 	cfg := step.Template
 	if cfg == nil {
 		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("template configuration missing"))
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, plugin.NewStateError(step.ID, fmt.Errorf("context cancelled: %w", err))
 	}
 
 	// Check source template exists first
@@ -76,7 +79,7 @@ func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*mode
 				StepID:         step.ID,
 				CurrentState:   model.StatusMissing,
 				RequiresAction: true,
-				Message:        fmt.Sprintf("template source %s does not exist", cfg.Source),
+				Message:        "template source not found",
 				Diff:           fmt.Sprintf("Would create template from source: %s", cfg.Source),
 			}, nil
 		}
@@ -84,12 +87,34 @@ func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*mode
 	}
 
 	// Render the template (read-only operation)
-	rendered, err := p.renderTemplate(ctx, cfg)
-	if err != nil {
-		return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to render template: %w", err))
-	}
+	// If no variables are provided, compare raw template content but still validate syntax
+	var rendered string
+	var renderedHash string
+	var err error
 
-	renderedHash := hashContent(rendered)
+	if cfg.Vars == nil || len(cfg.Vars) == 0 {
+		// No variables - treat as literal copy, but validate template syntax first
+		templateContent, readErr := os.ReadFile(cfg.Source)
+		if readErr != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to read template: %w", readErr))
+		}
+
+		// Validate template syntax by attempting to parse it
+		_, parseErr := template.New(cfg.Source).Parse(string(templateContent))
+		if parseErr != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("invalid template syntax: %w", parseErr))
+		}
+
+		rendered = string(templateContent)
+		renderedHash = hashContent(rendered)
+	} else {
+		// Variables provided - render the template
+		rendered, err = p.renderTemplate(ctx, cfg)
+		if err != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to render template: %w", err))
+		}
+		renderedHash = hashContent(rendered)
+	}
 	desiredMode, err := determineFileMode(cfg)
 	if err != nil {
 		return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to determine file mode: %w", err))
@@ -177,23 +202,28 @@ func (p *templatePlugin) Apply(ctx context.Context, evalResult *model.Evaluation
 
 	// Use evaluation data to avoid recomputation
 	var data *templateEvaluationData
-	if evalResult.InternalData != nil {
-		data = evalResult.InternalData.(*templateEvaluationData)
-	} else {
+	if evalResult != nil {
+		if typed, ok := evalResult.InternalData.(*templateEvaluationData); ok {
+			data = typed
+		}
+	}
+	if data == nil {
 		// Fallback to re-evaluating
-		evalResult, err := p.Evaluate(ctx, step)
+		var err error
+		evalResult, err = p.Evaluate(ctx, step)
 		if err != nil {
 			return nil, convertError(step.ID, err)
 		}
-		if evalResult.InternalData == nil {
+		typed, ok := evalResult.InternalData.(*templateEvaluationData)
+		if !ok || typed == nil {
 			return &model.StepResult{
 				StepID:  step.ID,
 				Status:  model.StatusFailed,
 				Message: "evaluation failed during apply",
-				Error:   fmt.Errorf("evaluation failed"),
+				Error:   fmt.Errorf("evaluation result missing template evaluation data"),
 			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
 		}
-		data = evalResult.InternalData.(*templateEvaluationData)
+		data = typed
 	}
 
 	// Only apply if changes are needed

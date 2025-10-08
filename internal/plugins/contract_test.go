@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
@@ -280,20 +282,22 @@ func createTestStep(t *testing.T, pluginType, tmpDir, testFile string) *config.S
 			},
 		}
 	case "package":
+		// Use a package that's guaranteed to be present so Apply is not invoked.
 		return &config.Step{
 			ID:   "test-package",
 			Type: pluginType,
 			Package: &config.PackageStep{
-				Packages: []string{"test-package"},
+				Packages: []string{"bash"},
 				Manager:  "apt",
 			},
 		}
 	case "repo":
+		source := initContractRepo(t)
 		return &config.Step{
 			ID:   "test-repo",
 			Type: pluginType,
 			Repo: &config.RepoStep{
-				URL:         "https://example.com/repo",
+				URL:         source,
 				Destination: filepath.Join(tmpDir, "repo"),
 			},
 		}
@@ -310,4 +314,32 @@ func createTestStep(t *testing.T, pluginType, tmpDir, testFile string) *config.S
 		t.Fatalf("unknown plugin type: %s", pluginType)
 		return nil
 	}
+}
+
+func initContractRepo(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	repo, err := git.PlainInit(dir, false)
+	require.NoError(t, err)
+
+	worktree, err := repo.Worktree()
+	require.NoError(t, err)
+
+	readme := filepath.Join(dir, "README.md")
+	require.NoError(t, os.WriteFile(readme, []byte("contract repo"), 0o644))
+
+	_, err = worktree.Add("README.md")
+	require.NoError(t, err)
+
+	_, err = worktree.Commit("initial", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Contract Test",
+			Email: "contract@test",
+			When:  time.Now(),
+		},
+	})
+	require.NoError(t, err)
+
+	return dir
 }

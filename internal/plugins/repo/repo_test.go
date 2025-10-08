@@ -69,8 +69,8 @@ func TestRepoPlugin_ApplyClonesRepository(t *testing.T) {
 }
 
 func TestRepoPlugin_EvaluateDetectsExistingClone(t *testing.T) {
+	source := initGitRepo(t)
 	dest := filepath.Join(t.TempDir(), "existing")
-	require.NoError(t, os.MkdirAll(filepath.Join(dest, ".git"), 0o755))
 
 	p := New()
 
@@ -78,15 +78,48 @@ func TestRepoPlugin_EvaluateDetectsExistingClone(t *testing.T) {
 		ID:   "clone_repo",
 		Type: "repo",
 		Repo: &config.RepoStep{
-			URL:         "/tmp/example.git",
+			URL:         source,
+			Destination: dest,
+		},
+	}
+
+	// Seed the destination using the plugin to ensure a valid clone for the second evaluation.
+	firstEval, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.True(t, firstEval.RequiresAction)
+	_, err = p.Apply(context.Background(), firstEval, step)
+	require.NoError(t, err)
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.False(t, evalResult.RequiresAction)
+	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+}
+
+func TestRepoPlugin_EvaluateDetectsCorruptedRepo(t *testing.T) {
+	source := initGitRepo(t)
+	dest := filepath.Join(t.TempDir(), "corrupted")
+	_, err := git.PlainClone(dest, false, &git.CloneOptions{URL: source})
+	require.NoError(t, err)
+
+	// Corrupt the repository so PlainOpen fails.
+	require.NoError(t, os.Remove(filepath.Join(dest, ".git", "HEAD")))
+
+	p := New()
+	step := &config.Step{
+		ID:   "clone_repo",
+		Type: "repo",
+		Repo: &config.RepoStep{
+			URL:         source,
 			Destination: dest,
 		},
 	}
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.False(t, evalResult.RequiresAction)
-	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.Contains(t, evalResult.Message, "is not a git repository")
 }
 
 func TestRepoPlugin_EvaluateSkipsClone(t *testing.T) {

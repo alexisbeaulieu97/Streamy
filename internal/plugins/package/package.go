@@ -120,23 +120,28 @@ func (p *packagePlugin) Apply(ctx context.Context, evalResult *model.EvaluationR
 
 	// Use evaluation data to avoid recomputation
 	var data *packageEvaluationData
-	if evalResult.InternalData != nil {
-		data = evalResult.InternalData.(*packageEvaluationData)
-	} else {
+	if evalResult != nil {
+		if typed, ok := evalResult.InternalData.(*packageEvaluationData); ok {
+			data = typed
+		}
+	}
+	if data == nil {
 		// Fallback to re-evaluating
-		evalResult, err := p.Evaluate(ctx, step)
+		var err error
+		evalResult, err = p.Evaluate(ctx, step)
 		if err != nil {
 			return nil, convertError(step.ID, err)
 		}
-		if evalResult.InternalData == nil {
+		typed, ok := evalResult.InternalData.(*packageEvaluationData)
+		if !ok || typed == nil {
 			return &model.StepResult{
 				StepID:  step.ID,
 				Status:  model.StatusFailed,
 				Message: "evaluation failed during apply",
-				Error:   fmt.Errorf("evaluation failed"),
+				Error:   fmt.Errorf("evaluation result missing package evaluation data"),
 			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
 		}
-		data = evalResult.InternalData.(*packageEvaluationData)
+		data = typed
 	}
 
 	// Only apply if changes are needed

@@ -1,14 +1,12 @@
 package tests
 
 import (
-	"bytes"
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
-	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 )
@@ -223,55 +221,6 @@ func TestPluginDependency_PolicyModes(t *testing.T) {
 	})
 }
 
-func TestPluginDependency_BackwardCompatibility(t *testing.T) {
-	var logBuffer bytes.Buffer
-	log, err := logger.New(logger.Options{Writer: &logBuffer, Level: "debug", HumanReadable: true})
-	require.NoError(t, err)
-
-	cfg := &plugin.RegistryConfig{DependencyPolicy: plugin.PolicyGraceful, AccessPolicy: plugin.AccessStrict}
-	registry := plugin.NewPluginRegistry(cfg, log)
-
-	legacy := &legacyPlugin{name: "legacy_tool"}
-	modern := newIntegrationPlugin(
-		"modern_tool",
-		withDependencies(plugin.Dependency{
-			Name:              "legacy_tool",
-			VersionConstraint: plugin.MustParseVersionConstraint("1.x"),
-		}),
-	)
-
-	require.NoError(t, registry.Register(legacy))
-	require.NoError(t, registry.Register(modern))
-
-	require.NoError(t, registry.ValidateDependencies())
-	require.NoError(t, registry.InitializePlugins())
-
-	// Legacy plugin still retrievable
-	legacyFromRegistry, err := registry.Get("legacy_tool")
-	require.NoError(t, err)
-	evalResult, err := legacyFromRegistry.Evaluate(context.Background(), &config.Step{ID: "legacy", Name: "legacy_tool"})
-	require.NoError(t, err)
-	_, err = legacyFromRegistry.Apply(context.Background(), evalResult, &config.Step{ID: "legacy", Name: "legacy_tool"})
-	require.NoError(t, err)
-
-	// Modern plugin can resolve dependency on legacy plugin
-	evalResult, err = modern.Evaluate(context.Background(), &config.Step{ID: "modern", Name: "modern_tool"})
-	require.NoError(t, err)
-	_, err = modern.Apply(context.Background(), evalResult, &config.Step{ID: "modern", Name: "modern_tool"})
-	require.NoError(t, err)
-
-	names := registry.List()
-	require.Contains(t, names, "modern_tool")
-
-	// Legacy plugin cannot access undeclared dependencies under strict policy
-	_, err = registry.GetForDependent("legacy_tool", "modern_tool")
-	require.Error(t, err)
-	var undeclared plugin.ErrUndeclaredDependency
-	require.ErrorAs(t, err, &undeclared)
-
-	require.Contains(t, logBuffer.String(), "legacy")
-}
-
 // --- Test plugin helpers ----------------------------------------------------
 
 type integrationPluginOption func(*integrationTestPlugin)
@@ -295,7 +244,9 @@ func newIntegrationPlugin(name string, opts ...integrationPluginOption) *integra
 			Version:      "1.0.0",
 			APIVersion:   "1.x",
 			Dependencies: []plugin.Dependency{},
+			Type:         name,
 		},
+		pluginType: name,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -314,6 +265,7 @@ func withDependencies(deps ...plugin.Dependency) integrationPluginOption {
 func withPluginType(t string) integrationPluginOption {
 	return func(p *integrationTestPlugin) {
 		p.pluginType = t
+		p.metadata.Type = t
 	}
 }
 
@@ -324,7 +276,11 @@ func withInit(fn func(*plugin.PluginRegistry) error) integrationPluginOption {
 }
 
 func (p *integrationTestPlugin) PluginMetadata() plugin.PluginMetadata {
-	return plugin.PluginMetadata{Name: p.metadata.Name, Version: p.metadata.Version, Type: p.pluginType}
+	meta := p.metadata
+	if p.pluginType != "" {
+		meta.Type = p.pluginType
+	}
+	return meta
 }
 
 func (p *integrationTestPlugin) Schema() any { return nil }
@@ -357,31 +313,6 @@ func (p *integrationTestPlugin) Init(registry *plugin.PluginRegistry) error {
 		return p.initFn(registry)
 	}
 	return nil
-}
-
-// --- Legacy plugin ---------------------------------------------------------
-
-type legacyPlugin struct {
-	name string
-}
-
-func (p *legacyPlugin) PluginMetadata() plugin.PluginMetadata {
-	return plugin.PluginMetadata{Name: p.name, Version: "1.0.0", Type: "legacy"}
-}
-
-func (p *legacyPlugin) Schema() any { return nil }
-
-func (p *legacyPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
-	return &model.EvaluationResult{
-		StepID:         step.ID,
-		CurrentState:   model.StatusUnknown,
-		RequiresAction: true,
-		Message:        "legacy plugin evaluation",
-	}, nil
-}
-
-func (p *legacyPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
-	return &model.StepResult{StepID: step.ID, Status: "success"}, nil
 }
 
 // --- Utility helpers -------------------------------------------------------

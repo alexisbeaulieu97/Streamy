@@ -60,13 +60,16 @@ type repoEvaluationData struct {
 }
 
 func (p *repoPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	// Check context first (only if context is provided)
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+
 	repoCfg := step.Repo
 	if repoCfg == nil {
 		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("repo configuration missing"))
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, plugin.NewStateError(step.ID, fmt.Errorf("context cancelled: %w", err))
 	}
 
 	// Check destination directory (read-only operation)
@@ -87,7 +90,7 @@ func (p *repoPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 
 	if dirExists {
 		if _, err := os.Stat(gitDir); err == nil {
-			// Try to open the repository to get more info (read-only)
+			// Only treat as git repo when we can open it cleanly; otherwise flag drift.
 			repo, err := git.PlainOpen(repoCfg.Destination)
 			if err == nil {
 				isGitRepo = true
@@ -155,8 +158,8 @@ func (p *repoPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 		}, nil
 	}
 
-	// Check if remote URL matches
-	if actualURL != repoCfg.URL {
+	// Check if remote URL matches (only if we were able to determine the actual URL)
+	if actualURL != "" && actualURL != repoCfg.URL {
 		return &model.EvaluationResult{
 			StepID:         step.ID,
 			CurrentState:   model.StatusDrifted,
@@ -197,23 +200,28 @@ func (p *repoPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResu
 
 	// Use evaluation data to avoid recomputation
 	var data *repoEvaluationData
-	if evalResult.InternalData != nil {
-		data = evalResult.InternalData.(*repoEvaluationData)
-	} else {
+	if evalResult != nil {
+		if typed, ok := evalResult.InternalData.(*repoEvaluationData); ok {
+			data = typed
+		}
+	}
+	if data == nil {
 		// Fallback to re-evaluating
-		evalResult, err := p.Evaluate(ctx, step)
+		var err error
+		evalResult, err = p.Evaluate(ctx, step)
 		if err != nil {
 			return nil, convertError(step.ID, err)
 		}
-		if evalResult.InternalData == nil {
+		typed, ok := evalResult.InternalData.(*repoEvaluationData)
+		if !ok || typed == nil {
 			return &model.StepResult{
 				StepID:  step.ID,
 				Status:  model.StatusFailed,
 				Message: "evaluation failed during apply",
-				Error:   fmt.Errorf("evaluation failed"),
+				Error:   fmt.Errorf("evaluation result missing repository evaluation data"),
 			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
 		}
-		data = evalResult.InternalData.(*repoEvaluationData)
+		data = typed
 	}
 
 	// Only apply if changes are needed

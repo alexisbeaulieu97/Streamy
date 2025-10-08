@@ -166,6 +166,7 @@ func TestLineinfilePlugin_ApplyRemoveLine(t *testing.T) {
 			File:  filePath,
 			Line:  line,
 			State: "absent",
+			Match: line,
 		},
 	}
 
@@ -204,6 +205,7 @@ func TestLineinfilePlugin_EvaluateAbsentWhenLineExists(t *testing.T) {
 			File:  filePath,
 			Line:  line,
 			State: "absent",
+			Match: line,
 		},
 	}
 
@@ -231,6 +233,7 @@ func TestLineinfilePlugin_EvaluateAbsentWhenLineMissing(t *testing.T) {
 			File:  filePath,
 			Line:  line,
 			State: "absent",
+			Match: line,
 		},
 	}
 

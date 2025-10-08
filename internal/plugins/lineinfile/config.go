@@ -49,7 +49,7 @@ type LineInFileConfig struct {
 func newConfigFromStep(step *config.Step) (*LineInFileConfig, error) {
 	cfg := step.LineInFile
 	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "line_in_file configuration missing", nil)
+		return nil, streamyerrors.NewValidationError(step.ID, "lineinfile configuration missing", nil)
 	}
 
 	normalized := &LineInFileConfig{

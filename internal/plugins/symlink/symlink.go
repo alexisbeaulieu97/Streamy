@@ -37,6 +37,13 @@ func (p *symlinkPlugin) Schema() any {
 }
 
 func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	// Check context first (only if context is provided)
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+
 	cfg := step.Symlink
 	if cfg == nil {
 		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("symlink configuration missing"))
@@ -50,7 +57,7 @@ func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 				StepID:         step.ID,
 				CurrentState:   model.StatusMissing,
 				RequiresAction: true,
-				Message:        fmt.Sprintf("symlink %s does not exist", cfg.Target),
+				Message:        "symlink does not exist",
 				Diff:           fmt.Sprintf("Would create symlink: %s -> %s", cfg.Target, cfg.Source),
 			}, nil
 		}
@@ -58,11 +65,22 @@ func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 	}
 
 	if info.Mode()&os.ModeSymlink == 0 {
+		// If force is disabled and target exists as regular file, this is blocked
+		if !cfg.Force {
+			return &model.EvaluationResult{
+				StepID:         step.ID,
+				CurrentState:   model.StatusBlocked,
+				RequiresAction: false,
+				Message:        "target exists and is not a symlink",
+				Diff:           fmt.Sprintf("Would replace with symlink: %s -> %s", cfg.Target, cfg.Source),
+			}, nil
+		}
+
 		return &model.EvaluationResult{
 			StepID:         step.ID,
 			CurrentState:   model.StatusDrifted,
 			RequiresAction: true,
-			Message:        fmt.Sprintf("target %s exists but is not a symlink", cfg.Target),
+			Message:        "target exists but is not a symlink",
 			Diff:           fmt.Sprintf("Would replace with symlink: %s -> %s", cfg.Target, cfg.Source),
 		}, nil
 	}
@@ -77,7 +95,7 @@ func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 			StepID:         step.ID,
 			CurrentState:   model.StatusSatisfied,
 			RequiresAction: false,
-			Message:        fmt.Sprintf("symlink %s -> %s is correct", cfg.Target, cfg.Source),
+			Message:        "symlink exists and points to correct target",
 		}, nil
 	}
 
@@ -85,7 +103,7 @@ func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 		StepID:         step.ID,
 		CurrentState:   model.StatusDrifted,
 		RequiresAction: true,
-		Message:        fmt.Sprintf("symlink points to wrong target: %s -> %s (expected %s)", cfg.Target, target, cfg.Source),
+		Message:        "symlink exists but points to wrong target",
 		Diff:           fmt.Sprintf("Would update symlink: %s: %s -> %s", cfg.Target, target, cfg.Source),
 	}, nil
 }

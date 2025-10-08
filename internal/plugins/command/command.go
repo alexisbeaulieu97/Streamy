@@ -164,23 +164,28 @@ func (p *commandPlugin) Apply(ctx context.Context, evalResult *model.EvaluationR
 
 	// Use evaluation data to avoid recomputation
 	var data *commandEvaluationData
-	if evalResult.InternalData != nil {
-		data = evalResult.InternalData.(*commandEvaluationData)
-	} else {
+	if evalResult != nil {
+		if typed, ok := evalResult.InternalData.(*commandEvaluationData); ok {
+			data = typed
+		}
+	}
+	if data == nil {
 		// Fallback to re-evaluating
-		evalResult, err := p.Evaluate(ctx, step)
+		var err error
+		evalResult, err = p.Evaluate(ctx, step)
 		if err != nil {
 			return nil, convertError(step.ID, err)
 		}
-		if evalResult.InternalData == nil {
+		typed, ok := evalResult.InternalData.(*commandEvaluationData)
+		if !ok || typed == nil {
 			return &model.StepResult{
 				StepID:  step.ID,
 				Status:  model.StatusFailed,
 				Message: "evaluation failed during apply",
-				Error:   fmt.Errorf("evaluation failed"),
+				Error:   fmt.Errorf("evaluation result missing command evaluation data"),
 			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
 		}
-		data = evalResult.InternalData.(*commandEvaluationData)
+		data = typed
 	}
 
 	// Only apply if changes are needed (or if no check command exists)

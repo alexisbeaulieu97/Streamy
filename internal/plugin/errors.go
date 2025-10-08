@@ -111,6 +111,9 @@ func NewValidationError(stepID string, err error) *ValidationError {
 
 // Error returns a formatted error message including the step ID.
 func (e *ValidationError) Error() string {
+	if e.Err == nil {
+		return "validation error in step " + e.ID
+	}
 	return "validation error in step " + e.ID + ": " + e.Err.Error()
 }
 
@@ -148,6 +151,9 @@ func NewExecutionError(stepID string, err error) *ExecutionError {
 
 // Error returns a formatted error message including the step ID.
 func (e *ExecutionError) Error() string {
+	if e.Err == nil {
+		return "execution error in step " + e.ID
+	}
 	return "execution error in step " + e.ID + ": " + e.Err.Error()
 }
 
@@ -186,6 +192,9 @@ func NewStateError(stepID string, err error) *StateError {
 
 // Error returns a formatted error message including the step ID.
 func (e *StateError) Error() string {
+	if e.Err == nil {
+		return "state error in step " + e.ID
+	}
 	return "state error in step " + e.ID + ": " + e.Err.Error()
 }
 

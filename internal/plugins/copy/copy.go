@@ -59,6 +59,13 @@ func (p *copyPlugin) Schema() any {
 }
 
 func (p *copyPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	// Check context first (only if context is provided)
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+
 	cfg := step.Copy
 	if cfg == nil {
 		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("copy configuration missing"))
@@ -182,6 +189,16 @@ func (p *copyPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 			}, nil
 		}
 
+		if !data.Overwrite {
+			return &model.EvaluationResult{
+				StepID:         step.ID,
+				CurrentState:   model.StatusBlocked,
+				RequiresAction: false,
+				Message:        "destination exists and overwrite is disabled",
+				InternalData:   data,
+			}, nil
+		}
+
 		// Files differ - need to copy
 		diffStr := generateFileDiff(cfg.Source, cfg.Destination)
 		return &model.EvaluationResult{
@@ -208,15 +225,28 @@ func (p *copyPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 func (p *copyPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	// Use evaluation data to avoid recomputation
 	var data *copyEvaluationData
-	if evalResult.InternalData != nil {
-		data = evalResult.InternalData.(*copyEvaluationData)
-	} else {
+	if evalResult != nil {
+		if typed, ok := evalResult.InternalData.(*copyEvaluationData); ok {
+			data = typed
+		}
+	}
+	if data == nil {
 		// Fallback to recomputing evaluation data
 		cfg := step.Copy
 		if cfg == nil {
 			return nil, plugin.NewValidationError(step.ID, fmt.Errorf("copy configuration missing"))
 		}
+
+		// Check source to determine if it's a directory
+		srcInfo, err := os.Stat(cfg.Source)
+		if err != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("cannot stat source: %w", err))
+		}
+
 		data = &copyEvaluationData{
+			IsDirectory:    srcInfo.IsDir(),
+			IsFile:         !srcInfo.IsDir(),
+			SourceInfo:     srcInfo,
 			NeedsRecursive: cfg.Recursive,
 			Overwrite:      cfg.Overwrite,
 			PreserveMode:   true, // default
@@ -302,9 +332,24 @@ func generateFileDiff(src, dst string) string {
 }
 
 func copyDirectory(src, dst string, preserveMode bool) error {
+	// Ensure destination directory exists
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
+		return err
+	}
+
 	return filepath.Walk(src, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Skip the root source directory to avoid copying it as a subdirectory
+		if path == src {
+			return nil
 		}
 
 		relPath, err := filepath.Rel(src, path)
