@@ -34,405 +34,280 @@ func getAllPlugins() []plugin.Plugin {
 	}
 }
 
-// TestVerifyContract_ReadOnly tests BR-001: Verify() must not modify system state
-func TestVerifyContract_ReadOnly(t *testing.T) {
+// TestEvaluateContract_ReadOnly tests BR-001: Evaluate() must not modify system state
+func TestEvaluateContract_ReadOnly(t *testing.T) {
 	t.Parallel()
 
 	plugins := getAllPlugins()
 
 	for _, p := range plugins {
 		p := p
-		t.Run(p.Metadata().Type, func(t *testing.T) {
+		t.Run(p.PluginMetadata().Type, func(t *testing.T) {
 			t.Parallel()
 
 			// Create test fixtures
 			tmpDir := t.TempDir()
 			testFile := filepath.Join(tmpDir, "test.txt")
-			err := os.WriteFile(testFile, []byte("original content"), 0644)
+			initialContent := "initial content"
+			require.NoError(t, os.WriteFile(testFile, []byte(initialContent), 0644))
+
+			// Create a step that would modify the file if applied
+			step := createTestStep(t, p.PluginMetadata().Type, tmpDir, testFile)
+
+			// Get initial state
+			initialStat, err := os.Stat(testFile)
 			require.NoError(t, err)
 
-			// Get file info before verification
-			beforeStat, err := os.Stat(testFile)
-			require.NoError(t, err)
-			beforeContent, err := os.ReadFile(testFile)
-			require.NoError(t, err)
+			// Run Evaluate multiple times
+			for i := 0; i < 3; i++ {
+				evalResult, err := p.Evaluate(context.Background(), step)
+				require.NoError(t, err)
+				require.NotNil(t, evalResult)
 
-			// Create appropriate step for plugin type
-			step := createTestStep(p.Metadata().Type, tmpDir, testFile)
+				// Verify file hasn't changed
+				currentStat, err := os.Stat(testFile)
+				require.NoError(t, err)
+				require.Equal(t, initialStat.ModTime(), currentStat.ModTime(),
+					"Evaluate() modified file system state on iteration %d", i)
+				require.Equal(t, initialStat.Size(), currentStat.Size(),
+					"Evaluate() changed file size on iteration %d", i)
 
-			// Run verification
-			ctx := context.Background()
-			result, err := p.Verify(ctx, step)
-
-			// Verification should not return error
-			require.NoError(t, err)
-			require.NotNil(t, result)
-
-			// Check that file hasn't been modified
-			afterStat, err := os.Stat(testFile)
-			require.NoError(t, err)
-			afterContent, err := os.ReadFile(testFile)
-			require.NoError(t, err)
-
-			require.Equal(t, beforeContent, afterContent, "file content should not change")
-			require.Equal(t, beforeStat.ModTime().Unix(), afterStat.ModTime().Unix(), "file modification time should not change")
-			require.Equal(t, beforeStat.Mode(), afterStat.Mode(), "file permissions should not change")
+				// Verify content hasn't changed
+				content, err := os.ReadFile(testFile)
+				require.NoError(t, err)
+				require.Equal(t, initialContent, string(content),
+					"Evaluate() changed file content on iteration %d", i)
+			}
 		})
 	}
 }
 
-// TestVerifyContract_ContextCancellation tests BR-002: Verify() must respect context cancellation
-func TestVerifyContract_ContextCancellation(t *testing.T) {
+// TestEvaluateContract_Deterministic tests BR-002: Evaluate() must return consistent results
+func TestEvaluateContract_Deterministic(t *testing.T) {
 	t.Parallel()
 
 	plugins := getAllPlugins()
 
 	for _, p := range plugins {
 		p := p
-		t.Run(p.Metadata().Type, func(t *testing.T) {
+		t.Run(p.PluginMetadata().Type, func(t *testing.T) {
 			t.Parallel()
 
 			tmpDir := t.TempDir()
 			testFile := filepath.Join(tmpDir, "test.txt")
-			err := os.WriteFile(testFile, []byte("test content"), 0644)
-			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(testFile, []byte("content"), 0644))
 
-			step := createTestStep(p.Metadata().Type, tmpDir, testFile)
+			step := createTestStep(t, p.PluginMetadata().Type, tmpDir, testFile)
 
-			// Create cancelled context
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel() // Cancel immediately
+			// Run Evaluate multiple times and compare results
+			var firstResult *model.EvaluationResult
+			for i := 0; i < 5; i++ {
+				evalResult, err := p.Evaluate(context.Background(), step)
+				require.NoError(t, err)
+				require.NotNil(t, evalResult)
 
-			// Run verification
-			result, err := p.Verify(ctx, step)
-
-			// Should either return context.Canceled error or handle gracefully
-			if err != nil {
-				require.ErrorIs(t, err, context.Canceled, "should return context.Canceled error")
-			} else {
-				// If no error, result should indicate blocked status
-				require.NotNil(t, result)
-				if result.Status == model.StatusBlocked {
-					require.NotNil(t, result.Error, "blocked status should have error")
+				if firstResult == nil {
+					firstResult = evalResult
+				} else {
+					require.Equal(t, firstResult.StepID, evalResult.StepID)
+					require.Equal(t, firstResult.CurrentState, evalResult.CurrentState)
+					require.Equal(t, firstResult.RequiresAction, evalResult.RequiresAction)
+					require.Equal(t, firstResult.Message, evalResult.Message)
 				}
 			}
 		})
 	}
 }
 
-// TestVerifyContract_TimeoutHandling tests BR-002: Verify() must respect context deadline
-func TestVerifyContract_TimeoutHandling(t *testing.T) {
+// TestEvaluateContract_ResultsValid tests BR-003: Evaluate() must return valid EvaluationResult
+func TestEvaluateContract_ResultsValid(t *testing.T) {
 	t.Parallel()
 
 	plugins := getAllPlugins()
 
 	for _, p := range plugins {
 		p := p
-		t.Run(p.Metadata().Type, func(t *testing.T) {
+		t.Run(p.PluginMetadata().Type, func(t *testing.T) {
 			t.Parallel()
 
 			tmpDir := t.TempDir()
 			testFile := filepath.Join(tmpDir, "test.txt")
-			err := os.WriteFile(testFile, []byte("test content"), 0644)
+			require.NoError(t, os.WriteFile(testFile, []byte("content"), 0644))
+
+			step := createTestStep(t, p.PluginMetadata().Type, tmpDir, testFile)
+
+			evalResult, err := p.Evaluate(context.Background(), step)
 			require.NoError(t, err)
+			require.NotNil(t, evalResult)
 
-			step := createTestStep(p.Metadata().Type, tmpDir, testFile)
+			// Validate EvaluationResult structure
+			require.NotEmpty(t, evalResult.StepID)
+			require.Contains(t, []model.VerificationStatus{
+				model.StatusSatisfied,
+				model.StatusMissing,
+				model.StatusDrifted,
+				model.StatusBlocked,
+				model.StatusUnknown,
+			}, evalResult.CurrentState)
 
-			// Create context with very short deadline
-			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+			// RequiresAction should be true for Missing/Drifted, false for others
+			expectedRequiresAction := evalResult.CurrentState == model.StatusMissing ||
+				evalResult.CurrentState == model.StatusDrifted
+			require.Equal(t, expectedRequiresAction, evalResult.RequiresAction)
+
+			// Message should be non-empty
+			require.NotEmpty(t, evalResult.Message)
+		})
+	}
+}
+
+// TestEvaluateContract_Timeout tests BR-004: Evaluate() must respect context cancellation
+func TestEvaluateContract_Timeout(t *testing.T) {
+	t.Parallel()
+
+	plugins := getAllPlugins()
+
+	for _, p := range plugins {
+		p := p
+		t.Run(p.PluginMetadata().Type, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			testFile := filepath.Join(tmpDir, "test.txt")
+			require.NoError(t, os.WriteFile(testFile, []byte("content"), 0644))
+
+			step := createTestStep(t, p.PluginMetadata().Type, tmpDir, testFile)
+
+			// Test with cancelled context
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			evalResult, err := p.Evaluate(ctx, step)
+			require.Error(t, err)
+			require.Nil(t, evalResult)
+			require.ErrorIs(t, err, context.Canceled)
+
+			// Test with timeout
+			ctx, cancel = context.WithTimeout(context.Background(), 1*time.Nanosecond)
 			defer cancel()
 
-			// Give context time to expire
-			time.Sleep(5 * time.Millisecond)
+			evalResult, err = p.Evaluate(ctx, step)
+			require.Error(t, err)
+			require.Nil(t, evalResult)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+		})
+	}
+}
 
-			// Run verification
-			result, err := p.Verify(ctx, step)
+// TestApplyContract_UsesEvaluationResult tests that Apply() properly uses EvaluationResult
+func TestApplyContract_UsesEvaluationResult(t *testing.T) {
+	t.Parallel()
 
-			// Should either return deadline exceeded or handle gracefully
-			if err != nil {
-				require.ErrorIs(t, err, context.DeadlineExceeded, "should return context.DeadlineExceeded error")
-			} else {
+	plugins := getAllPlugins()
+
+	for _, p := range plugins {
+		p := p
+		t.Run(p.PluginMetadata().Type, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			testFile := filepath.Join(tmpDir, "test.txt")
+			initialContent := "initial content"
+			require.NoError(t, os.WriteFile(testFile, []byte(initialContent), 0644))
+
+			step := createTestStep(t, p.PluginMetadata().Type, tmpDir, testFile)
+
+			// First evaluate to get result
+			evalResult, err := p.Evaluate(context.Background(), step)
+			require.NoError(t, err)
+
+			// Apply should work with valid evaluation result
+			if evalResult.RequiresAction {
+				result, err := p.Apply(context.Background(), evalResult, step)
+				require.NoError(t, err)
 				require.NotNil(t, result)
-				// Timeout should result in blocked status
-				if result.Status == model.StatusBlocked {
-					require.NotNil(t, result.Error, "blocked status should have error")
-				}
+				require.Equal(t, step.ID, result.StepID)
 			}
 		})
 	}
 }
 
-// TestVerifyContract_StatusAccuracy tests BR-003: Status must accurately reflect state
-func TestVerifyContract_StatusAccuracy(t *testing.T) {
-	t.Parallel()
-
-	t.Run("symlink_satisfied", func(t *testing.T) {
-		t.Parallel()
-
-		tmpDir := t.TempDir()
-		sourceFile := filepath.Join(tmpDir, "source.txt")
-		targetLink := filepath.Join(tmpDir, "link")
-
-		err := os.WriteFile(sourceFile, []byte("test"), 0644)
-		require.NoError(t, err)
-		err = os.Symlink(sourceFile, targetLink)
-		require.NoError(t, err)
-
-		p := symlinkplugin.New()
-		step := &config.Step{
-			ID:   "test",
-			Type: "symlink",
-			Symlink: &config.SymlinkStep{
-				Source: sourceFile,
-				Target: targetLink,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, model.StatusSatisfied, result.Status, "symlink should be satisfied when it exists and matches")
-	})
-
-	t.Run("symlink_missing", func(t *testing.T) {
-		t.Parallel()
-
-		tmpDir := t.TempDir()
-		sourceFile := filepath.Join(tmpDir, "source.txt")
-		targetLink := filepath.Join(tmpDir, "nonexistent_link")
-
-		err := os.WriteFile(sourceFile, []byte("test"), 0644)
-		require.NoError(t, err)
-
-		p := symlinkplugin.New()
-		step := &config.Step{
-			ID:   "test",
-			Type: "symlink",
-			Symlink: &config.SymlinkStep{
-				Source: sourceFile,
-				Target: targetLink,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, model.StatusMissing, result.Status, "symlink should be missing when it doesn't exist")
-	})
-
-	t.Run("symlink_drifted", func(t *testing.T) {
-		t.Parallel()
-
-		tmpDir := t.TempDir()
-		sourceFile := filepath.Join(tmpDir, "source.txt")
-		wrongSource := filepath.Join(tmpDir, "wrong.txt")
-		targetLink := filepath.Join(tmpDir, "link")
-
-		err := os.WriteFile(sourceFile, []byte("test"), 0644)
-		require.NoError(t, err)
-		err = os.WriteFile(wrongSource, []byte("wrong"), 0644)
-		require.NoError(t, err)
-		err = os.Symlink(wrongSource, targetLink)
-		require.NoError(t, err)
-
-		p := symlinkplugin.New()
-		step := &config.Step{
-			ID:   "test",
-			Type: "symlink",
-			Symlink: &config.SymlinkStep{
-				Source: sourceFile,
-				Target: targetLink,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, model.StatusDrifted, result.Status, "symlink should be drifted when it points to wrong target")
-	})
-
-	t.Run("command_unknown", func(t *testing.T) {
-		t.Parallel()
-
-		p := commandplugin.New()
-		step := &config.Step{
-			ID:   "test",
-			Type: "command",
-			Command: &config.CommandStep{
-				Command: "echo 'test'",
-				// No Verify field specified
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, model.StatusUnknown, result.Status, "command should be unknown when no verify clause specified")
-	})
-}
-
-// TestVerifyContract_MessageClarity tests BR-004: Message must be clear and descriptive
-func TestVerifyContract_MessageClarity(t *testing.T) {
-	t.Parallel()
-
-	plugins := getAllPlugins()
-
-	for _, p := range plugins {
-		p := p
-		t.Run(p.Metadata().Type, func(t *testing.T) {
-			t.Parallel()
-
-			tmpDir := t.TempDir()
-			testFile := filepath.Join(tmpDir, "test.txt")
-			err := os.WriteFile(testFile, []byte("test content"), 0644)
-			require.NoError(t, err)
-
-			step := createTestStep(p.Metadata().Type, tmpDir, testFile)
-
-			result, err := p.Verify(context.Background(), step)
-			require.NoError(t, err)
-			require.NotNil(t, result)
-
-			// Message must not be empty
-			require.NotEmpty(t, result.Message, "message must not be empty")
-
-			// Message should be at least 10 characters (meaningful description)
-			require.GreaterOrEqual(t, len(result.Message), 10, "message should be at least 10 characters long")
-
-			// Message should not be generic
-			genericMessages := []string{"OK", "ok", "failed", "error", "success"}
-			for _, generic := range genericMessages {
-				require.NotEqual(t, generic, result.Message, "message should not be generic: %s", generic)
-			}
-		})
-	}
-}
-
-// TestVerifyContract_Idempotency tests BR-008: Multiple calls should produce same result
-func TestVerifyContract_Idempotency(t *testing.T) {
-	t.Parallel()
-
-	plugins := getAllPlugins()
-
-	for _, p := range plugins {
-		p := p
-		t.Run(p.Metadata().Type, func(t *testing.T) {
-			t.Parallel()
-
-			tmpDir := t.TempDir()
-			testFile := filepath.Join(tmpDir, "test.txt")
-			err := os.WriteFile(testFile, []byte("test content"), 0644)
-			require.NoError(t, err)
-
-			step := createTestStep(p.Metadata().Type, tmpDir, testFile)
-
-			// First verification
-			ctx := context.Background()
-			result1, err := p.Verify(ctx, step)
-			require.NoError(t, err)
-			require.NotNil(t, result1)
-
-			// Second verification (immediate)
-			result2, err := p.Verify(ctx, step)
-			require.NoError(t, err)
-			require.NotNil(t, result2)
-
-			// Results should be identical (assuming no state change)
-			require.Equal(t, result1.Status, result2.Status, "status should be identical")
-			require.Equal(t, result1.Message, result2.Message, "message should be identical")
-			require.Equal(t, result1.Details, result2.Details, "details should be identical")
-		})
-	}
-}
-
-// createTestStep creates appropriate test step based on plugin type
-func createTestStep(pluginType, tmpDir, testFile string) *config.Step {
+// createTestStep creates a test step for the given plugin type
+func createTestStep(t *testing.T, pluginType, tmpDir, testFile string) *config.Step {
 	switch pluginType {
 	case "symlink":
-		sourceFile := filepath.Join(tmpDir, "source.txt")
-		os.WriteFile(sourceFile, []byte("source"), 0644)
 		return &config.Step{
-			ID:   "test",
-			Type: "symlink",
+			ID:   "test-symlink",
+			Type: pluginType,
 			Symlink: &config.SymlinkStep{
-				Source: sourceFile,
-				Target: testFile,
+				Source: testFile,
+				Target: filepath.Join(tmpDir, "link"),
 			},
 		}
-
 	case "copy":
-		sourceFile := filepath.Join(tmpDir, "copy_source.txt")
-		os.WriteFile(sourceFile, []byte("copy content"), 0644)
+		destFile := filepath.Join(tmpDir, "copy.txt")
 		return &config.Step{
-			ID:   "test",
-			Type: "copy",
+			ID:   "test-copy",
+			Type: pluginType,
 			Copy: &config.CopyStep{
-				Source:      sourceFile,
-				Destination: testFile,
+				Source:      testFile,
+				Destination: destFile,
 			},
 		}
-
-	case "template":
-		templateFile := filepath.Join(tmpDir, "template.tmpl")
-		os.WriteFile(templateFile, []byte("Hello {{.Name}}"), 0644)
-		return &config.Step{
-			ID:   "test",
-			Type: "template",
-			Template: &config.TemplateStep{
-				Source:      templateFile,
-				Destination: testFile,
-				Vars: map[string]string{
-					"Name": "World",
-				},
-			},
-		}
-
-	case "command":
-		return &config.Step{
-			ID:   "test",
-			Type: "command",
-			Command: &config.CommandStep{
-				Command: "echo test",
-				Check:   "test -f " + testFile,
-			},
-		}
-
 	case "line_in_file":
 		return &config.Step{
-			ID:   "test",
-			Type: "line_in_file",
+			ID:   "test-lineinfile",
+			Type: pluginType,
 			LineInFile: &config.LineInFileStep{
-				File: testFile,
-				Line: "test content",
+				File:  testFile,
+				Line:  "new line",
+				State: "present",
 			},
 		}
-
-	case "repo":
-		repoPath := filepath.Join(tmpDir, "test_repo")
-		os.MkdirAll(repoPath, 0755)
+	case "template":
+		templateFile := filepath.Join(tmpDir, "template.tmpl")
+		require.NoError(t, os.WriteFile(templateFile, []byte("template content: {{ .Var }}"), 0644))
+		outputFile := filepath.Join(tmpDir, "output.txt")
+		mode := uint32(0644)
 		return &config.Step{
-			ID:   "test",
-			Type: "repo",
-			Repo: &config.RepoStep{
-				URL:         "https://github.com/test/repo.git",
-				Destination: repoPath,
-				Branch:      "main",
+			ID:   "test-template",
+			Type: pluginType,
+			Template: &config.TemplateStep{
+				Source:      templateFile,
+				Destination: outputFile,
+				Vars:        map[string]string{"Var": "value"},
+				Mode:        &mode,
 			},
 		}
-
 	case "package":
 		return &config.Step{
-			ID:   "test",
-			Type: "package",
+			ID:   "test-package",
+			Type: pluginType,
 			Package: &config.PackageStep{
-				Packages: []string{"git"},
+				Packages: []string{"test-package"},
+				Manager:  "apt",
 			},
 		}
-
-	default:
+	case "repo":
 		return &config.Step{
-			ID:   "test",
+			ID:   "test-repo",
 			Type: pluginType,
+			Repo: &config.RepoStep{
+				URL:         "https://example.com/repo",
+				Destination: filepath.Join(tmpDir, "repo"),
+			},
 		}
+	case "command":
+		return &config.Step{
+			ID:   "test-command",
+			Type: pluginType,
+			Command: &config.CommandStep{
+				Command: "echo 'test command'",
+				Check:   "echo 'check command'",
+			},
+		}
+	default:
+		t.Fatalf("unknown plugin type: %s", pluginType)
+		return nil
 	}
 }

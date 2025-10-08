@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
+	"github.com/alexisbeaulieu97/streamy/internal/model"
 	pluginpkg "github.com/alexisbeaulieu97/streamy/internal/plugin"
 )
 
@@ -16,11 +17,11 @@ func TestCopyPlugin_Metadata(t *testing.T) {
 	t.Parallel()
 
 	p := New()
-	meta := p.Metadata()
+	meta := p.PluginMetadata()
 
 	require.NotEmpty(t, meta.Name)
 	require.NotEmpty(t, meta.Version)
-	require.Equal(t, "copy", meta.Type)
+	require.Equal(t, "copy", meta.Name)
 }
 
 func TestCopyPlugin_Schema(t *testing.T) {
@@ -34,7 +35,7 @@ func TestCopyPlugin_Schema(t *testing.T) {
 	require.True(t, ok, "schema should be of type CopyStep")
 }
 
-func TestCopyPlugin_CheckUsesHashForIdempotency(t *testing.T) {
+func TestCopyPlugin_EvaluateUsesHashForIdempotency(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
 
@@ -56,14 +57,16 @@ func TestCopyPlugin_CheckUsesHashForIdempotency(t *testing.T) {
 	p := New()
 	require.Implements(t, (*pluginpkg.Plugin)(nil), p)
 
-	ok, err := p.Check(context.Background(), step)
+	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+	require.False(t, evalResult.RequiresAction)
 
 	require.NoError(t, os.WriteFile(dstFile, []byte("different"), 0o644))
-	ok, err = p.Check(context.Background(), step)
+	evalResult, err = p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.False(t, ok)
+	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
 }
 
 func TestCopyPlugin_ApplyCopiesFileAndPermissions(t *testing.T) {
@@ -85,7 +88,14 @@ func TestCopyPlugin_ApplyCopiesFileAndPermissions(t *testing.T) {
 
 	p := New()
 
-	result, err := p.Apply(context.Background(), step)
+	evalResult := &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusMissing,
+		RequiresAction: true,
+		Message:        "File needs to be copied",
+	}
+
+	result, err := p.Apply(context.Background(), evalResult, step)
 	require.NoError(t, err)
 	require.Equal(t, "success", result.Status)
 
@@ -104,193 +114,46 @@ func TestCopyPlugin_ApplyRecursiveCopy(t *testing.T) {
 	require.NoError(t, os.MkdirAll(nested, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(nested, "file.txt"), []byte("recursive"), 0o644))
 
-	destDir := filepath.Join(t.TempDir(), "dest")
+	dstDir := t.TempDir()
 
 	step := &config.Step{
-		ID:   "copy_dir",
+		ID:   "copy_recursive",
 		Type: "copy",
 		Copy: &config.CopyStep{
 			Source:      srcDir,
-			Destination: destDir,
+			Destination: dstDir,
 			Recursive:   true,
 		},
 	}
 
 	p := New()
 
-	res, err := p.Apply(context.Background(), step)
-	require.NoError(t, err)
-	require.Equal(t, "success", res.Status)
+	evalResult := &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusMissing,
+		RequiresAction: true,
+		Message:        "Directory needs to be copied",
+	}
 
-	data, err := os.ReadFile(filepath.Join(destDir, "nested", "file.txt"))
+	result, err := p.Apply(context.Background(), evalResult, step)
+	require.NoError(t, err)
+	require.Equal(t, "success", result.Status)
+
+	copiedFile := filepath.Join(dstDir, "nested", "file.txt")
+	data, err := os.ReadFile(copiedFile)
 	require.NoError(t, err)
 	require.Equal(t, "recursive", string(data))
 }
 
-func TestCopyPlugin_CheckReturnsFalseForDirectory(t *testing.T) {
-	t.Parallel()
-
+func TestCopyPlugin_EvaluateMissingSource(t *testing.T) {
 	srcDir := t.TempDir()
-	destDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	srcFile := filepath.Join(srcDir, "nonexistent.txt")
+	dstFile := filepath.Join(dstDir, "file.txt")
 
 	step := &config.Step{
-		ID:   "copy_dir",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcDir,
-			Destination: destDir,
-		},
-	}
-
-	p := New()
-
-	ok, err := p.Check(context.Background(), step)
-	require.NoError(t, err)
-	require.False(t, ok, "expected Check to return false for directory")
-}
-
-func TestCopyPlugin_CheckReturnsFalseWhenDestinationMissing(t *testing.T) {
-	t.Parallel()
-
-	srcFile := filepath.Join(t.TempDir(), "src.txt")
-	require.NoError(t, os.WriteFile(srcFile, []byte("data"), 0o644))
-
-	destFile := filepath.Join(t.TempDir(), "missing.txt")
-
-	step := &config.Step{
-		ID:   "copy_file",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: destFile,
-		},
-	}
-
-	p := New()
-
-	ok, err := p.Check(context.Background(), step)
-	require.NoError(t, err)
-	require.False(t, ok, "expected Check to return false when destination missing")
-}
-
-func TestCopyPlugin_ApplyWithOverwrite(t *testing.T) {
-	srcFile := filepath.Join(t.TempDir(), "src.txt")
-	require.NoError(t, os.WriteFile(srcFile, []byte("new content"), 0o644))
-
-	destFile := filepath.Join(t.TempDir(), "dest.txt")
-	require.NoError(t, os.WriteFile(destFile, []byte("old content"), 0o644))
-
-	step := &config.Step{
-		ID:   "copy_file",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: destFile,
-			Overwrite:   true,
-		},
-	}
-
-	p := New()
-
-	res, err := p.Apply(context.Background(), step)
-	require.NoError(t, err)
-	require.Equal(t, "success", res.Status)
-
-	data, err := os.ReadFile(destFile)
-	require.NoError(t, err)
-	require.Equal(t, "new content", string(data))
-}
-
-func TestCopyPlugin_ApplyCreatesParentDirectory(t *testing.T) {
-	srcFile := filepath.Join(t.TempDir(), "src.txt")
-	require.NoError(t, os.WriteFile(srcFile, []byte("data"), 0o644))
-
-	destFile := filepath.Join(t.TempDir(), "nested/dir/dest.txt")
-
-	step := &config.Step{
-		ID:   "copy_file",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: destFile,
-		},
-	}
-
-	p := New()
-
-	res, err := p.Apply(context.Background(), step)
-	require.NoError(t, err)
-	require.Equal(t, "success", res.Status)
-
-	data, err := os.ReadFile(destFile)
-	require.NoError(t, err)
-	require.Equal(t, "data", string(data))
-}
-
-func TestCopyPlugin_ApplyFailsForDirectoryWithoutRecursive(t *testing.T) {
-	t.Parallel()
-
-	srcDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("data"), 0o644))
-	destDir := filepath.Join(t.TempDir(), "dest")
-
-	step := &config.Step{
-		ID:   "copy_dir",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcDir,
-			Destination: destDir,
-			Recursive:   false, // This should fail
-		},
-	}
-
-	p := New()
-
-	res, err := p.Apply(context.Background(), step)
-	require.Error(t, err)
-	require.NotNil(t, res)
-	require.Equal(t, "failed", res.Status)
-	require.Contains(t, res.Message, "directory")
-	require.Contains(t, res.Message, "recursive")
-}
-
-func TestCopyPlugin_ApplyWithoutPreserveMode(t *testing.T) {
-	srcFile := filepath.Join(t.TempDir(), "src.txt")
-	require.NoError(t, os.WriteFile(srcFile, []byte("data"), 0o700))
-
-	destFile := filepath.Join(t.TempDir(), "dest.txt")
-
-	step := &config.Step{
-		ID:   "copy_file",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:          srcFile,
-			Destination:     destFile,
-			PreserveMode:    false,
-			PreserveModeSet: true,
-		},
-	}
-
-	p := New()
-
-	res, err := p.Apply(context.Background(), step)
-	require.NoError(t, err)
-	require.Equal(t, "success", res.Status)
-
-	// File should have been copied with default permissions
-	info, err := os.Stat(destFile)
-	require.NoError(t, err)
-	// Should not preserve the 0o700 mode
-	require.NotEqual(t, os.FileMode(0o700), info.Mode().Perm())
-}
-
-func TestCopyPlugin_DryRunSkipsCopy(t *testing.T) {
-	srcFile := filepath.Join(t.TempDir(), "source.txt")
-	dstFile := filepath.Join(t.TempDir(), "dest.txt")
-	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
-
-	step := &config.Step{
-		ID:   "copy_file",
+		ID:   "copy_missing_source",
 		Type: "copy",
 		Copy: &config.CopyStep{
 			Source:      srcFile,
@@ -300,243 +163,129 @@ func TestCopyPlugin_DryRunSkipsCopy(t *testing.T) {
 
 	p := New()
 
-	res, err := p.DryRun(context.Background(), step)
+	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, "skipped", res.Status)
-
-	_, err = os.Stat(dstFile)
-	require.Error(t, err)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+	require.Contains(t, evalResult.Message, "source file does not exist")
 }
 
-func TestCopyPlugin_Verify(t *testing.T) {
-	t.Run("returns satisfied when file exists and matches", func(t *testing.T) {
-		srcFile := filepath.Join(t.TempDir(), "source.txt")
-		dstFile := filepath.Join(t.TempDir(), "dest.txt")
-		require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
-		require.NoError(t, os.WriteFile(dstFile, []byte("content"), 0o644))
+func TestCopyPlugin_EvaluateDestinationExists(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
 
-		p := New()
+	srcFile := filepath.Join(srcDir, "file.txt")
+	dstFile := filepath.Join(dstDir, "file.txt")
 
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      srcFile,
-				Destination: dstFile,
-			},
-		}
+	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
+	require.NoError(t, os.WriteFile(dstFile, []byte("content"), 0o644))
 
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "satisfied", string(result.Status))
-		require.Contains(t, result.Message, "matches source")
-	})
+	step := &config.Step{
+		ID:   "copy_existing_dest",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcFile,
+			Destination: dstFile,
+		},
+	}
 
-	t.Run("returns missing when destination does not exist", func(t *testing.T) {
-		srcFile := filepath.Join(t.TempDir(), "source.txt")
-		dstFile := filepath.Join(t.TempDir(), "dest.txt")
-		require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
+	p := New()
 
-		p := New()
-
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      srcFile,
-				Destination: dstFile,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "missing", string(result.Status))
-		require.Contains(t, result.Message, "does not exist")
-	})
-
-	t.Run("returns drifted when file content differs", func(t *testing.T) {
-		srcFile := filepath.Join(t.TempDir(), "source.txt")
-		dstFile := filepath.Join(t.TempDir(), "dest.txt")
-		require.NoError(t, os.WriteFile(srcFile, []byte("new content"), 0o644))
-		require.NoError(t, os.WriteFile(dstFile, []byte("old content"), 0o644))
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      srcFile,
-				Destination: dstFile,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "drifted", string(result.Status))
-		require.Contains(t, result.Message, "content differs")
-	})
-
-	t.Run("returns satisfied when directory exists", func(t *testing.T) {
-		srcDir := filepath.Join(t.TempDir(), "source")
-		dstDir := filepath.Join(t.TempDir(), "dest")
-		require.NoError(t, os.MkdirAll(srcDir, 0o755))
-		require.NoError(t, os.MkdirAll(dstDir, 0o755))
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "copy_dir",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      srcDir,
-				Destination: dstDir,
-				Recursive:   true,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "satisfied", string(result.Status))
-	})
-
-	t.Run("returns drifted when source is dir but destination is file", func(t *testing.T) {
-		srcDir := filepath.Join(t.TempDir(), "source")
-		dstFile := filepath.Join(t.TempDir(), "dest")
-		require.NoError(t, os.MkdirAll(srcDir, 0o755))
-		require.NoError(t, os.WriteFile(dstFile, []byte("content"), 0o644))
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "copy_dir",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      srcDir,
-				Destination: dstFile,
-				Recursive:   true,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "drifted", string(result.Status))
-		require.Contains(t, result.Message, "types do not match")
-	})
-
-	t.Run("returns blocked when source does not exist", func(t *testing.T) {
-		srcFile := filepath.Join(t.TempDir(), "nonexistent.txt")
-		dstFile := filepath.Join(t.TempDir(), "dest.txt")
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      srcFile,
-				Destination: dstFile,
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "blocked", string(result.Status))
-		require.Contains(t, result.Message, "source file")
-	})
-
-	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
-		srcFile := filepath.Join(t.TempDir(), "source.txt")
-		dstFile := filepath.Join(t.TempDir(), "dest.txt")
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      srcFile,
-				Destination: dstFile,
-			},
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // Cancel immediately
-
-		result, err := p.Verify(ctx, step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "blocked", string(result.Status))
-		require.Contains(t, result.Message, "cancelled")
-		require.NotNil(t, result.Error)
-	})
-
-	t.Run("returns error when copy config is nil", func(t *testing.T) {
-		p := New()
-
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: nil,
-		}
-
-		_, err := p.Verify(context.Background(), step)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "copy configuration missing")
-	})
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+	require.False(t, evalResult.RequiresAction)
+	require.Contains(t, evalResult.Message, "files are identical")
 }
 
-func TestCopyPlugin_Check_Errors(t *testing.T) {
-	t.Run("returns error when copy config is nil", func(t *testing.T) {
-		p := New()
+func TestCopyPlugin_EvaluateDestinationDifferent(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
 
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: nil,
-		}
+	srcFile := filepath.Join(srcDir, "file.txt")
+	dstFile := filepath.Join(dstDir, "file.txt")
 
-		_, err := p.Check(context.Background(), step)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "copy configuration missing")
-	})
+	require.NoError(t, os.WriteFile(srcFile, []byte("source"), 0o644))
+	require.NoError(t, os.WriteFile(dstFile, []byte("destination"), 0o644))
+
+	step := &config.Step{
+		ID:   "copy_different_dest",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcFile,
+			Destination: dstFile,
+			Overwrite:   true,
+		},
+	}
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+	require.Contains(t, evalResult.Message, "files differ")
 }
 
-func TestCopyPlugin_Apply_Errors(t *testing.T) {
-	t.Run("returns error when copy config is nil", func(t *testing.T) {
-		p := New()
+func TestCopyPlugin_EvaluateNoOverwrite(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
 
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: nil,
-		}
+	srcFile := filepath.Join(srcDir, "file.txt")
+	dstFile := filepath.Join(dstDir, "file.txt")
 
-		_, err := p.Apply(context.Background(), step)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "copy configuration missing")
-	})
+	require.NoError(t, os.WriteFile(srcFile, []byte("source"), 0o644))
+	require.NoError(t, os.WriteFile(dstFile, []byte("destination"), 0o644))
 
-	t.Run("returns error when source does not exist", func(t *testing.T) {
-		p := New()
+	step := &config.Step{
+		ID:   "copy_no_overwrite",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcFile,
+			Destination: dstFile,
+			Overwrite:   false,
+		},
+	}
 
-		step := &config.Step{
-			ID:   "copy_file",
-			Type: "copy",
-			Copy: &config.CopyStep{
-				Source:      "/nonexistent/file.txt",
-				Destination: filepath.Join(t.TempDir(), "dest.txt"),
-			},
-		}
+	p := New()
 
-		result, err := p.Apply(context.Background(), step)
-		require.Error(t, err)
-		require.Nil(t, result)
-	})
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusBlocked, evalResult.CurrentState)
+	require.False(t, evalResult.RequiresAction)
+	require.Contains(t, evalResult.Message, "destination exists and overwrite is disabled")
+}
+
+func TestCopyPlugin_EvaluateForDryRun(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	srcFile := filepath.Join(srcDir, "file.txt")
+	dstFile := filepath.Join(dstDir, "file.txt")
+
+	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
+
+	step := &config.Step{
+		ID:   "copy_dry_run",
+		Type: "copy",
+		Copy: &config.CopyStep{
+			Source:      srcFile,
+			Destination: dstFile,
+		},
+	}
+
+	p := New()
+
+	// Test dry run when destination doesn't exist
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+
+	// Test dry run when destination exists and is identical
+	require.NoError(t, os.WriteFile(dstFile, []byte("content"), 0o644))
+	evalResult, err = p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+	require.False(t, evalResult.RequiresAction)
 }

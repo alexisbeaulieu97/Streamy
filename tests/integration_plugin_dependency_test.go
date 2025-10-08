@@ -35,13 +35,18 @@ func TestPluginDependency_Composition(t *testing.T) {
 		}),
 	)
 	shell.applyFn = func(ctx context.Context, step *config.Step, reg *plugin.PluginRegistry) (*model.StepResult, error) {
-		dependentStep := &config.Step{ID: step.ID + "_line", Type: "line_in_file"}
+		dependentStep := &config.Step{ID: step.ID + "_line", Name: "line_in_file"}
 		dep, err := reg.GetForDependent("shell_profile", "line_in_file")
 		if err != nil {
 			return nil, err
 		}
 		shell.invokeLog = append(shell.invokeLog, "line_in_file")
-		return dep.Apply(ctx, dependentStep)
+		// Evaluate first, then apply
+		evalResult, err := dep.Evaluate(ctx, dependentStep)
+		if err != nil {
+			return nil, err
+		}
+		return dep.Apply(ctx, evalResult, dependentStep)
 	}
 
 	require.NoError(t, registry.Register(line))
@@ -55,8 +60,11 @@ func TestPluginDependency_Composition(t *testing.T) {
 	require.Same(t, shell, pluginFromRegistry)
 
 	ctx := context.Background()
-	step := &config.Step{ID: "setup_dev_path", Type: "shell_profile"}
-	result, err := pluginFromRegistry.Apply(ctx, step)
+	step := &config.Step{ID: "setup_dev_path", Name: "shell_profile"}
+	// Evaluate first, then apply
+	evalResult, err := pluginFromRegistry.Evaluate(ctx, step)
+	require.NoError(t, err)
+	result, err := pluginFromRegistry.Apply(ctx, evalResult, step)
 	require.NoError(t, err)
 	require.Equal(t, "success", result.Status)
 	require.Equal(t, "setup_dev_path_line", line.lastApplyStep.ID)
@@ -89,7 +97,11 @@ func TestPluginDependency_TransitiveChain(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		return dep.Apply(ctx, step)
+		evalResult, err := dep.Evaluate(ctx, step)
+		if err != nil {
+			return nil, err
+		}
+		return dep.Apply(ctx, evalResult, step)
 	}
 
 	pluginA := newIntegrationPlugin(
@@ -105,7 +117,11 @@ func TestPluginDependency_TransitiveChain(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		return dep.Apply(ctx, step)
+		evalResult, err := dep.Evaluate(ctx, step)
+		if err != nil {
+			return nil, err
+		}
+		return dep.Apply(ctx, evalResult, step)
 	}
 
 	require.NoError(t, registry.Register(pluginC))
@@ -117,8 +133,10 @@ func TestPluginDependency_TransitiveChain(t *testing.T) {
 	require.Equal(t, []string{"plugin_c", "plugin_b", "plugin_a"}, order)
 
 	ctx := context.Background()
-	step := &config.Step{ID: "composite", Type: "plugin_a"}
-	_, err := pluginA.Apply(ctx, step)
+	step := &config.Step{ID: "composite", Name: "plugin_a"}
+	evalResult, err := pluginA.Evaluate(ctx, step)
+	require.NoError(t, err)
+	_, err = pluginA.Apply(ctx, evalResult, step)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, pluginA.applyCalls)
@@ -231,11 +249,15 @@ func TestPluginDependency_BackwardCompatibility(t *testing.T) {
 	// Legacy plugin still retrievable
 	legacyFromRegistry, err := registry.Get("legacy_tool")
 	require.NoError(t, err)
-	_, err = legacyFromRegistry.Apply(context.Background(), &config.Step{ID: "legacy", Type: "legacy_tool"})
+	evalResult, err := legacyFromRegistry.Evaluate(context.Background(), &config.Step{ID: "legacy", Name: "legacy_tool"})
+	require.NoError(t, err)
+	_, err = legacyFromRegistry.Apply(context.Background(), evalResult, &config.Step{ID: "legacy", Name: "legacy_tool"})
 	require.NoError(t, err)
 
 	// Modern plugin can resolve dependency on legacy plugin
-	_, err = modern.Apply(context.Background(), &config.Step{ID: "modern", Type: "modern_tool"})
+	evalResult, err = modern.Evaluate(context.Background(), &config.Step{ID: "modern", Name: "modern_tool"})
+	require.NoError(t, err)
+	_, err = modern.Apply(context.Background(), evalResult, &config.Step{ID: "modern", Name: "modern_tool"})
 	require.NoError(t, err)
 
 	names := registry.List()
@@ -259,10 +281,8 @@ type integrationTestPlugin struct {
 	pluginType    string
 	registry      *plugin.PluginRegistry
 	initFn        func(*plugin.PluginRegistry) error
+	evaluateFn    func(context.Context, *config.Step) (*model.EvaluationResult, error)
 	applyFn       func(context.Context, *config.Step, *plugin.PluginRegistry) (*model.StepResult, error)
-	checkFn       func(context.Context, *config.Step) (bool, error)
-	dryRunFn      func(context.Context, *config.Step) (*model.StepResult, error)
-	verifyFn      func(context.Context, *config.Step) (*model.VerificationResult, error)
 	applyCalls    int
 	lastApplyStep *config.Step
 	invokeLog     []string
@@ -276,7 +296,7 @@ func newIntegrationPlugin(name string, opts ...integrationPluginOption) *integra
 			APIVersion:   "1.x",
 			Dependencies: []plugin.Dependency{},
 		},
-		pluginType: name,
+
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -304,44 +324,32 @@ func withInit(fn func(*plugin.PluginRegistry) error) integrationPluginOption {
 	}
 }
 
-func (p *integrationTestPlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{Name: p.metadata.Name, Version: p.metadata.Version, Type: p.pluginType}
+func (p *integrationTestPlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{Name: p.metadata.Name, Version: p.metadata.Version, Type: p.pluginType}
 }
 
-func (p *integrationTestPlugin) Schema() interface{} { return nil }
+func (p *integrationTestPlugin) Schema() any { return nil }
 
-func (p *integrationTestPlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
-	if p.checkFn != nil {
-		return p.checkFn(ctx, step)
+func (p *integrationTestPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	if p.evaluateFn != nil {
+		return p.evaluateFn(ctx, step)
 	}
-	return false, nil
+	// Default evaluation - always requires action
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusUnknown,
+		RequiresAction: true,
+		Message:        "integration test plugin evaluation",
+	}, nil
 }
 
-func (p *integrationTestPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (p *integrationTestPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	p.applyCalls++
 	p.lastApplyStep = cloneStep(step)
 	if p.applyFn != nil {
 		return p.applyFn(ctx, step, p.registry)
 	}
 	return &model.StepResult{StepID: step.ID, Status: "success"}, nil
-}
-
-func (p *integrationTestPlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	if p.dryRunFn != nil {
-		return p.dryRunFn(ctx, step)
-	}
-	return &model.StepResult{StepID: step.ID, Status: "skipped"}, nil
-}
-
-func (p *integrationTestPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	if p.verifyFn != nil {
-		return p.verifyFn(ctx, step)
-	}
-	return &model.VerificationResult{StepID: step.ID, Status: model.StatusSatisfied}, nil
-}
-
-func (p *integrationTestPlugin) PluginMetadata() plugin.PluginMetadata {
-	return p.metadata
 }
 
 func (p *integrationTestPlugin) Init(registry *plugin.PluginRegistry) error {
@@ -358,24 +366,23 @@ type legacyPlugin struct {
 	name string
 }
 
-func (p *legacyPlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{Name: p.name, Version: "1.0.0", Type: p.name}
+func (p *legacyPlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{Name: p.name, Version: "1.0.0", Type: "legacy"}
 }
 
-func (p *legacyPlugin) Schema() interface{} { return nil }
+func (p *legacyPlugin) Schema() any { return nil }
 
-func (p *legacyPlugin) Check(ctx context.Context, step *config.Step) (bool, error) { return false, nil }
+func (p *legacyPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusUnknown,
+		RequiresAction: true,
+		Message:        "legacy plugin evaluation",
+	}, nil
+}
 
-func (p *legacyPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (p *legacyPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	return &model.StepResult{StepID: step.ID, Status: "success"}, nil
-}
-
-func (p *legacyPlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	return &model.StepResult{StepID: step.ID, Status: "skipped"}, nil
-}
-
-func (p *legacyPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	return &model.VerificationResult{StepID: step.ID, Status: model.StatusSatisfied}, nil
 }
 
 // --- Utility helpers -------------------------------------------------------

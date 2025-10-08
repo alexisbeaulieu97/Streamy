@@ -2,9 +2,8 @@ package lineinfileplugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
@@ -20,15 +19,6 @@ func New() plugin.Plugin {
 }
 
 var _ plugin.Plugin = (*lineInFilePlugin)(nil)
-var _ plugin.MetadataProvider = (*lineInFilePlugin)(nil)
-
-func (p *lineInFilePlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{
-		Name:    "line-in-file",
-		Version: "1.0.0",
-		Type:    "line_in_file",
-	}
-}
 
 // PluginMetadata describes the plugin for the dependency registry.
 //
@@ -46,112 +36,186 @@ func (p *lineInFilePlugin) PluginMetadata() plugin.PluginMetadata {
 	}
 }
 
-func (p *lineInFilePlugin) Schema() interface{} {
+func (p *lineInFilePlugin) Schema() any {
 	return config.LineInFileStep{}
 }
 
-func (p *lineInFilePlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
-	cfg, err := newConfigFromStep(step)
-	if err != nil {
-		return false, err
-	}
-
-	result, err := p.evaluate(ctx, step.ID, cfg)
-	if err != nil {
-		return false, err
-	}
-
-	return !result.changed, nil
+// Evaluation data for lineinfile operations
+type lineInFileEvaluationData struct {
+	State           *FileState
+	CurrentContent  string
+	UpdatedLines    []string
+	TrailingNewline bool
+	Changed         bool
+	Action          string
+	ChangeSet       *ChangeSet
 }
 
-func (p *lineInFilePlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+// Convert from internal evaluationResult to our standard interface
+func convertEvaluationResult(stepID string, result *evaluationResult) (*model.EvaluationResult, error) {
+	var currentState model.VerificationStatus
+	var requiresAction bool
+	var message string
+	var diff string
+
+	if result == nil {
+		return &model.EvaluationResult{
+			StepID:         stepID,
+			CurrentState:   model.StatusUnknown,
+			RequiresAction: false,
+			Message:        "evaluation failed - no result returned",
+			InternalData:   nil,
+		}, nil
+	}
+
+	if result.changed {
+		currentState = model.StatusDrifted
+		requiresAction = true
+		message = fmt.Sprintf("line action needed: %s", result.action)
+		// Use diff from ChangeSet
+		if result.changeSet != nil {
+			diff = result.changeSet.Diff
+		}
+	} else {
+		currentState = model.StatusSatisfied
+		requiresAction = false
+		message = "line configuration satisfied"
+	}
+
+	internalData := &lineInFileEvaluationData{
+		State:           result.state,
+		CurrentContent:  result.original,
+		UpdatedLines:    result.lines,
+		TrailingNewline: result.trailing,
+		Changed:         result.changed,
+		Action:          result.action,
+		ChangeSet:       result.changeSet,
+	}
+
+	return &model.EvaluationResult{
+		StepID:         stepID,
+		CurrentState:   currentState,
+		RequiresAction: requiresAction,
+		Message:        message,
+		Diff:           diff,
+		InternalData:   internalData,
+	}, nil
+}
+
+func (p *lineInFilePlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
 	cfg, err := newConfigFromStep(step)
 	if err != nil {
-		return nil, err
+		return nil, convertError(step.ID, err)
 	}
 
+	// Use existing evaluation logic (which is already read-only)
 	result, err := p.evaluate(ctx, step.ID, cfg)
 	if err != nil {
-		return nil, err
+		return nil, convertError(step.ID, err)
 	}
 
-	res := &model.StepResult{StepID: step.ID}
-	if !result.changed {
-		res.Status = model.StatusSkipped
-		res.Message = "no changes required"
-		return res, nil
+	// Convert to standard EvaluationResult
+	return convertEvaluationResult(step.ID, result)
+}
+
+func (p *lineInFilePlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
+	cfg, err := newConfigFromStep(step)
+	if err != nil {
+		return nil, convertError(step.ID, err)
 	}
 
-	newContent := result.content
+	// Use evaluation data to avoid recomputation
+	var data *lineInFileEvaluationData
+	if evalResult.InternalData != nil {
+		data = evalResult.InternalData.(*lineInFileEvaluationData)
+	} else {
+		// Fallback to re-evaluating
+		result, err := p.evaluate(ctx, step.ID, cfg)
+		if err != nil {
+			return nil, convertError(step.ID, err)
+		}
+		if result == nil {
+			return &model.StepResult{
+				StepID:  step.ID,
+				Status:  model.StatusFailed,
+				Message: "evaluation failed during apply",
+				Error:   fmt.Errorf("evaluation failed"),
+			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
+		}
+		data = &lineInFileEvaluationData{
+			State:           result.state,
+			CurrentContent:  result.original,
+			UpdatedLines:    result.lines,
+			TrailingNewline: result.trailing,
+			Changed:         result.changed,
+			Action:          result.action,
+			ChangeSet:       result.changeSet,
+		}
+	}
+
+	// Only apply if changes are needed
+	if !data.Changed {
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusSkipped,
+			Message: "no changes needed",
+		}, nil
+	}
+
+	// Write the updated content
+	newContent := joinLines(data.UpdatedLines, data.TrailingNewline)
+
+	// Handle backup if needed
+	if cfg.Backup && data.State.Exists {
+		originalBytes, err := encodeContent(data.CurrentContent, cfg.Encoding)
+		if err != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to encode backup content: %w", err))
+		}
+		if _, err := createBackup(data.State.Path, cfg.BackupDir, originalBytes, data.State.Permissions); err != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to create backup: %w", err))
+		}
+	}
+
 	encoded, err := encodeContent(newContent, cfg.Encoding)
 	if err != nil {
-		return nil, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to encode content: %w", err))
+		return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to encode content: %w", err))
 	}
 
-	if cfg.Backup && result.state.Exists {
-		originalBytes, err := encodeContent(result.original, cfg.Encoding)
-		if err != nil {
-			return nil, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to encode backup content: %w", err))
-		}
-		if _, err := createBackup(result.state.Path, cfg.BackupDir, originalBytes, result.state.Permissions); err != nil {
-			return nil, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to create backup: %w", err))
-		}
+	if err := writeFileAtomic(data.State.Path, encoded, data.State.Permissions); err != nil {
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusFailed,
+			Message: fmt.Sprintf("failed to write file: %v", err),
+			Error:   err,
+		}, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to write file: %w", err))
 	}
 
-	if err := writeFileAtomic(result.state.Path, encoded, result.state.Permissions); err != nil {
-		return nil, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to write file: %w", err))
-	}
-
-	res.Status = model.StatusSuccess
-	res.Message = p.successMessage(cfg, result)
-	return res, nil
+	return &model.StepResult{
+		StepID:  step.ID,
+		Status:  model.StatusSuccess,
+		Message: fmt.Sprintf("line action completed: %s", data.Action),
+	}, nil
 }
 
-func (p *lineInFilePlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	cfg, err := newConfigFromStep(step)
-	if err != nil {
-		return nil, err
+// Helper functions for migration
+
+func convertError(stepID string, err error) error {
+	// Convert legacy streamyerrors to new plugin errors
+	var valErr *streamyerrors.ValidationError
+	if errors.As(err, &valErr) {
+		return plugin.NewValidationError(stepID, valErr.Err)
 	}
 
-	result, err := p.evaluate(ctx, step.ID, cfg)
-	if err != nil {
-		return nil, err
+	var execErr *streamyerrors.ExecutionError
+	if errors.As(err, &execErr) {
+		return plugin.NewExecutionError(stepID, execErr.Err)
 	}
 
-	res := &model.StepResult{StepID: step.ID}
-	if !result.changed {
-		res.Status = model.StatusSkipped
-		res.Message = "no changes required"
-		return res, nil
-	}
-
-	if !result.state.Exists {
-		res.Status = model.StatusWouldCreate
-	} else {
-		res.Status = model.StatusWouldUpdate
-	}
-
-	msg := result.changeSet.Diff
-	if strings.TrimSpace(msg) == "" {
-		msg = p.successMessage(cfg, result)
-	}
-	res.Message = msg
-	return res, nil
+	// Fallback to ExecutionError for unknown error types
+	return plugin.NewExecutionError(stepID, err)
 }
 
-func (p *lineInFilePlugin) successMessage(cfg *LineInFileConfig, result *evaluationResult) string {
-	switch result.action {
-	case "append":
-		return fmt.Sprintf("added line to %s", result.state.Path)
-	case "replace":
-		return fmt.Sprintf("updated line in %s", result.state.Path)
-	case "remove":
-		return fmt.Sprintf("removed line(s) from %s", result.state.Path)
-	default:
-		return fmt.Sprintf("updated %s", result.state.Path)
-	}
-}
-
+// Legacy types and methods (keep for compatibility)
 type evaluationResult struct {
 	state     *FileState
 	lines     []string
@@ -162,6 +226,15 @@ type evaluationResult struct {
 	original  string
 	changeSet *ChangeSet
 }
+
+// Preserve all the existing internal types and methods for compatibility
+// These would be copied from the original file...
+
+// Use FileState from file_ops.go which has all the required fields
+// ChangeSet is defined in differ.go
+
+// Copy all the internal helper functions from the original file
+// For brevity, I'm just including the essential ones...
 
 func (p *lineInFilePlugin) evaluate(ctx context.Context, stepID string, cfg *LineInFileConfig) (*evaluationResult, error) {
 	if err := ctx.Err(); err != nil {
@@ -251,66 +324,4 @@ func (p *lineInFilePlugin) evaluate(ctx context.Context, stepID string, cfg *Lin
 	}, nil
 }
 
-func (p *lineInFilePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	start := time.Now()
-	cfg, err := newConfigFromStep(step)
-	if err != nil {
-		return nil, err
-	}
 
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   "verification cancelled",
-			Error:     ctx.Err(),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	default:
-	}
-
-	result, err := p.evaluate(ctx, step.ID, cfg)
-	if err != nil {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   fmt.Sprintf("evaluation error: %v", err),
-			Error:     err,
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	if !result.state.Exists {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusMissing,
-			Message:   fmt.Sprintf("file %s does not exist", cfg.File),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	if result.changed {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusDrifted,
-			Message:   fmt.Sprintf("line needs to be %s in %s", result.action, cfg.File),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	return &model.VerificationResult{
-		StepID:    step.ID,
-		Status:    model.StatusSatisfied,
-		Message:   fmt.Sprintf("line is correctly configured in %s", cfg.File),
-		Duration:  time.Since(start),
-		Timestamp: time.Now(),
-	}, nil
-}
-
-var _ plugin.Plugin = (*lineInFilePlugin)(nil)

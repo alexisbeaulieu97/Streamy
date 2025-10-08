@@ -96,7 +96,8 @@ func TestIntegrationDryRunSkipsExecution(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, results, len(cfg.Steps))
 	for _, res := range results {
-		require.Equal(t, streammodel.StatusSkipped, res.Status)
+		// With new Evaluate/Apply interface, dry run shows what would be updated
+		require.Equal(t, streammodel.StatusWouldUpdate, res.Status)
 	}
 }
 

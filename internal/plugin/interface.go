@@ -7,27 +7,6 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 )
 
-// Metadata describes legacy plugin capabilities.
-//
-// # Migration Note
-// Plugins participating in the dependency registry should implement the
-// MetadataProvider interface and return a PluginMetadata value that includes
-// dependency declarations, version constraints, and stateful behaviour.
-// The Metadata struct remains for backward compatibility with existing
-// plugins that have not yet migrated.
-type Metadata struct {
-	Name    string
-	Version string
-	Type    string
-}
-
-// MetadataProvider exposes the enriched PluginMetadata used by the registry.
-// Implementing this interface is optional but required for dependency-aware
-// plugins to declare dependencies, version constraints, and policy hints.
-type MetadataProvider interface {
-	PluginMetadata() PluginMetadata
-}
-
 // PluginInitializer allows a plugin to receive a reference to the registry
 // during startup. Plugins that do not need initialization can ignore this
 // interface; the registry detects it via type assertion and only calls Init
@@ -36,20 +15,55 @@ type PluginInitializer interface {
 	Init(registry *PluginRegistry) error
 }
 
-// Plugin defines the contract all Streamy plugins must satisfy.
+// Plugin defines the unified contract all Streamy plugins must satisfy.
+//
+// This interface replaces the legacy 4-method approach (Check/Apply/DryRun/Verify)
+// with a cleaner 2-method Evaluate/Apply pattern.
 //
 // Implementations should:
-//   - Return stable identity data via Metadata(), noting that dependency-aware
-//     plugins typically also implement MetadataProvider for richer metadata.
-//   - Provide JSON/YAML schemas from Schema() to support validation.
-//   - Use Check/Apply/DryRun/Verify to participate in Streamy's reconciliation loop.
-//   - Optionally implement PluginInitializer to acquire dependencies from the
-//     registry during initialization.
+//   - Return rich metadata via PluginMetadata()
+//   - Provide configuration schemas via Schema()
+//   - Implement read-only state assessment via Evaluate()
+//   - Implement state mutation via Apply()
+//   - Optionally implement PluginInitializer for registry access
 type Plugin interface {
-	Metadata() Metadata
-	Schema() interface{}
-	Check(ctx context.Context, step *config.Step) (bool, error)
-	Apply(ctx context.Context, step *config.Step) (*model.StepResult, error)
-	DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error)
-	Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error)
+	// PluginMetadata returns the plugin's identity, capabilities, and dependencies.
+	// This provides rich metadata for the dependency registry and plugin discovery.
+	PluginMetadata() PluginMetadata
+
+	// Schema returns a struct that defines the YAML configuration schema
+	// for this plugin's steps. The returned struct should have JSON tags
+	// for schema generation and validation.
+	Schema() any
+
+	// Evaluate performs a STRICTLY READ-ONLY assessment of the system's
+	// current state against the desired state defined in the step configuration.
+	//
+	// CRITICAL CONTRACT: This method MUST NOT mutate any system state.
+	// It should only read current state and compute what changes (if any)
+	// would be needed to reach the desired state.
+	//
+	// Returns:
+	//   - EvaluationResult: Rich state assessment including current status,
+	//     whether action is required, human-readable message, optional diff,
+	//     and optional internal data to pass to Apply()
+	//   - error: PluginError (ValidationError, ExecutionError, StateError)
+	//     if evaluation cannot be completed
+	Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error)
+
+	// Apply mutates the system to match the desired state defined in the
+	// step configuration. This method is ONLY called by the engine if
+	// Evaluate() reported RequiresAction = true.
+	//
+	// The evalResult parameter contains the result from the previous
+	// Evaluate() call, including InternalData that can be used to avoid
+	// redundant computation.
+	//
+	// This method MUST be idempotent: calling it multiple times with the
+	// same inputs should produce the same final state.
+	//
+	// Returns:
+	//   - StepResult: Outcome of the apply operation (success, failure, etc.)
+	//   - error: PluginError if the operation fails
+	Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error)
 }

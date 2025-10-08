@@ -11,6 +11,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
@@ -138,11 +139,47 @@ func executeStep(ctx context.Context, execCtx *ExecutionContext, step *config.St
 	}
 
 	start := time.Now()
+
+	// First evaluate the step
+	evalResult, err := impl.Evaluate(stepCtx, step)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation failed for step %s: %w", step.ID, err)
+	}
+
 	var result *model.StepResult
 	if execCtx.DryRun {
-		result, err = impl.DryRun(stepCtx, step)
+		// For dry-run, create a result based on evaluation
+		if evalResult.RequiresAction {
+			result = &model.StepResult{
+				StepID:    evalResult.StepID,
+				Status:    model.StatusWouldUpdate,
+				Message:   evalResult.Message,
+				Duration:  time.Since(start),
+				Timestamp: time.Now(),
+			}
+		} else {
+			result = &model.StepResult{
+				StepID:    evalResult.StepID,
+				Status:    model.StatusSkipped,
+				Message:   evalResult.Message,
+				Duration:  time.Since(start),
+				Timestamp: time.Now(),
+			}
+		}
 	} else {
-		result, err = impl.Apply(stepCtx, step)
+		// For apply mode, only call Apply() if action is required
+		if evalResult.RequiresAction {
+			result, err = impl.Apply(stepCtx, evalResult, step)
+		} else {
+			// Skip the step since it's already satisfied
+			result = &model.StepResult{
+				StepID:    evalResult.StepID,
+				Status:    model.StatusSkipped,
+				Message:   evalResult.Message,
+				Duration:  time.Since(start),
+				Timestamp: time.Now(),
+			}
+		}
 	}
 	duration := time.Since(start)
 
@@ -319,12 +356,41 @@ func (e *Executor) VerifySteps(ctx *ExecutionContext, steps []config.Step, defau
 			stepStart := time.Now()
 			stepCtx, cancel := context.WithTimeout(ctx.Context, timeout)
 
-			result, verifyErr := p.Verify(stepCtx, step)
+			// Use new Evaluate() method for verification
+			evalResult, verifyErr := p.Evaluate(stepCtx, step)
 			cancel()
 
 			if verifyErr != nil {
 				summary.Duration = time.Since(start)
 
+				// Handle new structured error types
+				var pluginErr plugin.PluginError
+				if errors.As(verifyErr, &pluginErr) {
+					switch pluginErr.(type) {
+					case *plugin.ValidationError:
+						// Configuration error - always fatal
+						return summary, verifyErr
+					case *plugin.ExecutionError:
+						// Execution error - always fatal in verify mode
+						return summary, verifyErr
+					case *plugin.StateError:
+						// State detection error - treat as Unknown status
+						result := &model.VerificationResult{
+							StepID:    step.ID,
+							Status:    model.StatusUnknown,
+							Message:   pluginErr.Error(),
+							Error:     pluginErr.Unwrap(),
+							Duration:  time.Since(stepStart),
+							Timestamp: time.Now(),
+						}
+						summary.Results = append(summary.Results, result)
+						summary.Unknown++
+						resultsByID[step.ID] = result
+						continue
+					}
+				}
+
+				// Handle legacy error types
 				var validationErr *streamyerrors.ValidationError
 				if errors.As(verifyErr, &validationErr) {
 					return summary, verifyErr
@@ -340,25 +406,22 @@ func (e *Executor) VerifySteps(ctx *ExecutionContext, steps []config.Step, defau
 					return summary, verifyErr
 				}
 
-				var pluginErr *streamyerrors.PluginError
-				if errors.As(verifyErr, &pluginErr) {
+				var legacyPluginErr *streamyerrors.PluginError
+				if errors.As(verifyErr, &legacyPluginErr) {
 					return summary, verifyErr
 				}
 
 				return summary, streamyerrors.NewExecutionError(step.ID, verifyErr)
 			}
 
-			if result == nil {
-				result = &model.VerificationResult{StepID: step.ID}
-			}
-			if result.StepID == "" {
-				result.StepID = step.ID
-			}
-			if result.Timestamp.IsZero() {
-				result.Timestamp = time.Now()
-			}
-			if result.Duration == 0 {
-				result.Duration = time.Since(stepStart)
+			// Convert EvaluationResult to VerificationResult for compatibility
+			result := &model.VerificationResult{
+				StepID:    evalResult.StepID,
+				Status:    evalResult.CurrentState,
+				Message:   evalResult.Message,
+				Details:   evalResult.Diff, // Use Diff as Details for compatibility
+				Duration:  time.Since(stepStart),
+				Timestamp: time.Now(),
 			}
 
 			summary.Results = append(summary.Results, result)
