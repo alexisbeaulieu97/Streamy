@@ -2,6 +2,7 @@ package commandplugin
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	pluginpkg "github.com/alexisbeaulieu97/streamy/internal/plugin"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 func TestCommandPlugin_EvaluateUsesCheckCommand(t *testing.T) {
@@ -248,4 +250,84 @@ func TestCommandPlugin_EvaluateWithErrorInCheckCommand(t *testing.T) {
 	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
 	require.True(t, evalResult.RequiresAction)
 	require.Contains(t, evalResult.Message, "check command failed")
+}
+
+func TestCommandPlugin_ApplySkipsWhenNoAction(t *testing.T) {
+	step := &config.Step{
+		ID:   "skip",
+		Type: "command",
+		Command: &config.CommandStep{
+			Command: "echo noop",
+		},
+	}
+
+	eval := &model.EvaluationResult{
+		StepID:         step.ID,
+		RequiresAction: false,
+		CurrentState:   model.StatusSatisfied,
+		Message:        "already satisfied",
+		InternalData: &commandEvaluationData{
+			ShellDetermined: true,
+		},
+	}
+
+	result, err := New().Apply(context.Background(), eval, step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusSkipped, result.Status)
+	require.Equal(t, step.ID, result.StepID)
+}
+
+func TestCommandConvertError(t *testing.T) {
+	t.Run("wraps validation errors", func(t *testing.T) {
+		err := streamyerrors.NewValidationError("field", "invalid", nil)
+		converted := convertError("cmd", err)
+
+		var pluginErr *pluginpkg.ValidationError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "cmd", pluginErr.StepID())
+	})
+
+	t.Run("wraps execution errors", func(t *testing.T) {
+		err := streamyerrors.NewExecutionError("legacy", errors.New("boom"))
+		converted := convertError("cmd2", err)
+
+		var pluginErr *pluginpkg.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "cmd2", pluginErr.StepID())
+	})
+
+	t.Run("wraps unknown errors as execution", func(t *testing.T) {
+		err := errors.New("other failure")
+		converted := convertError("cmd3", err)
+
+		var pluginErr *pluginpkg.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "cmd3", pluginErr.StepID())
+	})
+}
+
+func TestDetermineShellExplicit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell selection differs on Windows")
+	}
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("/bin/sh not available")
+	}
+
+	shell, args, err := determineShell("/bin/sh")
+	require.NoError(t, err)
+	require.Equal(t, "/bin/sh", shell)
+	require.Equal(t, []string{"-c"}, args)
+}
+
+func TestDetermineShellNoFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell lookup differs on Windows")
+	}
+	originalPath := os.Getenv("PATH")
+	t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
+	require.NoError(t, os.Setenv("PATH", ""))
+
+	_, _, err := determineShell("")
+	require.Error(t, err)
 }

@@ -17,8 +17,6 @@ import (
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
-const templatePluginType = "template"
-
 // Internal data for template operations
 type templateEvaluationData struct {
 	RenderedContent string
@@ -92,7 +90,7 @@ func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*mode
 	var renderedHash string
 	var err error
 
-	if cfg.Vars == nil || len(cfg.Vars) == 0 {
+	if len(cfg.Vars) == 0 {
 		// No variables - treat as literal copy, but validate template syntax first
 		templateContent, readErr := os.ReadFile(cfg.Source)
 		if readErr != nil {

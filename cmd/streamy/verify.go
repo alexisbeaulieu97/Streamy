@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -24,6 +25,22 @@ type verifyOptions struct {
 	JSON       bool
 	Timeout    time.Duration
 }
+
+type verificationExecutor interface {
+	VerifySteps(ctx *engine.ExecutionContext, steps []config.Step, defaultTimeout time.Duration) (*model.VerificationSummary, error)
+}
+
+var (
+	parseConfigFunc                  = config.ParseConfig
+	newLoggerFunc                    = func(opts logger.Options) (*logger.Logger, error) { return logger.New(opts) }
+	newExecutorFunc                  = func(log *logger.Logger) verificationExecutor { return engine.NewExecutor(log) }
+	getRegistryFunc                  = getAppRegistry
+	exitFunc                         = os.Exit
+	stderrWriter           io.Writer = os.Stderr
+	printTableOutputFunc             = printTableOutput
+	printVerboseOutputFunc           = printVerboseOutput
+	printJSONOutputFunc              = printJSONOutput
+)
 
 func newVerifyCmd(root *rootFlags) *cobra.Command {
 	opts := verifyOptions{}
@@ -50,29 +67,34 @@ exit code 1 if any changes are needed.`,
 }
 
 func runVerify(opts verifyOptions) error {
-	// Parse configuration
-	cfg, err := config.ParseConfig(opts.ConfigPath)
+	exitCode, err := runVerifyInternal(opts)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing configuration: %v\n", err)
-		os.Exit(2)
+		return err
+	}
+	exitFunc(exitCode)
+	return nil
+}
+
+func runVerifyInternal(opts verifyOptions) (int, error) {
+	cfg, err := parseConfigFunc(opts.ConfigPath)
+	if err != nil {
+		fmt.Fprintf(stderrWriter, "Error parsing configuration: %v\n", err)
+		return 2, nil
 	}
 
-	// Create logger
 	level := "info"
 	if opts.Verbose {
 		level = "debug"
 	}
 
-	log, err := logger.New(logger.Options{Level: level, HumanReadable: !opts.JSON})
+	log, err := newLoggerFunc(logger.Options{Level: level, HumanReadable: !opts.JSON})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating logger: %v\n", err)
-		os.Exit(3)
+		fmt.Fprintf(stderrWriter, "Error creating logger: %v\n", err)
+		return 3, nil
 	}
 
-	// Create executor
-	executor := engine.NewExecutor(log)
+	executor := newExecutorFunc(log)
 
-	// Run verification
 	ctx := context.Background()
 	perStepTimeout := opts.Timeout
 	if perStepTimeout > 0 {
@@ -90,26 +112,25 @@ func runVerify(opts verifyOptions) error {
 		"steps":  len(cfg.Steps),
 	}).Info("Starting verification")
 
-	// Create execution context for verification
 	execCtx := &engine.ExecutionContext{
 		Config:   cfg,
-		DryRun:   true, // Verification is always dry-run
+		DryRun:   true,
 		Verbose:  opts.Verbose,
 		Logger:   log,
 		Context:  ctx,
-		Registry: getAppRegistry(),
+		Registry: getRegistryFunc(),
 	}
 
 	summary, err := executor.VerifySteps(execCtx, cfg.Steps, perStepTimeout)
 	if err != nil {
 		var validationErr *streamyerrors.ValidationError
 		if errors.As(err, &validationErr) {
-			fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
-			os.Exit(2)
+			fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
+			return 2, nil
 		}
 
-		fmt.Fprintf(os.Stderr, "Verification error: %v\n", err)
-		os.Exit(3)
+		fmt.Fprintf(stderrWriter, "Verification error: %v\n", err)
+		return 3, nil
 	}
 
 	log.WithFields(map[string]any{
@@ -122,21 +143,18 @@ func runVerify(opts verifyOptions) error {
 		"duration":  summary.Duration.String(),
 	}).Info("Verification complete")
 
-	// Output results
 	if opts.JSON {
-		if err := printJSONOutput(summary, opts.ConfigPath); err != nil {
+		if err := printJSONOutputFunc(summary, opts.ConfigPath); err != nil {
 			log.Error(err, "Failed to generate JSON output")
-			os.Exit(3)
+			return 3, nil
 		}
 	} else if opts.Verbose {
-		printVerboseOutput(summary)
+		printVerboseOutputFunc(summary)
 	} else {
-		printTableOutput(summary)
+		printTableOutputFunc(summary)
 	}
 
-	// Exit with appropriate code
-	os.Exit(summary.ExitCode())
-	return nil
+	return summary.ExitCode(), nil
 }
 
 func printTableOutput(summary *model.VerificationSummary) {

@@ -325,7 +325,7 @@ func generateFileDiff(src, dst string) string {
 	// Generate unified diff
 	diffStr := diff.GenerateUnifiedDiff(srcContent, dstContent, src, dst)
 	if diffStr == "" {
-		return fmt.Sprintf("Files are identical")
+		return "Files are identical"
 	}
 
 	return diffStr

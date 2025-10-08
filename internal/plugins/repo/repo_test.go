@@ -2,6 +2,7 @@ package repoplugin
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 func TestRepoPlugin_Metadata(t *testing.T) {
@@ -363,5 +366,34 @@ func TestRepoPlugin_Apply_Errors(t *testing.T) {
 		_, err := p.Apply(context.Background(), evalResult, step)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "repo configuration missing")
+	})
+}
+
+func TestRepoConvertError(t *testing.T) {
+	t.Run("wraps validation errors", func(t *testing.T) {
+		err := streamyerrors.NewValidationError("field", "invalid", nil)
+		converted := convertError("step1", err)
+
+		var pluginErr *plugin.ValidationError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "step1", pluginErr.StepID())
+	})
+
+	t.Run("wraps execution errors", func(t *testing.T) {
+		err := streamyerrors.NewExecutionError("legacy", errors.New("boom"))
+		converted := convertError("step2", err)
+
+		var pluginErr *plugin.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "step2", pluginErr.StepID())
+	})
+
+	t.Run("wraps unknown errors as execution errors", func(t *testing.T) {
+		err := errors.New("other failure")
+		converted := convertError("step3", err)
+
+		var pluginErr *plugin.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "step3", pluginErr.StepID())
 	})
 }

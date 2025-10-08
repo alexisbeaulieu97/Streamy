@@ -2,6 +2,7 @@ package lineinfileplugin
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 func TestLineinfilePlugin_Metadata(t *testing.T) {
@@ -348,6 +351,35 @@ func TestLineinfilePlugin_ApplyErrors(t *testing.T) {
 		if result != nil {
 			require.Equal(t, model.StatusFailed, result.Status)
 		}
+	})
+}
+
+func TestLineinfileConvertError(t *testing.T) {
+	t.Run("wraps validation errors", func(t *testing.T) {
+		err := streamyerrors.NewValidationError("field", "invalid", nil)
+		converted := convertError("line", err)
+
+		var pluginErr *plugin.ValidationError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "line", pluginErr.StepID())
+	})
+
+	t.Run("wraps execution errors", func(t *testing.T) {
+		err := streamyerrors.NewExecutionError("legacy", errors.New("boom"))
+		converted := convertError("line2", err)
+
+		var pluginErr *plugin.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "line2", pluginErr.StepID())
+	})
+
+	t.Run("wraps unknown errors as execution", func(t *testing.T) {
+		err := errors.New("other failure")
+		converted := convertError("line3", err)
+
+		var pluginErr *plugin.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "line3", pluginErr.StepID())
 	})
 }
 

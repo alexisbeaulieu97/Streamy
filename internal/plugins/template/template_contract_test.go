@@ -72,7 +72,7 @@ func TestTemplateEvaluateInvalidConfig(t *testing.T) {
 		// No Template configuration
 	}
 
-	_, err := p.Evaluate(nil, step)
+	_, err := p.Evaluate(context.TODO(), step)
 	if err == nil {
 		t.Error("Expected error for missing configuration")
 	}

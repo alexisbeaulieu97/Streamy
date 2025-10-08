@@ -2,12 +2,15 @@ package packageplugin
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 func TestPackagePlugin_Metadata(t *testing.T) {
@@ -256,5 +259,57 @@ func TestPackagePlugin_Contract(t *testing.T) {
 			require.Equal(t, result1.CurrentState, result2.CurrentState, "CurrentState should be consistent across calls")
 			require.Equal(t, result1.RequiresAction, result2.RequiresAction, "RequiresAction should be consistent across calls")
 		})
+	})
+}
+
+func TestPackagePlugin_ApplySkipsWhenNoAction(t *testing.T) {
+	p := New()
+
+	step := &config.Step{
+		ID:   "skip",
+		Type: "package",
+		Package: &config.PackageStep{
+			Packages: []string{"bash"},
+		},
+	}
+
+	eval := &model.EvaluationResult{
+		StepID:         step.ID,
+		RequiresAction: false,
+		CurrentState:   model.StatusSatisfied,
+	}
+
+	result, err := p.Apply(context.Background(), eval, step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusSkipped, result.Status)
+	require.Equal(t, step.ID, result.StepID)
+}
+
+func TestPackageConvertError(t *testing.T) {
+	t.Run("wraps validation errors", func(t *testing.T) {
+		err := streamyerrors.NewValidationError("field", "invalid", nil)
+		converted := convertError("pkg", err)
+
+		var pluginErr *plugin.ValidationError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "pkg", pluginErr.StepID())
+	})
+
+	t.Run("wraps execution errors", func(t *testing.T) {
+		err := streamyerrors.NewExecutionError("legacy", errors.New("boom"))
+		converted := convertError("pkg2", err)
+
+		var pluginErr *plugin.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "pkg2", pluginErr.StepID())
+	})
+
+	t.Run("wraps unknown errors as execution", func(t *testing.T) {
+		err := errors.New("other failure")
+		converted := convertError("pkg3", err)
+
+		var pluginErr *plugin.ExecutionError
+		require.ErrorAs(t, converted, &pluginErr)
+		require.Equal(t, "pkg3", pluginErr.StepID())
 	})
 }

@@ -1,6 +1,7 @@
 package copyplugin
 
 import (
+	"context"
 	"testing"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
@@ -36,7 +37,7 @@ func TestCopyBasicFunctionality(t *testing.T) {
 		},
 	}
 
-	evalResult, err := p.Evaluate(nil, step)
+	evalResult, err := p.Evaluate(context.TODO(), step)
 	if err != nil {
 		t.Fatalf("Evaluate() returned error: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestCopyEvaluateInvalidConfig(t *testing.T) {
 		// No Copy configuration
 	}
 
-	_, err := p.Evaluate(nil, step)
+	_, err := p.Evaluate(context.TODO(), step)
 	if err == nil {
 		t.Error("Expected error for missing configuration")
 	}
