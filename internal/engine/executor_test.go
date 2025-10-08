@@ -216,32 +216,30 @@ type fakePlugin struct {
 	verifyCalls    []string
 }
 
-func (p *fakePlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{
-		Name:    "fake",
+func (p *fakePlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{
+		Name:    "command",
 		Version: "1.0.0",
 		Type:    "command",
 	}
 }
 
-func (p *fakePlugin) Schema() interface{} {
+func (p *fakePlugin) Schema() any {
 	return nil
 }
 
-func (p *fakePlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
-	return false, nil
-}
-
-func (p *fakePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
+func (p *fakePlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.verifyCalls = append(p.verifyCalls, step.ID)
+	p.mu.Unlock()
+
+	if p.delay > 0 {
+		select {
+		case <-ctx.Done():
+			return &model.EvaluationResult{StepID: step.ID, CurrentState: model.StatusUnknown, RequiresAction: false}, ctx.Err()
+		case <-time.After(p.delay):
+		}
+	}
 
 	if err, ok := p.verifyErrors[step.ID]; ok {
 		return nil, err
@@ -250,31 +248,25 @@ func (p *fakePlugin) Verify(ctx context.Context, step *config.Step) (*model.Veri
 	if status, ok := p.verifyStatuses[step.ID]; ok {
 		message := p.verifyMessages[step.ID]
 		if message == "" {
-			message = fmt.Sprintf("fake verification %s", status)
+			message = fmt.Sprintf("fake evaluation %s", status)
 		}
-		return &model.VerificationResult{
-			StepID:  step.ID,
-			Status:  status,
-			Message: message,
+		return &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   status,
+			RequiresAction: status != model.StatusSatisfied,
+			Message:        message,
 		}, nil
 	}
 
-	return &model.VerificationResult{
-		StepID:  step.ID,
-		Status:  model.StatusSatisfied,
-		Message: "fake verification satisfied",
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusMissing,
+		RequiresAction: true,
+		Message:        "fake evaluation requires action",
 	}, nil
 }
 
-func (p *fakePlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	if p.delay > 0 {
-		select {
-		case <-ctx.Done():
-			return &model.StepResult{StepID: step.ID, Status: "failed", Error: ctx.Err()}, ctx.Err()
-		case <-time.After(p.delay):
-		}
-	}
-
+func (p *fakePlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	p.mu.Lock()
 	p.calls = append(p.calls, step.ID)
 	p.mu.Unlock()
@@ -284,10 +276,6 @@ func (p *fakePlugin) Apply(ctx context.Context, step *config.Step) (*model.StepR
 	}
 
 	return &model.StepResult{StepID: step.ID, Status: "success", Message: "ok"}, nil
-}
-
-func (p *fakePlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	return &model.StepResult{StepID: step.ID, Status: "skipped", Message: "dry-run"}, nil
 }
 
 func (p *fakePlugin) applyOrder() []string {

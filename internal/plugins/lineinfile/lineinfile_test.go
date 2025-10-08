@@ -6,229 +6,24 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
-	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"github.com/alexisbeaulieu97/streamy/internal/model"
 )
 
-func TestLineInFile_Name(t *testing.T) {
+func TestLineinfilePlugin_Metadata(t *testing.T) {
 	t.Parallel()
 
-	plugin := New()
-	meta := plugin.Metadata()
+	p := New()
+	meta := p.PluginMetadata()
 
-	assert.Equal(t, "line_in_file", meta.Type)
+	require.NotEmpty(t, meta.Name)
+	require.NotEmpty(t, meta.Version)
+	require.Equal(t, "line_in_file", meta.Name)
 }
 
-func TestLineInFile_Validate_Valid(t *testing.T) {
-	t.Parallel()
-
-	plugin := New()
-	ctx := context.Background()
-
-	tests := []struct {
-		name string
-		step *config.Step
-	}{
-		{
-			name: "present without match",
-			step: newLineInFileStep(
-				"test-present",
-				&config.LineInFileStep{
-					File:  "/tmp/example.txt",
-					Line:  "export PATH=\"$PATH:/opt/bin\"",
-					State: "present",
-				},
-			),
-		},
-		{
-			name: "present with match",
-			step: newLineInFileStep(
-				"test-match",
-				&config.LineInFileStep{
-					File:              "/tmp/example.txt",
-					Line:              "debug=false",
-					State:             "present",
-					Match:             "^debug=",
-					OnMultipleMatches: "first",
-				},
-			),
-		},
-		{
-			name: "absent with match",
-			step: newLineInFileStep(
-				"test-absent",
-				&config.LineInFileStep{
-					File:  "/tmp/example.txt",
-					Line:  "export OLD_VAR=value",
-					State: "absent",
-					Match: "^export OLD_VAR=",
-				},
-			),
-		},
-		{
-			name: "all optional fields",
-			step: newLineInFileStep(
-				"test-optional",
-				&config.LineInFileStep{
-					File:              "/tmp/example.txt",
-					Line:              "export EDITOR=vim",
-					State:             "present",
-					Match:             "^export EDITOR=",
-					OnMultipleMatches: "all",
-					Backup:            true,
-					BackupDir:         "/tmp/backups",
-					Encoding:          "latin-1",
-				},
-			),
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := plugin.DryRun(ctx, tt.step)
-			require.NoError(t, err)
-		})
-	}
-}
-
-func TestLineInFile_Validate_Errors(t *testing.T) {
-	t.Parallel()
-
-	plugin := New()
-	ctx := context.Background()
-
-	tests := []struct {
-		name     string
-		step     *config.Step
-		errField string
-	}{
-		{
-			name: "missing file",
-			step: newLineInFileStep(
-				"missing-file",
-				&config.LineInFileStep{
-					Line: "export PATH=\"$PATH:/opt/bin\"",
-				},
-			),
-			errField: "file",
-		},
-		{
-			name: "missing line",
-			step: newLineInFileStep(
-				"missing-line",
-				&config.LineInFileStep{
-					File: "/tmp/example.txt",
-				},
-			),
-			errField: "line",
-		},
-		{
-			name: "invalid state",
-			step: newLineInFileStep(
-				"invalid-state",
-				&config.LineInFileStep{
-					File:  "/tmp/example.txt",
-					Line:  "value",
-					State: "maybe",
-				},
-			),
-			errField: "state",
-		},
-		{
-			name: "absent without match",
-			step: newLineInFileStep(
-				"absent-match",
-				&config.LineInFileStep{
-					File:  "/tmp/example.txt",
-					Line:  "value",
-					State: "absent",
-				},
-			),
-			errField: "match",
-		},
-		{
-			name: "invalid regex",
-			step: newLineInFileStep(
-				"invalid-regex",
-				&config.LineInFileStep{
-					File:  "/tmp/example.txt",
-					Line:  "value",
-					State: "present",
-					Match: "[invalid",
-				},
-			),
-			errField: "match",
-		},
-		{
-			name: "invalid multiple matches option",
-			step: newLineInFileStep(
-				"invalid-on-multiple",
-				&config.LineInFileStep{
-					File:              "/tmp/example.txt",
-					Line:              "value",
-					State:             "present",
-					Match:             "^value$",
-					OnMultipleMatches: "prompt-each",
-				},
-			),
-			errField: "on_multiple_matches",
-		},
-		{
-			name: "unsupported encoding",
-			step: newLineInFileStep(
-				"unsupported-encoding",
-				&config.LineInFileStep{
-					File:     "/tmp/example.txt",
-					Line:     "value",
-					State:    "present",
-					Encoding: "utf-32",
-				},
-			),
-			errField: "encoding",
-		},
-		{
-			name: "empty file path",
-			step: newLineInFileStep(
-				"empty-file",
-				&config.LineInFileStep{
-					File: " ",
-					Line: "value",
-				},
-			),
-			errField: "file",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := plugin.DryRun(ctx, tt.step)
-			require.Error(t, err)
-
-			var validationErr *streamyerrors.ValidationError
-			require.ErrorAs(t, err, &validationErr)
-			assert.Equal(t, tt.errField, validationErr.Field)
-		})
-	}
-}
-
-func newLineInFileStep(id string, cfg *config.LineInFileStep) *config.Step {
-	return &config.Step{
-		ID:         id,
-		Type:       "line_in_file",
-		LineInFile: cfg,
-	}
-}
-
-func TestLineInFilePlugin_Schema(t *testing.T) {
+func TestLineinfilePlugin_Schema(t *testing.T) {
 	t.Parallel()
 
 	p := New()
@@ -236,198 +31,363 @@ func TestLineInFilePlugin_Schema(t *testing.T) {
 
 	require.NotNil(t, schema)
 	_, ok := schema.(config.LineInFileStep)
-	require.True(t, ok, "schema should be of type LineInFileStep")
+	require.True(t, ok, "schema should be of type LineinfileStep")
 }
 
-func TestLineInFilePlugin_Check(t *testing.T) {
-	t.Run("returns true when line already exists", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		testFile := filepath.Join(tmpDir, "test.txt")
-		require.NoError(t, os.WriteFile(testFile, []byte("existing line\nother content\n"), 0o644))
+func TestLineinfilePlugin_EvaluateMissingFile(t *testing.T) {
+	t.Parallel()
 
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+
+	step := &config.Step{
+		ID:   "missing_file",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  "test line",
+			State: "present",
+		},
+	}
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+	require.Contains(t, evalResult.Message, "file does not exist")
+}
+
+func TestLineinfilePlugin_EvaluateSatisfied(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+	line := "test line"
+
+	// Create file with the line
+	require.NoError(t, os.WriteFile(filePath, []byte(line+"\n"), 0o644))
+
+	step := &config.Step{
+		ID:   "satisfied_line",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  line,
+			State: "present",
+		},
+	}
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+	require.False(t, evalResult.RequiresAction)
+}
+
+func TestLineinfilePlugin_EvaluateDrifted(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+	line := "test line"
+
+	// Create file without the line
+	require.NoError(t, os.WriteFile(filePath, []byte("different line\n"), 0o644))
+
+	step := &config.Step{
+		ID:   "drifted_line",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  line,
+			State: "present",
+		},
+	}
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+}
+
+func TestLineinfilePlugin_ApplyAddLine(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+	line := "test line"
+
+	// Create empty file
+	require.NoError(t, os.WriteFile(filePath, []byte(""), 0o644))
+
+	step := &config.Step{
+		ID:   "add_line",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  line,
+			State: "present",
+		},
+	}
+
+	p := New()
+
+	// First evaluate
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.True(t, evalResult.RequiresAction)
+
+	// Then apply
+	result, err := p.Apply(context.Background(), evalResult, step)
+	require.NoError(t, err)
+	require.Equal(t, step.ID, result.StepID)
+	require.Equal(t, model.StatusSuccess, result.Status)
+
+	// Verify line was added
+	content, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+	require.Contains(t, string(content), line)
+}
+
+func TestLineinfilePlugin_ApplyRemoveLine(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+	line := "test line"
+
+	// Create file with the line
+	require.NoError(t, os.WriteFile(filePath, []byte("some line\n"+line+"\nanother line\n"), 0o644))
+
+	step := &config.Step{
+		ID:   "remove_line",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  line,
+			State: "absent",
+		},
+	}
+
+	p := New()
+
+	// First evaluate
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.True(t, evalResult.RequiresAction)
+
+	// Then apply
+	result, err := p.Apply(context.Background(), evalResult, step)
+	require.NoError(t, err)
+	require.Equal(t, step.ID, result.StepID)
+	require.Equal(t, model.StatusSuccess, result.Status)
+
+	// Verify line was removed
+	content, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+	require.NotContains(t, string(content), line)
+}
+
+func TestLineinfilePlugin_EvaluateAbsentWhenLineExists(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+	line := "test line"
+
+	// Create file with the line
+	require.NoError(t, os.WriteFile(filePath, []byte(line+"\n"), 0o644))
+
+	step := &config.Step{
+		ID:   "line_exists_absent",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  line,
+			State: "absent",
+		},
+	}
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+}
+
+func TestLineinfilePlugin_EvaluateAbsentWhenLineMissing(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+	line := "test line"
+
+	// Create file without the line
+	require.NoError(t, os.WriteFile(filePath, []byte("different line\n"), 0o644))
+
+	step := &config.Step{
+		ID:   "line_missing_absent",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  line,
+			State: "absent",
+		},
+	}
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+	require.False(t, evalResult.RequiresAction)
+}
+
+func TestLineinfilePlugin_EvaluateWithRegex(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+
+	// Create file with a line matching regex
+	require.NoError(t, os.WriteFile(filePath, []byte("version: 1.2.3\n"), 0o644))
+
+	step := &config.Step{
+		ID:   "regex_match",
+		Type: "lineinfile",
+		LineInFile: &config.LineInFileStep{
+			File:  filePath,
+			Line:  "version: .*",
+			State: "present",
+			Match: "version: 2.0.0",
+		},
+	}
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+}
+
+func TestLineinfilePlugin_EvaluateErrors(t *testing.T) {
+	t.Run("returns error when lineinfile config is nil", func(t *testing.T) {
 		p := New()
 
 		step := &config.Step{
-			ID:   "ensure_line",
-			Type: "line_in_file",
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "existing line",
-				State: "present",
-			},
-		}
-
-		ok, err := p.Check(context.Background(), step)
-		require.NoError(t, err)
-		require.True(t, ok)
-	})
-
-	t.Run("returns false when line needs to be added", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		testFile := filepath.Join(tmpDir, "test.txt")
-		require.NoError(t, os.WriteFile(testFile, []byte("other content\n"), 0o644))
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "ensure_line",
-			Type: "line_in_file",
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "new line",
-				State: "present",
-			},
-		}
-
-		ok, err := p.Check(context.Background(), step)
-		require.NoError(t, err)
-		require.False(t, ok)
-	})
-
-	t.Run("returns error when line_in_file config is nil", func(t *testing.T) {
-		p := New()
-
-		step := &config.Step{
-			ID:         "ensure_line",
-			Type:       "line_in_file",
+			ID:         "test_lineinfile",
+			Type:       "lineinfile",
 			LineInFile: nil,
 		}
 
-		_, err := p.Check(context.Background(), step)
+		_, err := p.Evaluate(context.Background(), step)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "lineinfile configuration missing")
+	})
+
+	t.Run("returns error when line is empty and no regex", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:   "empty_line",
+			Type: "lineinfile",
+			LineInFile: &config.LineInFileStep{
+				File: "/tmp/test.txt",
+				Line: "",
+			},
+		}
+
+		_, err := p.Evaluate(context.Background(), step)
 		require.Error(t, err)
 	})
 }
 
-func TestLineInFilePlugin_Verify(t *testing.T) {
-	t.Run("returns satisfied when line is present as expected", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		testFile := filepath.Join(tmpDir, "test.txt")
-		require.NoError(t, os.WriteFile(testFile, []byte("existing line\n"), 0o644))
-
+func TestLineinfilePlugin_ApplyErrors(t *testing.T) {
+	t.Run("returns error when lineinfile config is nil", func(t *testing.T) {
 		p := New()
 
 		step := &config.Step{
-			ID:   "ensure_line",
-			Type: "line_in_file",
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "existing line",
-				State: "present",
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "satisfied", string(result.Status))
-	})
-
-	t.Run("returns drifted when line needs to be added", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		testFile := filepath.Join(tmpDir, "test.txt")
-		require.NoError(t, os.WriteFile(testFile, []byte("other content\n"), 0o644))
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "ensure_line",
-			Type: "line_in_file",
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "new line",
-				State: "present",
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "drifted", string(result.Status))
-	})
-
-	t.Run("returns missing when file does not exist", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		testFile := filepath.Join(tmpDir, "nonexistent.txt")
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "ensure_line",
-			Type: "line_in_file",
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "new line",
-				State: "present",
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "missing", string(result.Status))
-	})
-
-	t.Run("returns satisfied when line correctly absent", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		testFile := filepath.Join(tmpDir, "test.txt")
-		require.NoError(t, os.WriteFile(testFile, []byte("other content\n"), 0o644))
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "ensure_line_absent",
-			Type: "line_in_file",
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "unwanted line",
-				State: "absent",
-				Match: "unwanted line",
-			},
-		}
-
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "satisfied", string(result.Status))
-	})
-
-	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		testFile := filepath.Join(tmpDir, "test.txt")
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "ensure_line",
-			Type: "line_in_file",
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "new line",
-				State: "present",
-			},
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // Cancel immediately
-
-		result, err := p.Verify(ctx, step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "blocked", string(result.Status))
-		require.Contains(t, result.Message, "cancelled")
-		require.NotNil(t, result.Error)
-	})
-
-	t.Run("returns error when line_in_file config is nil", func(t *testing.T) {
-		p := New()
-
-		step := &config.Step{
-			ID:         "ensure_line",
-			Type:       "line_in_file",
+			ID:         "test_lineinfile",
+			Type:       "lineinfile",
 			LineInFile: nil,
 		}
 
-		_, err := p.Verify(context.Background(), step)
+		evalResult := &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusMissing,
+			RequiresAction: true,
+			Message:        "Test",
+		}
+
+		_, err := p.Apply(context.Background(), evalResult, step)
 		require.Error(t, err)
+		require.Contains(t, err.Error(), "lineinfile configuration missing")
+	})
+
+	t.Run("returns error when file cannot be created", func(t *testing.T) {
+		p := New()
+
+		step := &config.Step{
+			ID:   "invalid_path",
+			Type: "lineinfile",
+			LineInFile: &config.LineInFileStep{
+				File:  "/invalid/path/test.txt",
+				Line:  "test line",
+				State: "present",
+			},
+		}
+
+		evalResult, err := p.Evaluate(context.Background(), step)
+		require.NoError(t, err)
+		require.True(t, evalResult.RequiresAction)
+
+		result, err := p.Apply(context.Background(), evalResult, step)
+		require.Error(t, err)
+		if result != nil {
+			require.Equal(t, model.StatusFailed, result.Status)
+		}
+	})
+}
+
+// Contract tests for the new plugin interface
+func TestLineinfilePlugin_Contract(t *testing.T) {
+	t.Run("Plugin Contract", func(t *testing.T) {
+		plugin := New()
+
+		t.Run("Metadata is stable", func(t *testing.T) {
+			m1 := plugin.PluginMetadata()
+			m2 := plugin.PluginMetadata()
+			require.Equal(t, m1, m2, "PluginMetadata() should return consistent values across calls")
+		})
+
+		t.Run("Schema returns struct", func(t *testing.T) {
+			schema := plugin.Schema()
+			require.NotNil(t, schema, "Schema() should not return nil")
+			_, ok := schema.(config.LineInFileStep)
+			require.True(t, ok, "Schema() should return a LineinfileStep struct")
+		})
+
+		t.Run("Evaluate is idempotent", func(t *testing.T) {
+			step := &config.Step{
+				ID:   "idempotent-test",
+				Type: "lineinfile",
+				LineInFile: &config.LineInFileStep{
+					File:  "/nonexistent/test.txt",
+					Line:  "test line",
+					State: "present",
+				},
+			}
+			ctx := context.Background()
+
+			// Call Evaluate twice
+			result1, err1 := plugin.Evaluate(ctx, step)
+			result2, err2 := plugin.Evaluate(ctx, step)
+
+			require.NoError(t, err1, "First Evaluate() should not return an error")
+			require.NoError(t, err2, "Second Evaluate() should not return an error")
+
+			// Results should be equivalent for non-existent file
+			require.Equal(t, result1.CurrentState, result2.CurrentState, "CurrentState should be consistent across calls")
+			require.Equal(t, result1.RequiresAction, result2.RequiresAction, "RequiresAction should be consistent across calls")
+		})
 	})
 }

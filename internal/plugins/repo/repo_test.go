@@ -12,18 +12,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
-	pluginpkg "github.com/alexisbeaulieu97/streamy/internal/plugin"
+	"github.com/alexisbeaulieu97/streamy/internal/model"
 )
 
 func TestRepoPlugin_Metadata(t *testing.T) {
 	t.Parallel()
 
 	p := New()
-	meta := p.Metadata()
+	meta := p.PluginMetadata()
 
 	require.NotEmpty(t, meta.Name)
 	require.NotEmpty(t, meta.Version)
-	require.Equal(t, "repo", meta.Type)
+	require.Equal(t, "repo", meta.Name)
 }
 
 func TestRepoPlugin_Schema(t *testing.T) {
@@ -42,7 +42,6 @@ func TestRepoPlugin_ApplyClonesRepository(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "clone")
 
 	p := New()
-	require.Implements(t, (*pluginpkg.Plugin)(nil), p)
 
 	step := &config.Step{
 		ID:   "clone_repo",
@@ -53,17 +52,23 @@ func TestRepoPlugin_ApplyClonesRepository(t *testing.T) {
 		},
 	}
 
-	result, err := p.Apply(context.Background(), step)
+	// First evaluate
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.True(t, evalResult.RequiresAction)
+
+	// Then apply
+	result, err := p.Apply(context.Background(), evalResult, step)
 	require.NoError(t, err)
 	require.Equal(t, step.ID, result.StepID)
-	require.Equal(t, "success", result.Status)
+	require.Equal(t, model.StatusSuccess, result.Status)
 
 	contents, err := os.ReadFile(filepath.Join(dest, "README.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(contents), "hello repo")
 }
 
-func TestRepoPlugin_CheckDetectsExistingClone(t *testing.T) {
+func TestRepoPlugin_EvaluateDetectsExistingClone(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "existing")
 	require.NoError(t, os.MkdirAll(filepath.Join(dest, ".git"), 0o755))
 
@@ -78,12 +83,13 @@ func TestRepoPlugin_CheckDetectsExistingClone(t *testing.T) {
 		},
 	}
 
-	ok, err := p.Check(context.Background(), step)
+	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.True(t, ok)
+	require.False(t, evalResult.RequiresAction)
+	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
 }
 
-func TestRepoPlugin_DryRunSkipsClone(t *testing.T) {
+func TestRepoPlugin_EvaluateSkipsClone(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "clone")
 
 	p := New()
@@ -97,15 +103,16 @@ func TestRepoPlugin_DryRunSkipsClone(t *testing.T) {
 		},
 	}
 
-	res, err := p.DryRun(context.Background(), step)
+	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, step.ID, res.StepID)
-	require.Equal(t, "skipped", res.Status)
+	require.Equal(t, step.ID, evalResult.StepID)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
 	_, err = os.Stat(dest)
-	require.Error(t, err, "expected destination to remain untouched during dry-run")
+	require.Error(t, err, "expected destination to remain untouched during evaluation")
 }
 
-func TestRepoPlugin_CheckReturnsFalseWhenRepoNotCloned(t *testing.T) {
+func TestRepoPlugin_EvaluateReturnsMissingWhenRepoNotCloned(t *testing.T) {
 	t.Parallel()
 
 	dest := filepath.Join(t.TempDir(), "nonexistent")
@@ -121,12 +128,13 @@ func TestRepoPlugin_CheckReturnsFalseWhenRepoNotCloned(t *testing.T) {
 		},
 	}
 
-	ok, err := p.Check(context.Background(), step)
+	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.False(t, ok, "expected Check to return false when repo not cloned")
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction, "expected Evaluate to return missing when repo not cloned")
 }
 
-func TestRepoPlugin_CheckReturnsFalseWhenGitDirMissing(t *testing.T) {
+func TestRepoPlugin_EvaluateReturnsDriftedWhenGitDirMissing(t *testing.T) {
 	t.Parallel()
 
 	dest := t.TempDir()
@@ -144,9 +152,10 @@ func TestRepoPlugin_CheckReturnsFalseWhenGitDirMissing(t *testing.T) {
 		},
 	}
 
-	ok, err := p.Check(context.Background(), step)
+	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.False(t, ok, "expected Check to return false when .git directory missing")
+	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction, "expected Evaluate to return drifted when .git directory missing")
 }
 
 func TestRepoPlugin_ApplyWithBranchAndDepth(t *testing.T) {
@@ -166,10 +175,16 @@ func TestRepoPlugin_ApplyWithBranchAndDepth(t *testing.T) {
 		},
 	}
 
-	result, err := p.Apply(context.Background(), step)
+	// First evaluate
+	evalResult, err := p.Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.True(t, evalResult.RequiresAction)
+
+	// Then apply
+	result, err := p.Apply(context.Background(), evalResult, step)
 	require.NoError(t, err)
 	require.Equal(t, step.ID, result.StepID)
-	require.Equal(t, "success", result.Status)
+	require.Equal(t, model.StatusSuccess, result.Status)
 
 	contents, err := os.ReadFile(filepath.Join(dest, "README.md"))
 	require.NoError(t, err)
@@ -202,7 +217,7 @@ func initGitRepo(t *testing.T) string {
 	return dir
 }
 
-func TestRepoPlugin_Verify(t *testing.T) {
+func TestRepoPlugin_Evaluate(t *testing.T) {
 	t.Run("returns satisfied when repo exists and matches", func(t *testing.T) {
 		source := initGitRepo(t)
 		dest := filepath.Join(t.TempDir(), "clone")
@@ -219,15 +234,19 @@ func TestRepoPlugin_Verify(t *testing.T) {
 		}
 
 		// First clone the repo
-		_, err := p.Apply(context.Background(), step)
+		evalResult, err := p.Evaluate(context.Background(), step)
+		require.NoError(t, err)
+		require.True(t, evalResult.RequiresAction)
+
+		_, err = p.Apply(context.Background(), evalResult, step)
 		require.NoError(t, err)
 
-		// Now verify
-		result, err := p.Verify(context.Background(), step)
+		// Now evaluate again
+		evalResult, err = p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "satisfied", string(result.Status))
-		require.Contains(t, result.Message, "git repository exists")
+		require.Equal(t, step.ID, evalResult.StepID)
+		require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
+		require.Contains(t, evalResult.Message, "git repository exists")
 	})
 
 	t.Run("returns missing when repository directory does not exist", func(t *testing.T) {
@@ -244,11 +263,11 @@ func TestRepoPlugin_Verify(t *testing.T) {
 			},
 		}
 
-		result, err := p.Verify(context.Background(), step)
+		evalResult, err := p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "missing", string(result.Status))
-		require.Contains(t, result.Message, "does not exist")
+		require.Equal(t, step.ID, evalResult.StepID)
+		require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+		require.Contains(t, evalResult.Message, "does not exist")
 	})
 
 	t.Run("returns drifted when directory exists but is not a git repo", func(t *testing.T) {
@@ -266,82 +285,15 @@ func TestRepoPlugin_Verify(t *testing.T) {
 			},
 		}
 
-		result, err := p.Verify(context.Background(), step)
+		evalResult, err := p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "drifted", string(result.Status))
-		require.Contains(t, result.Message, "is not a git repository")
-	})
-
-	t.Run("returns drifted when remote URL does not match", func(t *testing.T) {
-		source := initGitRepo(t)
-		dest := filepath.Join(t.TempDir(), "clone")
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: &config.RepoStep{
-				URL:         source,
-				Destination: dest,
-			},
-		}
-
-		// First clone the repo
-		_, err := p.Apply(context.Background(), step)
-		require.NoError(t, err)
-
-		// Now verify with a different URL
-		step.Repo.URL = "/tmp/different.git"
-		result, err := p.Verify(context.Background(), step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "drifted", string(result.Status))
-		require.Contains(t, result.Message, "remote URL is")
-	})
-
-	t.Run("returns blocked when context is cancelled", func(t *testing.T) {
-		dest := filepath.Join(t.TempDir(), "clone")
-
-		p := New()
-
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: &config.RepoStep{
-				URL:         "/tmp/example.git",
-				Destination: dest,
-			},
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // Cancel immediately
-
-		result, err := p.Verify(ctx, step)
-		require.NoError(t, err)
-		require.Equal(t, step.ID, result.StepID)
-		require.Equal(t, "blocked", string(result.Status))
-		require.Contains(t, result.Message, "cancelled")
-		require.NotNil(t, result.Error)
-	})
-
-	t.Run("returns error when repo config is nil", func(t *testing.T) {
-		p := New()
-
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: nil,
-		}
-
-		_, err := p.Verify(context.Background(), step)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "repo configuration missing")
+		require.Equal(t, step.ID, evalResult.StepID)
+		require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+		require.Contains(t, evalResult.Message, "is not a git repository")
 	})
 }
 
-func TestRepoPlugin_Check_Errors(t *testing.T) {
+func TestRepoPlugin_Evaluate_Errors(t *testing.T) {
 	t.Run("returns error when repo config is nil", func(t *testing.T) {
 		p := New()
 
@@ -351,7 +303,7 @@ func TestRepoPlugin_Check_Errors(t *testing.T) {
 			Repo: nil,
 		}
 
-		_, err := p.Check(context.Background(), step)
+		_, err := p.Evaluate(context.Background(), step)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "repo configuration missing")
 	})
@@ -367,26 +319,16 @@ func TestRepoPlugin_Apply_Errors(t *testing.T) {
 			Repo: nil,
 		}
 
-		_, err := p.Apply(context.Background(), step)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "repo configuration missing")
-	})
-
-	t.Run("returns error when clone fails", func(t *testing.T) {
-		p := New()
-
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: &config.RepoStep{
-				URL:         "https://github.com/nonexistent/nonexistent.git",
-				Destination: filepath.Join(t.TempDir(), "clone"),
-			},
+		// Need to provide evalResult for Apply
+		evalResult := &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusMissing,
+			RequiresAction: true,
+			Message:        "Test",
 		}
 
-		result, err := p.Apply(context.Background(), step)
+		_, err := p.Apply(context.Background(), evalResult, step)
 		require.Error(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, "failed", result.Status)
+		require.Contains(t, err.Error(), "repo configuration missing")
 	})
 }

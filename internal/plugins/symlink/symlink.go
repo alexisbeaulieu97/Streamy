@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
-	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 type symlinkPlugin struct{}
@@ -21,20 +19,6 @@ func New() plugin.Plugin {
 }
 
 var _ plugin.Plugin = (*symlinkPlugin)(nil)
-var _ plugin.MetadataProvider = (*symlinkPlugin)(nil)
-
-func (p *symlinkPlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{
-		Name:    "symlink",
-		Version: "1.0.0",
-		Type:    "symlink",
-	}
-}
-
-// PluginMetadata describes the plugin for the dependency registry.
-//
-// The empty Dependencies slice documents that symlink does not require other plugins.
-// APIVersion pins compatibility with other plugins using the registry-provided interface.
 func (p *symlinkPlugin) PluginMetadata() plugin.PluginMetadata {
 	return plugin.PluginMetadata{
 		Name:         "symlink",
@@ -46,58 +30,91 @@ func (p *symlinkPlugin) PluginMetadata() plugin.PluginMetadata {
 	}
 }
 
-func (p *symlinkPlugin) Schema() interface{} {
+func (p *symlinkPlugin) Schema() any {
 	return config.SymlinkStep{}
 }
 
-func (p *symlinkPlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
+func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
 	cfg := step.Symlink
 	if cfg == nil {
-		return false, streamyerrors.NewValidationError(step.ID, "symlink configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("symlink configuration missing"))
 	}
 
+	// Check if symlink exists and points to correct target (read-only)
 	info, err := os.Lstat(cfg.Target)
 	if err != nil {
-		return false, nil
+		if os.IsNotExist(err) {
+			return &model.EvaluationResult{
+				StepID:         step.ID,
+				CurrentState:   model.StatusMissing,
+				RequiresAction: true,
+				Message:        fmt.Sprintf("symlink %s does not exist", cfg.Target),
+				Diff:           fmt.Sprintf("Would create symlink: %s -> %s", cfg.Target, cfg.Source),
+			}, nil
+		}
+		return nil, plugin.NewStateError(step.ID, fmt.Errorf("cannot stat symlink target: %w", err))
 	}
 
 	if info.Mode()&os.ModeSymlink == 0 {
-		return false, nil
+		return &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusDrifted,
+			RequiresAction: true,
+			Message:        fmt.Sprintf("target %s exists but is not a symlink", cfg.Target),
+			Diff:           fmt.Sprintf("Would replace with symlink: %s -> %s", cfg.Target, cfg.Source),
+		}, nil
 	}
 
 	target, err := os.Readlink(cfg.Target)
 	if err != nil {
-		return false, streamyerrors.NewExecutionError(step.ID, err)
+		return nil, plugin.NewStateError(step.ID, fmt.Errorf("cannot read symlink target: %w", err))
 	}
 
-	return target == cfg.Source, nil
+	if target == cfg.Source {
+		return &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusSatisfied,
+			RequiresAction: false,
+			Message:        fmt.Sprintf("symlink %s -> %s is correct", cfg.Target, cfg.Source),
+		}, nil
+	}
+
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusDrifted,
+		RequiresAction: true,
+		Message:        fmt.Sprintf("symlink points to wrong target: %s -> %s (expected %s)", cfg.Target, target, cfg.Source),
+		Diff:           fmt.Sprintf("Would update symlink: %s: %s -> %s", cfg.Target, target, cfg.Source),
+	}, nil
 }
 
-func (p *symlinkPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (p *symlinkPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	cfg := step.Symlink
 	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "symlink configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("symlink configuration missing"))
 	}
 
 	if err := os.MkdirAll(filepath.Dir(cfg.Target), 0o755); err != nil {
-		return nil, streamyerrors.NewExecutionError(step.ID, err)
+		return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to create directory: %w", err))
 	}
 
+	// Handle existing file/symlink
 	if _, err := os.Lstat(cfg.Target); err == nil {
 		if !cfg.Force {
 			return &model.StepResult{
 				StepID:  step.ID,
 				Status:  model.StatusFailed,
-				Message: fmt.Sprintf("target %s already exists", cfg.Target),
-			}, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("target exists"))
+				Message: fmt.Sprintf("target %s already exists and force is false", cfg.Target),
+				Error:   fmt.Errorf("target exists"),
+			}, plugin.NewExecutionError(step.ID, fmt.Errorf("target exists"))
 		}
 		if err := os.Remove(cfg.Target); err != nil {
 			return &model.StepResult{
 				StepID:  step.ID,
 				Status:  model.StatusFailed,
-				Message: err.Error(),
+				Message: fmt.Sprintf("failed to remove existing target %s: %v", cfg.Target, err),
 				Error:   err,
-			}, streamyerrors.NewExecutionError(step.ID, err)
+			}, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to remove existing target: %w", err))
 		}
 	}
 
@@ -105,111 +122,14 @@ func (p *symlinkPlugin) Apply(ctx context.Context, step *config.Step) (*model.St
 		return &model.StepResult{
 			StepID:  step.ID,
 			Status:  model.StatusFailed,
-			Message: err.Error(),
+			Message: fmt.Sprintf("failed to create symlink %s -> %s: %v", cfg.Target, cfg.Source, err),
 			Error:   err,
-		}, streamyerrors.NewExecutionError(step.ID, err)
+		}, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to create symlink: %w", err))
 	}
 
 	return &model.StepResult{
 		StepID:  step.ID,
 		Status:  model.StatusSuccess,
-		Message: fmt.Sprintf("linked %s -> %s", cfg.Target, cfg.Source),
-	}, nil
-}
-
-func (p *symlinkPlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	return &model.StepResult{
-		StepID:  step.ID,
-		Status:  model.StatusSkipped,
-		Message: "dry-run: symlink not created",
-	}, nil
-}
-
-func (p *symlinkPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	start := time.Now()
-	cfg := step.Symlink
-	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "symlink configuration missing", nil)
-	}
-
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   "verification cancelled",
-			Error:     ctx.Err(),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	default:
-	}
-
-	// Check if symlink exists
-	info, err := os.Lstat(cfg.Target)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &model.VerificationResult{
-				StepID:    step.ID,
-				Status:    model.StatusMissing,
-				Message:   fmt.Sprintf("symlink does not exist at %s", cfg.Target),
-				Duration:  time.Since(start),
-				Timestamp: time.Now(),
-			}, nil
-		}
-		// Permission denied or other error
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   fmt.Sprintf("cannot access %s: %v", cfg.Target, err),
-			Error:     err,
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Check if target is a symlink
-	if info.Mode()&os.ModeSymlink == 0 {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusDrifted,
-			Message:   fmt.Sprintf("%s exists but is not a symlink", cfg.Target),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Read symlink target
-	actualTarget, err := os.Readlink(cfg.Target)
-	if err != nil {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   fmt.Sprintf("cannot read symlink %s: %v", cfg.Target, err),
-			Error:     err,
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Compare targets
-	if actualTarget != cfg.Source {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusDrifted,
-			Message:   fmt.Sprintf("symlink points to %s (expected %s)", actualTarget, cfg.Source),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// All checks passed
-	return &model.VerificationResult{
-		StepID:    step.ID,
-		Status:    model.StatusSatisfied,
-		Message:   fmt.Sprintf("symlink %s correctly points to %s", cfg.Target, cfg.Source),
-		Duration:  time.Since(start),
-		Timestamp: time.Now(),
+		Message: fmt.Sprintf("created symlink %s -> %s", cfg.Target, cfg.Source),
 	}, nil
 }

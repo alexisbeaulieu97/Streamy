@@ -7,14 +7,41 @@ Streamy executes environment setup steps through plugins. Each step type provide
 Every plugin must satisfy `internal/plugin.Plugin` and should expose the richer metadata via `MetadataProvider`. Plugins that need registry access during startup can optionally implement `PluginInitializer`.
 
 ```go
-// Legacy surface used by the executor for backwards compatibility.
+// Core plugin interface with unified Evaluate/Apply model
 type Plugin interface {
     Metadata() Metadata
     Schema() interface{}
-    Check(ctx context.Context, step *config.Step) (bool, error)
-    Apply(ctx context.Context, step *config.Step) (*model.StepResult, error)
-    DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error)
-    Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error)
+
+    // Evaluate performs a STRICTLY READ-ONLY assessment of the system's
+    // current state against the desired state defined in the step configuration.
+    //
+    // CRITICAL CONTRACT: This method MUST NOT mutate any system state.
+    // It should only read current state and compute what changes (if any)
+    // would be needed to reach the desired state.
+    //
+    // Returns:
+    //   - EvaluationResult: Rich state assessment including current status,
+    //     whether action is required, human-readable message, optional diff,
+    //     and optional internal data to pass to Apply()
+    //   - error: PluginError (ValidationError, ExecutionError, StateError)
+    //     if evaluation cannot be completed
+    Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error)
+
+    // Apply mutates the system to match the desired state defined in the
+    // step configuration. This method is ONLY called by the engine if
+    // Evaluate() reported RequiresAction = true.
+    //
+    // The evalResult parameter contains the result from the previous
+    // Evaluate() call, including InternalData that can be used to avoid
+    // redundant computation.
+    //
+    // This method MUST be idempotent: calling it multiple times with the
+    // same inputs should produce the same final state.
+    //
+    // Returns:
+    //   - StepResult: Outcome of the apply operation (success, failure, etc.)
+    //   - error: PluginError if the operation fails
+    Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error)
 }
 
 // Dependency-aware metadata consumed by the PluginRegistry.
@@ -102,14 +129,16 @@ Because the plugin is stateless it returns a singleton instance. If a plugin mai
 ## Implementation Checklist
 
 1. **Define the Plugin struct and `New()` constructor.** Keep construction free of side effects.
-2. **Implement the interface methods.** Use the type-specific fields on `config.Step`.
-3. **Expose dependency metadata.** Implement `PluginMetadata()` and use `plugin.MustParseVersionConstraint("1.x")` when pinning versions.
-4. **Optional:** Implement `Init(*PluginRegistry)` to capture the registry or eagerly resolve dependencies.
-5. **Handle idempotency.** `Check` and `DryRun` should make it safe to run `Apply` repeatedly.
-6. **Wrap errors** using helpers from `pkg/errors` to provide remediation hints.
-7. **Add unit tests** alongside the plugin. Table-driven tests should cover happy paths, idempotency, error handling, and (if present) `Init` behaviour.
-8. **Add integration coverage** under `tests/` when introducing new dependency patterns.
-9. **Update documentation** (`docs/schema.md`, this guide, and feature-specific docs) with usage examples.
+2. **Implement the Evaluate/Apply interface methods.** Use the type-specific fields on `config.Step`.
+3. **Design EvaluationResult with InternalData.** Store computation results in InternalData to avoid redundant work in Apply().
+4. **Ensure Evaluate() is strictly read-only.** This method MUST NOT mutate system state.
+5. **Make Apply() idempotent.** Use the evalResult parameter to avoid recomputation and ensure consistent results.
+6. **Expose dependency metadata.** Implement `PluginMetadata()` and use `plugin.MustParseVersionConstraint("1.x")` when pinning versions.
+7. **Optional:** Implement `Init(*PluginRegistry)` to capture the registry or eagerly resolve dependencies.
+8. **Wrap errors** using helpers from `internal/plugin/errors` to provide structured error types.
+9. **Add unit tests** alongside the plugin. Include contract tests that verify read-only behavior and idempotency.
+10. **Add integration coverage** under `tests/` when introducing new dependency patterns.
+11. **Update documentation** (`docs/schema.md`, this guide, and feature-specific docs) with usage examples.
 
 ## Testing Plugins
 
@@ -138,11 +167,135 @@ func (p *shellProfilePlugin) Init(reg *plugin.PluginRegistry) error {
 - **warn**: logs a warning but returns the dependency
 - **off**: bypasses enforcement (use sparingly)
 
+## Evaluate/Apply Interface Patterns
+
+The new unified interface provides clear separation of concerns between read-only evaluation and stateful application:
+
+### Read-Only Evaluation Pattern
+
+```go
+func (p *myPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+    // Read current state ONLY - no mutations
+    currentState := readCurrentState(step)
+
+    // Determine what action is needed
+    requiresAction := !isStateCorrect(currentState, step)
+
+    // Store computation results for Apply() to reuse
+    internalData := &myEvaluationData{
+        currentState: currentState,
+        computedValue: expensiveComputation(step),
+    }
+
+    return &model.EvaluationResult{
+        StepID:         step.ID,
+        CurrentState:   mapToVerificationStatus(currentState),
+        RequiresAction: requiresAction,
+        Message:        generateEvaluationMessage(currentState, step),
+        Diff:           generateDiff(currentState, step),
+        InternalData:   internalData,
+    }, nil
+}
+```
+
+### Efficient Apply Pattern
+
+```go
+func (p *myPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
+    // Skip if no action needed
+    if !evalResult.RequiresAction {
+        return &model.StepResult{
+            StepID:  step.ID,
+            Status:  model.StatusSkipped,
+            Message: "no changes needed",
+        }, nil
+    }
+
+    // Use pre-computed data from Evaluate()
+    data := evalResult.InternalData.(*myEvaluationData)
+
+    // Apply changes using efficient data
+    err := applyChanges(ctx, step, data)
+    if err != nil {
+        return nil, plugin.NewExecutionError(step.ID, err)
+    }
+
+    return &model.StepResult{
+        StepID:  step.ID,
+        Status:  model.StatusSuccess,
+        Message: "changes applied successfully",
+    }, nil
+}
+```
+
+### Contract Testing Pattern
+
+```go
+func TestMyPlugin_Contract(t *testing.T) {
+    t.Run("Evaluate is read-only", func(t *testing.T) {
+        plugin := New()
+        step := createTestStep()
+
+        // Take snapshot before evaluation
+        before := captureSystemState()
+
+        result, err := plugin.Evaluate(context.Background(), step)
+        require.NoError(t, err)
+
+        // Verify system unchanged
+        after := captureSystemState()
+        assert.Equal(t, before, after, "Evaluate() should not modify system")
+    })
+
+    t.Run("Apply uses evaluation data", func(t *testing.T) {
+        plugin := New()
+        step := createTestStep()
+
+        // First evaluate
+        evalResult, err := plugin.Evaluate(context.Background(), step)
+        require.NoError(t, err)
+
+        // Then apply
+        stepResult, err := plugin.Apply(context.Background(), evalResult, step)
+        require.NoError(t, err)
+
+        // Verify success
+        assert.Equal(t, model.StatusSuccess, stepResult.Status)
+    })
+}
+```
+
 ## Migration Notes
+
+The interface has been simplified from the old Check/DryRun/Verify methods to the unified Evaluate/Apply model:
+
+### From Old Interface to New
+
+**Old methods (removed):**
+- `Check(ctx, step) (bool, error)` → Use `Evaluate()` and check `CurrentState == StatusSatisfied`
+- `DryRun(ctx, step) (*StepResult, error)` → Use `Evaluate()` and check `RequiresAction`
+- `Verify(ctx, step) (*VerificationResult, error)` → Use `Evaluate()` and use returned fields directly
+- `Apply(ctx, step) (*StepResult, error)` → Now requires `evalResult` parameter
+
+**Migration steps:**
+1. **Replace Check() with Evaluate()**: Convert boolean return to VerificationStatus enum
+2. **Remove DryRun()**: Use Evaluate() to determine what would change
+3. **Remove Verify()**: Use Evaluate() for all read-only assessments
+4. **Update Apply()**: Add evalResult parameter and use InternalData for efficiency
+5. **Add contract tests**: Verify read-only behavior and idempotency
+
+### Benefits of New Interface
+
+1. **Clear separation**: Read-only evaluation vs stateful application
+2. **Efficiency**: InternalData avoids recomputation between Evaluate and Apply
+3. **Rich feedback**: EvaluationResult provides detailed state information
+4. **Consistent error handling**: All operations use structured PluginError types
+5. **Better testing**: Contract tests validate interface guarantees
 
 Legacy plugins that only implement `Metadata()` continue to work; the registry synthesizes default metadata with no dependencies. To migrate:
 1. Add `PluginMetadata()` returning the enriched metadata.
 2. Replace global registration with explicit inclusion in `RegisterPlugins()`.
-3. Optionally add an `Init` hook if the plugin needs orchestrated startup.
+3. Update Check/DryRun/Verify methods to Evaluate/Apply as shown above.
+4. Optionally add an `Init` hook if the plugin needs orchestrated startup.
 
 Adhering to these guidelines keeps plugins composable, makes dependencies explicit, and allows Streamy to validate and initialise the graph before executing user workflows.

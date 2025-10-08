@@ -293,21 +293,11 @@ func (r *PluginRegistry) isDependencyDeclared(caller Plugin, depName string) boo
 		return false
 	}
 
-	if provider, ok := caller.(MetadataProvider); ok {
-		meta := provider.PluginMetadata()
-		for _, dep := range meta.Dependencies {
-			if dep.Name == depName {
-				return true
-			}
-		}
-	}
-
-	legacy := caller.Metadata()
-	if meta, ok := r.metadata[legacy.Name]; ok {
-		for _, dep := range meta.Dependencies {
-			if dep.Name == depName {
-				return true
-			}
+	// All plugins now implement PluginMetadata() directly
+	meta := caller.PluginMetadata()
+	for _, dep := range meta.Dependencies {
+		if dep.Name == depName {
+			return true
 		}
 	}
 
@@ -365,32 +355,21 @@ func (r *PluginRegistry) createPluginInstance(name string) Plugin {
 }
 
 func (r *PluginRegistry) extractMetadata(p Plugin) (PluginMetadata, error) {
-	if provider, ok := p.(MetadataProvider); ok {
-		meta := provider.PluginMetadata()
-		if meta.Dependencies == nil {
-			meta.Dependencies = []Dependency{}
-		}
-		if meta.APIVersion == "" {
-			meta.APIVersion = "1.x"
-		}
-		return meta, nil
+	// All plugins now implement PluginMetadata() directly
+	meta := p.PluginMetadata()
+	if meta.Name == "" {
+		return PluginMetadata{}, fmt.Errorf("plugin metadata missing name")
 	}
 
-	legacy := p.Metadata()
-	if legacy.Name == "" {
-		return PluginMetadata{}, fmt.Errorf("legacy plugin metadata missing name")
+	// Set defaults
+	if meta.Dependencies == nil {
+		meta.Dependencies = []Dependency{}
+	}
+	if meta.APIVersion == "" {
+		meta.APIVersion = "1.x"
 	}
 
-	r.logWarn(fmt.Sprintf("plugin '%s' using legacy metadata; dependencies default to empty", legacy.Name))
-
-	return PluginMetadata{
-		Name:         legacy.Name,
-		Version:      legacy.Version,
-		APIVersion:   "1.x",
-		Dependencies: []Dependency{},
-		Stateful:     false,
-		Description:  legacy.Type,
-	}, nil
+	return meta, nil
 }
 
 func (r *PluginRegistry) logWarn(msg string) {

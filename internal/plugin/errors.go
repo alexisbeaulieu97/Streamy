@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -81,4 +82,135 @@ func (e ErrMissingDependency) Error() string {
 		e.Plugin,
 		e.Dependency,
 	)
+}
+
+// PluginError is the base interface for all plugin errors.
+// It provides structured error information that the executor can use
+// to make intelligent decisions about how to handle failures.
+type PluginError interface {
+	error
+	StepID() string
+	Unwrap() error
+}
+
+// ValidationError represents configuration or input validation failures.
+// These are typically caused by malformed YAML, missing required fields,
+// or invalid field values in the step configuration.
+type ValidationError struct {
+	ID  string
+	Err error
+}
+
+// NewValidationError creates a new ValidationError.
+func NewValidationError(stepID string, err error) *ValidationError {
+	return &ValidationError{
+		ID:  stepID,
+		Err: err,
+	}
+}
+
+// Error returns a formatted error message including the step ID.
+func (e *ValidationError) Error() string {
+	return "validation error in step " + e.ID + ": " + e.Err.Error()
+}
+
+// StepID returns the identifier of the step where the error occurred.
+func (e *ValidationError) StepID() string {
+	return e.ID
+}
+
+// Unwrap returns the underlying validation error.
+func (e *ValidationError) Unwrap() error {
+	return e.Err
+}
+
+// Is checks if this error matches another ValidationError.
+func (e *ValidationError) Is(target error) bool {
+	_, ok := target.(*ValidationError)
+	return ok
+}
+
+// ExecutionError represents external operation failures during state
+// assessment or application. These include shell command failures,
+// file I/O errors, network operation failures, or external tool errors.
+type ExecutionError struct {
+	ID  string
+	Err error
+}
+
+// NewExecutionError creates a new ExecutionError.
+func NewExecutionError(stepID string, err error) *ExecutionError {
+	return &ExecutionError{
+		ID:  stepID,
+		Err: err,
+	}
+}
+
+// Error returns a formatted error message including the step ID.
+func (e *ExecutionError) Error() string {
+	return "execution error in step " + e.ID + ": " + e.Err.Error()
+}
+
+// StepID returns the identifier of the step where the error occurred.
+func (e *ExecutionError) StepID() string {
+	return e.ID
+}
+
+// Unwrap returns the underlying execution error.
+func (e *ExecutionError) Unwrap() error {
+	return e.Err
+}
+
+// Is checks if this error matches another ExecutionError.
+func (e *ExecutionError) Is(target error) bool {
+	_, ok := target.(*ExecutionError)
+	return ok
+}
+
+// StateError represents inability to determine the current system state.
+// These are used when the plugin cannot read or assess the current state,
+// such as when files are inaccessible, package managers are unavailable,
+// or system state is inconsistent or corrupted.
+type StateError struct {
+	ID  string
+	Err error
+}
+
+// NewStateError creates a new StateError.
+func NewStateError(stepID string, err error) *StateError {
+	return &StateError{
+		ID:  stepID,
+		Err: err,
+	}
+}
+
+// Error returns a formatted error message including the step ID.
+func (e *StateError) Error() string {
+	return "state error in step " + e.ID + ": " + e.Err.Error()
+}
+
+// StepID returns the identifier of the step where the error occurred.
+func (e *StateError) StepID() string {
+	return e.ID
+}
+
+// Unwrap returns the underlying state detection error.
+func (e *StateError) Unwrap() error {
+	return e.Err
+}
+
+// Is checks if this error matches another StateError.
+func (e *StateError) Is(target error) bool {
+	_, ok := target.(*StateError)
+	return ok
+}
+
+// AsPluginError attempts to convert any error to a PluginError.
+// This helper function can be used by the executor to categorize errors.
+func AsPluginError(err error) (PluginError, bool) {
+	var pluginErr PluginError
+	if errors.As(err, &pluginErr) {
+		return pluginErr, true
+	}
+	return nil, false
 }

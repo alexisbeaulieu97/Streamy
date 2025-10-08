@@ -98,11 +98,11 @@ func WithVerifyFunc(fn func(context.Context, *config.Step) (*model.VerificationR
 	}
 }
 
-func (m *MockPlugin) Metadata() Metadata {
-	return Metadata{Name: m.metadata.Name, Version: m.metadata.Version, Type: m.pluginType}
+func (m *MockPlugin) PluginMetadata() PluginMetadata {
+	return PluginMetadata{Name: m.metadata.Name, Version: m.metadata.Version, Type: m.pluginType}
 }
 
-func (m *MockPlugin) Schema() interface{} {
+func (m *MockPlugin) Schema() any {
 	m.recordCall("Schema")
 	return m.schema
 }
@@ -137,10 +137,6 @@ func (m *MockPlugin) Verify(ctx context.Context, step *config.Step) (*model.Veri
 		return m.verifyFn(ctx, step)
 	}
 	return &model.VerificationResult{StepID: step.ID, Status: model.StatusSatisfied}, nil
-}
-
-func (m *MockPlugin) PluginMetadata() PluginMetadata {
-	return m.metadata
 }
 
 func (m *MockPlugin) Calls() []string {

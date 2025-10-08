@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"text/template"
-	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
@@ -21,6 +19,17 @@ import (
 
 const templatePluginType = "template"
 
+// Internal data for template operations
+type templateEvaluationData struct {
+	RenderedContent string
+	RenderedHash    string
+	DesiredMode     os.FileMode
+	ExistingHash    string
+	ExistingMode    os.FileMode
+	ExistingExists  bool
+	SourceExists    bool
+}
+
 type templatePlugin struct{}
 
 // New creates a new instance of the template plugin.
@@ -29,15 +38,6 @@ func New() plugin.Plugin {
 }
 
 var _ plugin.Plugin = (*templatePlugin)(nil)
-var _ plugin.MetadataProvider = (*templatePlugin)(nil)
-
-func (p *templatePlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{
-		Name:    "template-renderer",
-		Version: "1.0.0",
-		Type:    templatePluginType,
-	}
-}
 
 // PluginMetadata describes the plugin for the dependency registry.
 //
@@ -54,367 +54,254 @@ func (p *templatePlugin) PluginMetadata() plugin.PluginMetadata {
 	}
 }
 
-func (p *templatePlugin) Schema() interface{} {
+func (p *templatePlugin) Schema() any {
 	return config.TemplateStep{}
 }
 
-func (p *templatePlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
+func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
 	cfg := step.Template
 	if cfg == nil {
-		return false, streamyerrors.NewValidationError(step.ID, "template configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("template configuration missing"))
 	}
 
 	if err := ctx.Err(); err != nil {
-		return false, err
+		return nil, plugin.NewStateError(step.ID, fmt.Errorf("context cancelled: %w", err))
 	}
 
+	// Check source template exists first
+	if _, err := os.Stat(cfg.Source); err != nil {
+		if os.IsNotExist(err) {
+			return &model.EvaluationResult{
+				StepID:         step.ID,
+				CurrentState:   model.StatusMissing,
+				RequiresAction: true,
+				Message:        fmt.Sprintf("template source %s does not exist", cfg.Source),
+				Diff:           fmt.Sprintf("Would create template from source: %s", cfg.Source),
+			}, nil
+		}
+		return nil, plugin.NewStateError(step.ID, fmt.Errorf("cannot stat template source %s: %w", cfg.Source, err))
+	}
+
+	// Render the template (read-only operation)
 	rendered, err := p.renderTemplate(ctx, cfg)
 	if err != nil {
-		return false, streamyerrors.NewExecutionError(step.ID, err)
+		return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to render template: %w", err))
 	}
 
 	renderedHash := hashContent(rendered)
 	desiredMode, err := determineFileMode(cfg)
 	if err != nil {
-		return false, streamyerrors.NewExecutionError(step.ID, err)
+		return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to determine file mode: %w", err))
 	}
 
+	// Check destination state
 	existingHash, existingMode, exists, err := existingDestinationState(cfg.Destination)
 	if err != nil {
-		return false, streamyerrors.NewExecutionError(step.ID, err)
+		return nil, plugin.NewStateError(step.ID, fmt.Errorf("cannot check destination: %w", err))
 	}
 
+	// Store evaluation data to avoid recomputation
+	internalData := &templateEvaluationData{
+		RenderedContent: rendered,
+		RenderedHash:    renderedHash,
+		DesiredMode:     desiredMode,
+		ExistingHash:    existingHash,
+		ExistingMode:    existingMode,
+		ExistingExists:  exists,
+		SourceExists:    true,
+	}
+
+	// Determine current state
 	if !exists {
-		return false, nil
+		return &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusMissing,
+			RequiresAction: true,
+			Message:        fmt.Sprintf("destination %s does not exist", cfg.Destination),
+			Diff:           fmt.Sprintf("Would create: %s", cfg.Destination),
+			InternalData:   internalData,
+		}, nil
 	}
 
-	if renderedHash != existingHash {
-		return false, nil
+	// Compare content and permissions
+	contentMatches := renderedHash == existingHash
+	modeMatches := desiredMode.Perm() == existingMode.Perm()
+
+	if contentMatches && modeMatches {
+		return &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusSatisfied,
+			RequiresAction: false,
+			Message:        fmt.Sprintf("template output is up to date: %s", cfg.Destination),
+			InternalData:   internalData,
+		}, nil
 	}
 
-	if desiredMode.Perm() != existingMode.Perm() {
-		return false, nil
+	// Content differs - needs update
+	var currentState model.VerificationStatus
+	if contentMatches && !modeMatches {
+		currentState = model.StatusDrifted // Only permissions differ
+	} else {
+		currentState = model.StatusDrifted // Content differs
 	}
 
-	return true, nil
+	// Generate diff
+	diffStr := ""
+	if !contentMatches {
+		existingContent, readErr := os.ReadFile(cfg.Destination)
+		if readErr != nil {
+			diffStr = fmt.Sprintf("Cannot read existing file for diff: %v", readErr)
+		} else {
+			// Generate unified diff
+			diffBytes := diff.GenerateUnifiedDiff([]byte(rendered), existingContent, cfg.Destination, cfg.Destination)
+			diffStr = string(diffBytes)
+		}
+	}
+
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   currentState,
+		RequiresAction: true,
+		Message:        fmt.Sprintf("template output differs from desired: %s", cfg.Destination),
+		Diff:           diffStr,
+		InternalData:   internalData,
+	}, nil
 }
 
-func (p *templatePlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (p *templatePlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	cfg := step.Template
 	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "template configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("template configuration missing"))
 	}
 
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	if _, err := os.Stat(cfg.Source); err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, fmt.Errorf("stat source %q: %w", cfg.Source, err))
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: execErr.Error(), Error: execErr}, execErr
-	}
-
-	rendered, err := p.renderTemplate(ctx, cfg)
-	if err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, err)
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: execErr}, execErr
-	}
-
-	renderedHash := hashContent(rendered)
-	desiredMode, err := determineFileMode(cfg)
-	if err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, err)
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: execErr}, execErr
-	}
-
-	dstHash, dstMode, dstExists, err := existingDestinationState(cfg.Destination)
-	if err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, err)
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: execErr}, execErr
-	}
-
-	if dstExists {
-		contentMatches := renderedHash == dstHash
-		modeMatches := desiredMode.Perm() == dstMode.Perm()
-
-		if contentMatches && modeMatches {
+	// Use evaluation data to avoid recomputation
+	var data *templateEvaluationData
+	if evalResult.InternalData != nil {
+		data = evalResult.InternalData.(*templateEvaluationData)
+	} else {
+		// Fallback to re-evaluating
+		evalResult, err := p.Evaluate(ctx, step)
+		if err != nil {
+			return nil, convertError(step.ID, err)
+		}
+		if evalResult.InternalData == nil {
 			return &model.StepResult{
 				StepID:  step.ID,
-				Status:  model.StatusSkipped,
-				Message: "template output already up to date",
-			}, nil
+				Status:  model.StatusFailed,
+				Message: "evaluation failed during apply",
+				Error:   fmt.Errorf("evaluation failed"),
+			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
 		}
-
-		if contentMatches && !modeMatches {
-			if err := os.Chmod(cfg.Destination, desiredMode); err != nil {
-				execErr := streamyerrors.NewExecutionError(step.ID, fmt.Errorf("chmod destination %q: %w", cfg.Destination, err))
-				return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: execErr.Error(), Error: execErr}, execErr
-			}
-			return &model.StepResult{
-				StepID:  step.ID,
-				Status:  model.StatusSuccess,
-				Message: fmt.Sprintf("updated permissions for %s", cfg.Destination),
-			}, nil
-		}
+		data = evalResult.InternalData.(*templateEvaluationData)
 	}
 
-	dir := filepath.Dir(cfg.Destination)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, fmt.Errorf("create destination directory %q: %w", dir, err))
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: execErr.Error(), Error: execErr}, execErr
+	// Only apply if changes are needed
+	if !evalResult.RequiresAction {
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusSkipped,
+			Message: "no changes needed",
+		}, nil
 	}
 
-	if err := os.WriteFile(cfg.Destination, rendered, desiredMode); err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, fmt.Errorf("write destination %q: %w", cfg.Destination, err))
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: execErr.Error(), Error: execErr}, execErr
+	// Create destination directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(cfg.Destination), 0755); err != nil {
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusFailed,
+			Message: fmt.Sprintf("failed to create destination directory: %v", err),
+			Error:   err,
+		}, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to create destination directory: %w", err))
 	}
 
-	if err := os.Chmod(cfg.Destination, desiredMode); err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, fmt.Errorf("chmod destination %q: %w", cfg.Destination, err))
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: execErr.Error(), Error: execErr}, execErr
+	// Write the rendered content
+	if err := os.WriteFile(cfg.Destination, []byte(data.RenderedContent), data.DesiredMode); err != nil {
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusFailed,
+			Message: fmt.Sprintf("failed to write template output: %v", err),
+			Error:   err,
+		}, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to write template output: %w", err))
 	}
 
 	return &model.StepResult{
 		StepID:  step.ID,
 		Status:  model.StatusSuccess,
-		Message: fmt.Sprintf("rendered template to %s", cfg.Destination),
+		Message: fmt.Sprintf("template applied successfully: %s", cfg.Destination),
 	}, nil
 }
 
-func (p *templatePlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	cfg := step.Template
-	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "template configuration missing", nil)
+// Helper functions
+
+func convertError(stepID string, err error) error {
+	// Convert legacy errors to new plugin errors
+	var valErr *streamyerrors.ValidationError
+	if errors.As(err, &valErr) {
+		return plugin.NewValidationError(stepID, valErr.Err)
 	}
 
-	rendered, err := p.renderTemplate(ctx, cfg)
-	if err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, err)
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: execErr}, execErr
+	var execErr *streamyerrors.ExecutionError
+	if errors.As(err, &execErr) {
+		return plugin.NewExecutionError(stepID, execErr.Err)
 	}
 
-	renderedHash := hashContent(rendered)
-	desiredMode, err := determineFileMode(cfg)
-	if err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, err)
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: execErr}, execErr
-	}
-
-	dstHash, dstMode, dstExists, err := existingDestinationState(cfg.Destination)
-	if err != nil {
-		execErr := streamyerrors.NewExecutionError(step.ID, err)
-		return &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: execErr}, execErr
-	}
-
-	if !dstExists {
-		return &model.StepResult{
-			StepID:  step.ID,
-			Status:  model.StatusWouldCreate,
-			Message: fmt.Sprintf("would create %s", cfg.Destination),
-		}, nil
-	}
-
-	contentMatches := renderedHash == dstHash
-	modeMatches := desiredMode.Perm() == dstMode.Perm()
-
-	if contentMatches && modeMatches {
-		return &model.StepResult{
-			StepID:  step.ID,
-			Status:  model.StatusSkipped,
-			Message: "template output already up to date",
-		}, nil
-	}
-
-	message := fmt.Sprintf("would update %s", cfg.Destination)
-	if contentMatches && !modeMatches {
-		message = fmt.Sprintf("would update permissions for %s", cfg.Destination)
-	}
-
-	return &model.StepResult{
-		StepID:  step.ID,
-		Status:  model.StatusWouldUpdate,
-		Message: message,
-	}, nil
+	// Fallback to ExecutionError for unknown error types
+	return plugin.NewExecutionError(stepID, err)
 }
 
-func (p *templatePlugin) renderTemplate(ctx context.Context, cfg *config.TemplateStep) ([]byte, error) {
-	if cfg == nil {
-		return nil, errors.New("template configuration is nil")
+// Preserve all the existing internal helper functions from the original file
+func (p *templatePlugin) renderTemplate(ctx context.Context, cfg *config.TemplateStep) (string, error) {
+	if cfg.Source == "" {
+		return "", errors.New("template source cannot be empty")
 	}
 
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	contents, err := os.ReadFile(cfg.Source)
+	// Read template file
+	templateContent, err := os.ReadFile(cfg.Source)
 	if err != nil {
-		return nil, fmt.Errorf("read template %q: %w", cfg.Source, err)
+		return "", fmt.Errorf("read template file %q: %w", cfg.Source, err)
 	}
 
-	name := filepath.Base(cfg.Source)
-	option := "missingkey=error"
-	if cfg.AllowMissing {
-		option = "missingkey=zero"
-	}
-
-	tmpl, err := template.New(name).Option(option).Parse(string(contents))
+	// Parse and render template
+	tmpl, err := template.New(cfg.Source).Parse(string(templateContent))
 	if err != nil {
-		return nil, fmt.Errorf("parse template %q: %w", cfg.Source, err)
+		return "", fmt.Errorf("parse template %q: %w", cfg.Source, err)
 	}
 
-	data := p.buildContext(cfg)
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return nil, fmt.Errorf("execute template %q: %w", cfg.Source, err)
+	var renderedContent bytes.Buffer
+	if err := tmpl.Execute(&renderedContent, cfg.Vars); err != nil {
+		return "", fmt.Errorf("render template %q: %w", cfg.Source, err)
 	}
 
-	return buf.Bytes(), nil
+	return renderedContent.String(), nil
 }
 
-func (p *templatePlugin) buildContext(cfg *config.TemplateStep) map[string]string {
-	values := make(map[string]string, len(cfg.Vars))
-
-	if cfg.Env {
-		for _, entry := range os.Environ() {
-			parts := strings.SplitN(entry, "=", 2)
-			key := parts[0]
-			value := ""
-			if len(parts) == 2 {
-				value = parts[1]
-			}
-			values[key] = value
-		}
-	}
-
-	for key, value := range cfg.Vars {
-		values[key] = value
-	}
-
-	return values
+func hashContent(content string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(content))
+	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func hashContent(data []byte) [32]byte {
-	return sha256.Sum256(data)
-}
-
-func hashFile(path string) ([32]byte, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	return hashContent(data), nil
-}
-
-func existingDestinationState(path string) ([32]byte, os.FileMode, bool, error) {
-	info, err := os.Stat(path)
+func existingDestinationState(destination string) (string, os.FileMode, bool, error) {
+	info, err := os.Stat(destination)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return [32]byte{}, 0, false, nil
+			return "", os.FileMode(0), false, nil
 		}
-		return [32]byte{}, 0, false, fmt.Errorf("stat destination %q: %w", path, err)
+		return "", os.FileMode(0), false, err
 	}
 
-	if info.IsDir() {
-		return [32]byte{}, 0, false, fmt.Errorf("destination %q is a directory", path)
-	}
-
-	hash, err := hashFile(path)
+	content, err := os.ReadFile(destination)
 	if err != nil {
-		return [32]byte{}, 0, false, fmt.Errorf("hash destination %q: %w", path, err)
+		return "", os.FileMode(0), true, err
 	}
 
-	return hash, info.Mode(), true, nil
+	return hashContent(string(content)), info.Mode(), true, nil
 }
 
 func determineFileMode(cfg *config.TemplateStep) (os.FileMode, error) {
-	if cfg.Mode != nil {
-		return os.FileMode(*cfg.Mode), nil
+	mode := cfg.Mode
+	if cfg.Mode == nil || *cfg.Mode == 0 {
+		mode = &[]uint32{0644}[0] // default
 	}
-
-	info, err := os.Stat(cfg.Source)
-	if err != nil {
-		return 0, fmt.Errorf("stat source %q: %w", cfg.Source, err)
-	}
-
-	return info.Mode(), nil
-}
-
-func (p *templatePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	start := time.Now()
-	cfg := step.Template
-	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "template configuration missing", nil)
-	}
-
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   "verification cancelled",
-			Error:     ctx.Err(),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	default:
-	}
-
-	// Render template in-memory
-	rendered, err := p.renderTemplate(ctx, cfg)
-	if err != nil {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   fmt.Sprintf("cannot render template: %v", err),
-			Error:     err,
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Check if destination exists
-	destContent, err := os.ReadFile(cfg.Destination)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &model.VerificationResult{
-				StepID:    step.ID,
-				Status:    model.StatusMissing,
-				Message:   fmt.Sprintf("destination file %s does not exist", cfg.Destination),
-				Duration:  time.Since(start),
-				Timestamp: time.Now(),
-			}, nil
-		}
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   fmt.Sprintf("cannot read destination %s: %v", cfg.Destination, err),
-			Error:     err,
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Compare rendered content with destination
-	if !bytes.Equal(rendered, destContent) {
-		// Generate diff
-		diffOutput := diff.GenerateUnifiedDiff(destContent, rendered, cfg.Destination, "rendered template")
-
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusDrifted,
-			Message:   fmt.Sprintf("rendered template differs from %s", cfg.Destination),
-			Details:   diffOutput,
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	return &model.VerificationResult{
-		StepID:    step.ID,
-		Status:    model.StatusSatisfied,
-		Message:   fmt.Sprintf("template output matches %s", cfg.Destination),
-		Duration:  time.Since(start),
-		Timestamp: time.Now(),
-	}, nil
+	return os.FileMode(*mode), nil
 }

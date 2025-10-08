@@ -82,23 +82,18 @@ func generateLinearSteps(count int) []config.Step {
 
 type benchmarkPlugin struct{}
 
-func (benchmarkPlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{Name: "bench", Type: "command", Version: "1.0.0"}
+func (benchmarkPlugin) PluginMetadata() plugin.PluginMetadata {
+	return plugin.PluginMetadata{Name: "bench", Type: "command", Version: "1.0.0"}
 }
-func (benchmarkPlugin) Schema() interface{} { return nil }
-func (benchmarkPlugin) Check(context.Context, *config.Step) (bool, error) {
-	return false, nil
-}
-func (benchmarkPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	return &model.VerificationResult{
-		StepID:  step.ID,
-		Status:  model.StatusSatisfied,
-		Message: "benchmark verification satisfied",
+func (benchmarkPlugin) Schema() any { return nil }
+func (benchmarkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusSatisfied,
+		RequiresAction: false,
+		Message:        "benchmark evaluation satisfied",
 	}, nil
 }
-func (benchmarkPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (benchmarkPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	return &model.StepResult{StepID: step.ID, Status: model.StatusSuccess}, nil
-}
-func (benchmarkPlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	return &model.StepResult{StepID: step.ID, Status: model.StatusSkipped}, nil
 }

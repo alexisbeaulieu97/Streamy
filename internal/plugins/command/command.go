@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
@@ -25,15 +24,6 @@ func New() plugin.Plugin {
 }
 
 var _ plugin.Plugin = (*commandPlugin)(nil)
-var _ plugin.MetadataProvider = (*commandPlugin)(nil)
-
-func (p *commandPlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{
-		Name:    "shell-command",
-		Version: "1.0.0",
-		Type:    "command",
-	}
-}
 
 // PluginMetadata describes the plugin for the dependency registry.
 //
@@ -50,61 +40,161 @@ func (p *commandPlugin) PluginMetadata() plugin.PluginMetadata {
 	}
 }
 
-func (p *commandPlugin) Schema() interface{} {
+func (p *commandPlugin) Schema() any {
 	return config.CommandStep{}
 }
 
-func (p *commandPlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
+// Evaluation data for command operations
+type commandEvaluationData struct {
+	Shell           string
+	ShellArgs       []string
+	CheckCommand    string
+	CheckEnv        []string
+	CheckWorkDir    string
+	Command         string
+	CommandEnv      []string
+	CommandWorkDir  string
+	CheckExitCode   int
+	CheckOutput     string
+	CheckError      error
+	ShellDetermined bool
+}
+
+func (p *commandPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
 	cfg := step.Command
 	if cfg == nil {
-		return false, streamyerrors.NewValidationError(step.ID, "command configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration missing"))
 	}
 
-	if strings.TrimSpace(cfg.Check) == "" {
-		return false, nil
+	if err := ctx.Err(); err != nil {
+		return nil, plugin.NewStateError(step.ID, fmt.Errorf("context cancelled: %w", err))
 	}
 
+	// Determine shell (read-only operation)
 	shell, shellArgs, err := determineShell(cfg.Shell)
 	if err != nil {
-		return false, streamyerrors.NewExecutionError(step.ID, err)
+		return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("cannot determine shell: %w", err))
 	}
 
+	// Store evaluation data to avoid recomputation
+	internalData := &commandEvaluationData{
+		Shell:           shell,
+		ShellArgs:       shellArgs,
+		CheckCommand:    cfg.Check,
+		CheckEnv:        buildEnv(cfg.Env),
+		CheckWorkDir:    cfg.WorkDir,
+		Command:         cfg.Command,
+		CommandEnv:      buildEnv(cfg.Env),
+		CommandWorkDir:  cfg.WorkDir,
+		ShellDetermined: true,
+	}
+
+	// If no Check command is specified, we cannot evaluate the state
+	if strings.TrimSpace(cfg.Check) == "" {
+		return &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusUnknown,
+			RequiresAction: true, // Assume we need to run the command
+			Message:        "no verification command specified - will execute command",
+			Diff:           fmt.Sprintf("Would execute: %s", cfg.Command),
+			InternalData:   internalData,
+		}, nil
+	}
+
+	// Execute check command (read-only operation)
 	args := append(shellArgs, cfg.Check)
 	cmd := exec.CommandContext(ctx, shell, args...)
-	cmd.Env = buildEnv(cfg.Env)
+	cmd.Env = internalData.CheckEnv
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
 	}
 
 	output, err := cmd.CombinedOutput()
+	internalData.CheckOutput = string(output)
+	internalData.CheckError = err
+
+	var currentState model.VerificationStatus
+	var requiresAction bool
+	var message string
+
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return false, nil
+			// Non-zero exit code = missing/drifted
+			currentState = model.StatusMissing
+			requiresAction = true
+			message = fmt.Sprintf("check command failed (exit code %d): %s", exitErr.ExitCode(), string(output))
+			internalData.CheckExitCode = exitErr.ExitCode()
+		} else {
+			// Other error (command not found, timeout, etc.) = blocked
+			currentState = model.StatusBlocked
+			requiresAction = false
+			message = fmt.Sprintf("check command error: %v", err)
 		}
-		if len(output) > 0 {
-			return false, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("%w: %s", err, string(output)))
-		}
-		return false, streamyerrors.NewExecutionError(step.ID, err)
+	} else {
+		// Exit code 0 = satisfied
+		currentState = model.StatusSatisfied
+		requiresAction = false
+		message = "check command succeeded (exit code 0)"
+		internalData.CheckExitCode = 0
 	}
 
-	return true, nil
+	// Generate diff for commands that need action
+	var diff string
+	if requiresAction && cfg.Command != "" {
+		diff = fmt.Sprintf("Would execute: %s", cfg.Command)
+	}
+
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   currentState,
+		RequiresAction: requiresAction,
+		Message:        message,
+		Diff:           diff,
+		InternalData:   internalData,
+	}, nil
 }
 
-func (p *commandPlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (p *commandPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	cfg := step.Command
 	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "command configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration missing"))
 	}
 
-	shell, shellArgs, err := determineShell(cfg.Shell)
-	if err != nil {
-		return nil, streamyerrors.NewExecutionError(step.ID, err)
+	// Use evaluation data to avoid recomputation
+	var data *commandEvaluationData
+	if evalResult.InternalData != nil {
+		data = evalResult.InternalData.(*commandEvaluationData)
+	} else {
+		// Fallback to re-evaluating
+		evalResult, err := p.Evaluate(ctx, step)
+		if err != nil {
+			return nil, convertError(step.ID, err)
+		}
+		if evalResult.InternalData == nil {
+			return &model.StepResult{
+				StepID:  step.ID,
+				Status:  model.StatusFailed,
+				Message: "evaluation failed during apply",
+				Error:   fmt.Errorf("evaluation failed"),
+			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
+		}
+		data = evalResult.InternalData.(*commandEvaluationData)
 	}
 
-	args := append(shellArgs, cfg.Command)
-	cmd := exec.CommandContext(ctx, shell, args...)
-	cmd.Env = buildEnv(cfg.Env)
+	// Only apply if changes are needed (or if no check command exists)
+	if !evalResult.RequiresAction {
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusSkipped,
+			Message: "no changes needed",
+		}, nil
+	}
+
+	// Execute the command
+	args := append(data.ShellArgs, cfg.Command)
+	cmd := exec.CommandContext(ctx, data.Shell, args...)
+	cmd.Env = data.CommandEnv
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
 	}
@@ -116,22 +206,18 @@ func (p *commandPlugin) Apply(ctx context.Context, step *config.Step) (*model.St
 			err = fmt.Errorf("%w: %s", err, combinedOutput)
 		}
 
-		result := &model.StepResult{StepID: step.ID, Status: model.StatusFailed, Message: err.Error(), Error: err}
-		return result, streamyerrors.NewExecutionError(step.ID, err)
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusFailed,
+			Message: fmt.Sprintf("command failed: %v", err),
+			Error:   err,
+		}, plugin.NewExecutionError(step.ID, fmt.Errorf("command failed: %w", err))
 	}
 
 	return &model.StepResult{
 		StepID:  step.ID,
 		Status:  model.StatusSuccess,
-		Message: "command executed",
-	}, nil
-}
-
-func (p *commandPlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	return &model.StepResult{
-		StepID:  step.ID,
-		Status:  model.StatusSkipped,
-		Message: "dry-run: command not executed",
+		Message: fmt.Sprintf("executed: %s", cfg.Command),
 	}, nil
 }
 
@@ -163,90 +249,20 @@ func buildEnv(custom map[string]string) []string {
 	return env
 }
 
-func (p *commandPlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	start := time.Now()
-	cfg := step.Command
-	if cfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "command configuration missing", nil)
+// Helper functions
+
+func convertError(stepID string, err error) error {
+	// Convert legacy errors to new plugin errors
+	var valErr *streamyerrors.ValidationError
+	if errors.As(err, &valErr) {
+		return plugin.NewValidationError(stepID, valErr.Err)
 	}
 
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   "verification cancelled",
-			Error:     ctx.Err(),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	default:
+	var execErr *streamyerrors.ExecutionError
+	if errors.As(err, &execErr) {
+		return plugin.NewExecutionError(stepID, execErr.Err)
 	}
 
-	// If no Check command is specified, we cannot verify the step
-	if strings.TrimSpace(cfg.Check) == "" {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusUnknown,
-			Message:   "no verification command specified",
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Execute the check command
-	shell, shellArgs, err := determineShell(cfg.Shell)
-	if err != nil {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   fmt.Sprintf("cannot determine shell: %v", err),
-			Error:     err,
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	args := append(shellArgs, cfg.Check)
-	cmd := exec.CommandContext(ctx, shell, args...)
-	cmd.Env = buildEnv(cfg.Env)
-	if cfg.WorkDir != "" {
-		cmd.Dir = cfg.WorkDir
-	}
-
-	err = cmd.Run()
-	if err == nil {
-		// Exit code 0 = satisfied
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusSatisfied,
-			Message:   "check command succeeded (exit code 0)",
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Check for exit error vs other errors
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		// Non-zero exit code = missing
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusMissing,
-			Message:   fmt.Sprintf("check command failed (exit code %d)", exitErr.ExitCode()),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	// Other errors (command not found, timeout, etc.) = blocked
-	return &model.VerificationResult{
-		StepID:    step.ID,
-		Status:    model.StatusBlocked,
-		Message:   fmt.Sprintf("check command error: %v", err),
-		Error:     err,
-		Duration:  time.Since(start),
-		Timestamp: time.Now(),
-	}, nil
+	// Fallback to ExecutionError for unknown error types
+	return plugin.NewExecutionError(stepID, err)
 }

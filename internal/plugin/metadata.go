@@ -15,6 +15,7 @@ var (
 type PluginMetadata struct {
 	Name         string
 	Version      string
+	Type         string
 	APIVersion   string
 	Dependencies []Dependency
 	Stateful     bool

@@ -85,7 +85,7 @@ func runVerify(opts verifyOptions) error {
 		defer cancel()
 	}
 
-	log.WithFields(map[string]interface{}{
+	log.WithFields(map[string]any{
 		"config": opts.ConfigPath,
 		"steps":  len(cfg.Steps),
 	}).Info("Starting verification")
@@ -112,7 +112,7 @@ func runVerify(opts verifyOptions) error {
 		os.Exit(3)
 	}
 
-	log.WithFields(map[string]interface{}{
+	log.WithFields(map[string]any{
 		"total":     summary.TotalSteps,
 		"satisfied": summary.Satisfied,
 		"missing":   summary.Missing,

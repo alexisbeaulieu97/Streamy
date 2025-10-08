@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
@@ -24,15 +23,6 @@ func New() plugin.Plugin {
 }
 
 var _ plugin.Plugin = (*packagePlugin)(nil)
-var _ plugin.MetadataProvider = (*packagePlugin)(nil)
-
-func (p *packagePlugin) Metadata() plugin.Metadata {
-	return plugin.Metadata{
-		Name:    "apt-packages",
-		Version: "1.0.0",
-		Type:    "package",
-	}
-}
 
 // PluginMetadata describes the plugin for the dependency registry.
 //
@@ -49,59 +39,150 @@ func (p *packagePlugin) PluginMetadata() plugin.PluginMetadata {
 	}
 }
 
-func (p *packagePlugin) Schema() interface{} {
+func (p *packagePlugin) Schema() any {
 	return config.PackageStep{}
 }
 
-func (p *packagePlugin) Check(ctx context.Context, step *config.Step) (bool, error) {
+// Evaluation data for package operations
+type packageEvaluationData struct {
+	InstalledPackages []string
+	MissingPackages   []string
+	PackageStatus     map[string]bool // true = installed, false = missing
+}
+
+func (p *packagePlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
 	pkgCfg := step.Package
 	if pkgCfg == nil {
-		return false, streamyerrors.NewValidationError(step.ID, "package configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("package configuration missing"))
 	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, plugin.NewStateError(step.ID, fmt.Errorf("context cancelled: %w", err))
+	}
+
+	// Check package status (read-only operation)
+	var installedPackages []string
+	var missingPackages []string
+	packageStatus := make(map[string]bool)
 
 	for _, name := range pkgCfg.Packages {
 		if err := runCommand(ctx, "dpkg-query", "-W", name); err != nil {
 			var exitErr *exec.ExitError
 			if errors.As(err, &exitErr) {
-				return false, nil
+				// Package is not installed
+				missingPackages = append(missingPackages, name)
+				packageStatus[name] = false
+			} else {
+				return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to query package %s: %w", name, err))
 			}
-			return false, streamyerrors.NewExecutionError(step.ID, err)
+		} else {
+			// Package is installed
+			installedPackages = append(installedPackages, name)
+			packageStatus[name] = true
 		}
 	}
 
-	return true, nil
+	// Store evaluation data to avoid recomputation
+	internalData := &packageEvaluationData{
+		InstalledPackages: installedPackages,
+		MissingPackages:   missingPackages,
+		PackageStatus:     packageStatus,
+	}
+
+	// Determine current state
+	if len(missingPackages) == 0 {
+		return &model.EvaluationResult{
+			StepID:         step.ID,
+			CurrentState:   model.StatusSatisfied,
+			RequiresAction: false,
+			Message:        fmt.Sprintf("all packages installed: %s", strings.Join(pkgCfg.Packages, ", ")),
+			InternalData:   internalData,
+		}, nil
+	}
+
+	// Some packages are missing
+	return &model.EvaluationResult{
+		StepID:         step.ID,
+		CurrentState:   model.StatusMissing,
+		RequiresAction: true,
+		Message:        fmt.Sprintf("packages not installed: %s", strings.Join(missingPackages, ", ")),
+		Diff:           fmt.Sprintf("Would install: %s", strings.Join(missingPackages, ", ")),
+		InternalData:   internalData,
+	}, nil
 }
 
-func (p *packagePlugin) Apply(ctx context.Context, step *config.Step) (*model.StepResult, error) {
+func (p *packagePlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	pkgCfg := step.Package
 	if pkgCfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "package configuration missing", nil)
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("package configuration missing"))
 	}
 
-	args := append([]string{"install", "-y"}, pkgCfg.Packages...)
-	if err := runCommand(ctx, "apt-get", args...); err != nil {
-		result := &model.StepResult{
-			StepID:  step.ID,
-			Status:  model.StatusFailed,
-			Message: err.Error(),
-			Error:   err,
+	// Use evaluation data to avoid recomputation
+	var data *packageEvaluationData
+	if evalResult.InternalData != nil {
+		data = evalResult.InternalData.(*packageEvaluationData)
+	} else {
+		// Fallback to re-evaluating
+		evalResult, err := p.Evaluate(ctx, step)
+		if err != nil {
+			return nil, convertError(step.ID, err)
 		}
-		return result, streamyerrors.NewExecutionError(step.ID, err)
+		if evalResult.InternalData == nil {
+			return &model.StepResult{
+				StepID:  step.ID,
+				Status:  model.StatusFailed,
+				Message: "evaluation failed during apply",
+				Error:   fmt.Errorf("evaluation failed"),
+			}, plugin.NewExecutionError(step.ID, fmt.Errorf("evaluation failed during apply"))
+		}
+		data = evalResult.InternalData.(*packageEvaluationData)
+	}
+
+	// Only apply if changes are needed
+	if !evalResult.RequiresAction {
+		return &model.StepResult{
+			StepID:  step.ID,
+			Status:  model.StatusSkipped,
+			Message: "no changes needed",
+		}, nil
+	}
+
+	// Install missing packages
+	if len(data.MissingPackages) > 0 {
+		args := append([]string{"install", "-y"}, data.MissingPackages...)
+		if err := runCommand(ctx, "apt-get", args...); err != nil {
+			return &model.StepResult{
+				StepID:  step.ID,
+				Status:  model.StatusFailed,
+				Message: fmt.Sprintf("failed to install packages: %v", err),
+				Error:   err,
+			}, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to install packages: %w", err))
+		}
 	}
 
 	return &model.StepResult{
 		StepID:  step.ID,
 		Status:  model.StatusSuccess,
-		Message: fmt.Sprintf("installed packages: %s", strings.Join(pkgCfg.Packages, ", ")),
+		Message: fmt.Sprintf("installed packages: %s", strings.Join(data.MissingPackages, ", ")),
 	}, nil
 }
 
-func (p *packagePlugin) DryRun(ctx context.Context, step *config.Step) (*model.StepResult, error) {
-	return &model.StepResult{
-		StepID:  step.ID,
-		Status:  model.StatusSkipped,
-		Message: "dry-run: packages not installed",
-	}, nil
+// Helper functions
+
+func convertError(stepID string, err error) error {
+	// Convert legacy errors to new plugin errors
+	var valErr *streamyerrors.ValidationError
+	if errors.As(err, &valErr) {
+		return plugin.NewValidationError(stepID, valErr.Err)
+	}
+
+	var execErr *streamyerrors.ExecutionError
+	if errors.As(err, &execErr) {
+		return plugin.NewExecutionError(stepID, execErr.Err)
+	}
+
+	// Fallback to ExecutionError for unknown error types
+	return plugin.NewExecutionError(stepID, err)
 }
 
 func runCommand(ctx context.Context, name string, args ...string) error {
@@ -118,63 +199,4 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 	}
 
 	return nil
-}
-
-func (p *packagePlugin) Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error) {
-	start := time.Now()
-	pkgCfg := step.Package
-	if pkgCfg == nil {
-		return nil, streamyerrors.NewValidationError(step.ID, "package configuration missing", nil)
-	}
-
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusBlocked,
-			Message:   "verification cancelled",
-			Error:     ctx.Err(),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	default:
-	}
-
-	var missingPackages []string
-	for _, name := range pkgCfg.Packages {
-		if err := runCommand(ctx, "dpkg-query", "-W", name); err != nil {
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
-				missingPackages = append(missingPackages, name)
-			} else {
-				return &model.VerificationResult{
-					StepID:    step.ID,
-					Status:    model.StatusBlocked,
-					Message:   fmt.Sprintf("cannot query package %s: %v", name, err),
-					Error:     err,
-					Duration:  time.Since(start),
-					Timestamp: time.Now(),
-				}, nil
-			}
-		}
-	}
-
-	if len(missingPackages) > 0 {
-		return &model.VerificationResult{
-			StepID:    step.ID,
-			Status:    model.StatusMissing,
-			Message:   fmt.Sprintf("packages not installed: %s", strings.Join(missingPackages, ", ")),
-			Duration:  time.Since(start),
-			Timestamp: time.Now(),
-		}, nil
-	}
-
-	return &model.VerificationResult{
-		StepID:    step.ID,
-		Status:    model.StatusSatisfied,
-		Message:   fmt.Sprintf("all packages installed: %s", strings.Join(pkgCfg.Packages, ", ")),
-		Duration:  time.Since(start),
-		Timestamp: time.Now(),
-	}, nil
 }
