@@ -330,15 +330,8 @@ func (m Model) renderDetailView() string {
 
 	// Description section
 	if selected.Description != "" {
-		descSection := detailSectionStyle.Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				lipgloss.NewStyle().Bold(true).Render("Description"),
-				detailValueStyle.Render(selected.Description),
-			),
-		)
-		content.WriteString(descSection)
-		content.WriteString("\n")
+		content.WriteString(formatDetailRow("Description", selected.Description))
+		content.WriteString("\n\n")
 	}
 
 	// Last execution result section
@@ -364,14 +357,14 @@ func (m Model) renderDetailView() string {
 
 		// Show error if present
 		if selected.LastResult.Error != nil {
-			errorLines := []string{
-				detailValueStyle.Copy().Foreground(errorColor).Bold(true).Render("Error"),
-				detailValueStyle.Render(selected.LastResult.Error.Message),
-			}
+			execRows = append(execRows,
+				formatDetailRow("Error", selected.LastResult.Error.Message),
+			)
 			if selected.LastResult.Error.Suggestion != "" {
-				errorLines = append(errorLines, detailValueStyle.Render(fmt.Sprintf("Suggestion: %s", selected.LastResult.Error.Suggestion)))
+				execRows = append(execRows,
+					formatDetailRow("Suggestion", selected.LastResult.Error.Suggestion),
+				)
 			}
-			execRows = append(execRows, detailSectionStyle.Render(lipgloss.JoinVertical(lipgloss.Left, errorLines...)))
 		}
 
 		if execSection := renderSection("Last Execution", execRows); execSection != "" {
@@ -493,7 +486,7 @@ func (m Model) renderHelpView() string {
 		},
 	}
 
-	sectionTitleStyle := helpDescStyle.Copy().Bold(true)
+	sectionTitleStyle := helpDescStyle.Bold(true)
 	var formattedSections []string
 	for _, section := range sections {
 		formattedSections = append(formattedSections,

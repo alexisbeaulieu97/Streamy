@@ -128,7 +128,7 @@ func TestDashboardDisplaysPipelines(t *testing.T) {
 
 	// Create dashboard model
 	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
-	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
+	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 40})
 
 	// Get the rendered view
 	view := model.View()
@@ -698,12 +698,12 @@ func TestDashboardDetailViewWithResult(t *testing.T) {
 
 	// Assert: Should show execution results
 	assert.Contains(t, viewDetail, "Last Execution", "Should have Last Execution section")
-	assert.Contains(t, viewDetail, "Operation: verify", "Should show operation type")
-	assert.Contains(t, viewDetail, "Steps: 2 total", "Should show total steps")
-	assert.Contains(t, viewDetail, "(1 success, 1 failed)", "Should show step counts")
+	assert.Regexp(t, "Operation:\\s+verify", viewDetail, "Should show operation type")
+	assert.Regexp(t, "Steps:\\s+2 total", viewDetail, "Should show total steps")
+	assert.Regexp(t, "Summary:\\s+1 success, 1 failed", viewDetail, "Should show step counts")
 	assert.Contains(t, viewDetail, "Error", "Should show error section")
 	assert.Contains(t, viewDetail, "Pipeline verification failed", "Should show error message")
-	assert.Contains(t, viewDetail, "Suggestion: Check step-2 configuration", "Should show suggestion")
+	assert.Regexp(t, "Suggestion:\\s+Check step-2 configuration", viewDetail, "Should show suggestion")
 }
 
 // ============================================================================
@@ -811,8 +811,8 @@ func TestDashboardApplyRequiresConfirmation(t *testing.T) {
 	// Assert: Should be in confirm view
 	assert.True(t, dashModel.GetViewMode() == dashboard.ViewConfirm, "Should show confirmation dialog")
 	view := dashModel.View()
-	assert.Contains(t, view, "Apply configuration changes", "Should show apply confirmation message")
-	assert.Contains(t, view, "This will modify your system", "Should show warning")
+	assert.Contains(t, view, "Apply Changes", "Should show apply confirmation title")
+	assert.Contains(t, view, "This will modify your system configuration.", "Should show warning")
 }
 
 func TestDashboardApplyConfirmationAccept(t *testing.T) {

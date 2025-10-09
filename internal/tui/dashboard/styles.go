@@ -133,12 +133,12 @@ var (
 				MarginLeft(1).
 				MarginRight(1)
 
-	confirmButtonYesStyle = confirmButtonStyle.Copy().
+	confirmButtonYesStyle = confirmButtonStyle.
 				Foreground(successColor).
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(successColor)
 
-	confirmButtonNoStyle = confirmButtonStyle.Copy().
+	confirmButtonNoStyle = confirmButtonStyle.
 				Foreground(errorColor).
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(errorColor)
