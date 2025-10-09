@@ -57,7 +57,7 @@ func (m Model) renderListView() string {
 // renderHeader renders the header with title and status summary
 func (m Model) renderHeader() string {
 	title := titleStyle.Render("🚀 Streamy Dashboard")
-	
+
 	counts := m.CountByStatus()
 	summary := fmt.Sprintf(
 		"%s %d  %s %d  %s %d  %s %d",
@@ -187,12 +187,12 @@ func (m Model) renderFooter() string {
 		"r: refresh",
 		"?: help",
 	}
-	
+
 	// Add error dismissal hint if error is showing
 	if m.showError {
 		hints = append(hints, "x: dismiss error")
 	}
-	
+
 	hints = append(hints, "q: quit")
 
 	return footerStyle.Render(strings.Join(hints, "  •  "))
@@ -311,7 +311,7 @@ func (m Model) renderDetailView() string {
 		content.WriteString(fmt.Sprintf("  Completed: %s\n", selected.LastResult.CompletedAt.Format("Jan 2, 2006 15:04:05")))
 		content.WriteString(fmt.Sprintf("  Duration: %s\n", selected.LastResult.Duration.Round(time.Millisecond)))
 		content.WriteString(fmt.Sprintf("  Steps: %d total", len(selected.LastResult.StepResults)))
-		
+
 		// Count step statuses
 		successCount := 0
 		failedCount := 0
@@ -323,7 +323,7 @@ func (m Model) renderDetailView() string {
 			}
 		}
 		content.WriteString(fmt.Sprintf(" (%d success, %d failed)\n", successCount, failedCount))
-		
+
 		// Show error if present
 		if selected.LastResult.Error != nil {
 			content.WriteString("\n")
@@ -358,11 +358,11 @@ func (m Model) renderDetailView() string {
 		"q: quit",
 	}
 	footer := footerStyle.Render(strings.Join(hints, "  •  "))
-	
+
 	// Calculate available height for content
 	contentHeight := m.height - 4 // Reserve space for footer
 	lines := strings.Split(content.String(), "\n")
-	
+
 	// Truncate if too many lines
 	if len(lines) > contentHeight {
 		lines = lines[:contentHeight]
@@ -388,7 +388,7 @@ func (m Model) renderHelpView() string {
 	}
 
 	title := titleStyle.Render("❓ Streamy Dashboard Help")
-	
+
 	helpContent := `
 List View:
   ↑/↓, j/k      Navigate up/down
@@ -441,7 +441,7 @@ func (m Model) renderConfirmView() string {
 
 	// Render the background (dimmed list view) - could be used for overlay effect
 	// For now, we just show the dialog without background
-	
+
 	// Build confirmation message
 	var message string
 	switch m.confirmAction {

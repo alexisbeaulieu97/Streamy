@@ -22,10 +22,10 @@ import (
 // setupTestPluginRegistry creates a minimal plugin registry for testing
 func setupTestPluginRegistry(t *testing.T) *plugin.PluginRegistry {
 	t.Helper()
-	
+
 	log, err := logger.New(logger.Options{Level: "error", HumanReadable: false})
 	require.NoError(t, err)
-	
+
 	cfg := &plugin.RegistryConfig{}
 	return plugin.NewPluginRegistry(cfg, log)
 }
@@ -53,9 +53,9 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 	require.NoError(t, err)
 	for id, status := range statuses {
 		cache.Set(id, registry.CachedStatus{
-			Status:   status,
-			LastRun:  time.Now(),
-			Summary:  "",
+			Status:  status,
+			LastRun: time.Now(),
+			Summary: "",
 		})
 	}
 	err = cache.Save()
@@ -71,11 +71,11 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 func runModelUpdate(t *testing.T, model dashboard.Model, msg tea.Msg) dashboard.Model {
 	t.Helper()
 	newModel, cmd := model.Update(msg)
-	
+
 	// Type assert back to dashboard.Model
 	dashModel, ok := newModel.(dashboard.Model)
 	require.True(t, ok, "Update should return dashboard.Model")
-	
+
 	// If there's a command, execute it and apply the result
 	if cmd != nil {
 		result := cmd()
@@ -85,7 +85,7 @@ func runModelUpdate(t *testing.T, model dashboard.Model, msg tea.Msg) dashboard.
 			require.True(t, ok, "Update should return dashboard.Model")
 		}
 	}
-	
+
 	return dashModel
 }
 
@@ -267,11 +267,11 @@ func TestDashboardSortsByPriority(t *testing.T) {
 	require.Equal(t, 4, len(positions), "All 4 pipelines should be in the view")
 
 	// Assert: Sorting priority (failed > drifted > satisfied > unknown)
-	assert.Less(t, positions["pipeline-b"], positions["pipeline-c"], 
+	assert.Less(t, positions["pipeline-b"], positions["pipeline-c"],
 		"Failed (B) should appear before Drifted (C)")
-	assert.Less(t, positions["pipeline-c"], positions["pipeline-a"], 
+	assert.Less(t, positions["pipeline-c"], positions["pipeline-a"],
 		"Drifted (C) should appear before Satisfied (A)")
-	assert.Less(t, positions["pipeline-a"], positions["pipeline-d"], 
+	assert.Less(t, positions["pipeline-a"], positions["pipeline-d"],
 		"Satisfied (A) should appear before Unknown (D)")
 }
 
@@ -317,11 +317,11 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 
 	// Create dashboard model
 	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
-	
+
 	// Trigger Init() to load cached statuses
 	cmd := model.Init()
 	require.NotNil(t, cmd, "Init() should return a command to load statuses")
-	
+
 	// Execute the command to get the status message
 	msg := cmd()
 	model = runModelUpdate(t, model, msg)
@@ -334,7 +334,7 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 	// Since we can't access model internals directly, we check the cache was loaded
 	cached, ok := cache.Get("test-pipeline")
 	require.True(t, ok, "Cache should have the pipeline status")
-	assert.Equal(t, registry.StatusSatisfied, cached.Status, 
+	assert.Equal(t, registry.StatusSatisfied, cached.Status,
 		"Cached status should be satisfied")
 }
 
@@ -418,7 +418,7 @@ func TestDashboardNavigationWithKeyboard(t *testing.T) {
 	// Move down with 'j'
 	model = runModelUpdate(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	view1 := model.View()
-	
+
 	// Move down again with arrow key
 	model = runModelUpdate(t, model, tea.KeyMsg{Type: tea.KeyDown})
 	view2 := model.View()
@@ -514,7 +514,7 @@ func TestDashboardFormatLastRun(t *testing.T) {
 	// Assert: Should contain "Last checked:" and relative time
 	// Note: The pipeline's LastRun is set 2 hours ago, but the cache uses time.Now()
 	// So we'll just check that "Last checked:" appears
-	assert.Contains(t, view, "Last checked:", 
+	assert.Contains(t, view, "Last checked:",
 		fmt.Sprintf("Should show last checked time. View:\n%s", view))
 }
 
@@ -632,10 +632,10 @@ func TestDashboardDirectSelection(t *testing.T) {
 
 	// Press '3' to jump to the third pipeline
 	model = runModelUpdate(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
-	
+
 	// Press Enter to select
 	model = runModelUpdate(t, model, tea.KeyMsg{Type: tea.KeyEnter})
-	
+
 	// Get detail view
 	viewDetail := model.View()
 
@@ -729,7 +729,7 @@ func TestDashboardVerifyTriggersOperation(t *testing.T) {
 
 	// Navigate to detail view
 	model = runModelUpdate(t, model, tea.KeyMsg{Type: tea.KeyEnter})
-	
+
 	// Verify model is in detail view
 	assert.True(t, model.GetViewMode() == dashboard.ViewDetail, "Should be in detail view")
 

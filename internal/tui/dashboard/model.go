@@ -15,10 +15,10 @@ import (
 // Model is the main dashboard model
 type Model struct {
 	// Core data
-	pipelines    []registry.Pipeline
-	registry     *registry.Registry
-	statusCache  *registry.StatusCache
-	pluginReg    *plugin.PluginRegistry
+	pipelines   []registry.Pipeline
+	registry    *registry.Registry
+	statusCache *registry.StatusCache
+	pluginReg   *plugin.PluginRegistry
 
 	// UI state
 	viewMode     ViewMode
@@ -30,17 +30,17 @@ type Model struct {
 	spinner spinner.Model
 
 	// Operation state
-	loading         map[string]bool
-	operations      map[string]Operation
-	operationCtxs   map[string]context.CancelFunc
-	errors          map[string]string
-	showError       bool
-	errorMsg        string
+	loading       map[string]bool
+	operations    map[string]Operation
+	operationCtxs map[string]context.CancelFunc
+	errors        map[string]string
+	showError     bool
+	errorMsg      string
 
 	// Refresh state
-	refreshing       bool
-	refreshProgress  int
-	refreshTotal     int
+	refreshing      bool
+	refreshProgress int
+	refreshTotal    int
 
 	// Confirmation state
 	confirmAction   string

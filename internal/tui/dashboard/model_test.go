@@ -14,7 +14,7 @@ func TestSortPipelines(t *testing.T) {
 	tmpDir := t.TempDir()
 	reg, err := registry.NewRegistry(filepath.Join(tmpDir, "registry.json"))
 	assert.NoError(t, err)
-	
+
 	cache, err := registry.NewStatusCache(filepath.Join(tmpDir, "cache.json"))
 	assert.NoError(t, err)
 
@@ -43,7 +43,7 @@ func TestCountByStatus(t *testing.T) {
 	tmpDir := t.TempDir()
 	reg, err := registry.NewRegistry(filepath.Join(tmpDir, "registry.json"))
 	assert.NoError(t, err)
-	
+
 	cache, err := registry.NewStatusCache(filepath.Join(tmpDir, "cache.json"))
 	assert.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestMoveCursor(t *testing.T) {
 	tmpDir := t.TempDir()
 	reg, err := registry.NewRegistry(filepath.Join(tmpDir, "registry.json"))
 	assert.NoError(t, err)
-	
+
 	cache, err := registry.NewStatusCache(filepath.Join(tmpDir, "cache.json"))
 	assert.NoError(t, err)
 
@@ -110,7 +110,7 @@ func TestGetSelectedPipeline(t *testing.T) {
 	tmpDir := t.TempDir()
 	reg, err := registry.NewRegistry(filepath.Join(tmpDir, "registry.json"))
 	assert.NoError(t, err)
-	
+
 	cache, err := registry.NewStatusCache(filepath.Join(tmpDir, "cache.json"))
 	assert.NoError(t, err)
 
@@ -131,7 +131,7 @@ func TestUpdatePipelineStatus(t *testing.T) {
 	tmpDir := t.TempDir()
 	reg, err := registry.NewRegistry(filepath.Join(tmpDir, "registry.json"))
 	assert.NoError(t, err)
-	
+
 	cache, err := registry.NewStatusCache(filepath.Join(tmpDir, "cache.json"))
 	assert.NoError(t, err)
 

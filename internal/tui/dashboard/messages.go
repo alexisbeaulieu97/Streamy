@@ -47,7 +47,7 @@ type VerifyCompleteMsg struct {
 }
 
 // VerifyErrorMsg indicates verification failed
-type VerifyErrorMsg struct{
+type VerifyErrorMsg struct {
 	PipelineID string
 	Error      error
 }
@@ -66,13 +66,13 @@ type ApplyStartedMsg struct {
 }
 
 // ApplyCompleteMsg indicates apply completed successfully
-type ApplyCompleteMsg struct{
+type ApplyCompleteMsg struct {
 	PipelineID string
 	Result     *engine.ApplyPipelineResult
 }
 
 // ApplyErrorMsg indicates apply failed
-type ApplyErrorMsg struct{
+type ApplyErrorMsg struct {
 	PipelineID string
 	Error      error
 }
@@ -105,7 +105,6 @@ type RefreshCompleteMsg struct {
 
 // RefreshCancelledMsg indicates refresh was cancelled
 type RefreshCancelledMsg struct{}
-
 
 // Status Loading Messages
 

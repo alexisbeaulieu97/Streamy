@@ -15,27 +15,27 @@ import (
 // Update handles incoming messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	
+
 	// System messages
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		ApplyMaxWidth(m.width)
-		
+
 		// Check minimum terminal size
 		const minWidth = 80
 		const minHeight = 24
 		if m.width < minWidth || m.height < minHeight {
 			m.showError = true
-			m.errorMsg = fmt.Sprintf("Terminal too small (%dx%d). Minimum size: %dx%d", 
+			m.errorMsg = fmt.Sprintf("Terminal too small (%dx%d). Minimum size: %dx%d",
 				m.width, m.height, minWidth, minHeight)
-		} else if m.showError && m.errorMsg != "" && 
+		} else if m.showError && m.errorMsg != "" &&
 			fmt.Sprintf("Terminal too small") == m.errorMsg[:len("Terminal too small")] {
 			// Clear size error if terminal is now big enough
 			m.showError = false
 			m.errorMsg = ""
 		}
-		
+
 		return m, nil
 
 	case tea.KeyMsg:
@@ -67,7 +67,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		delete(m.operations, msg.PipelineID)
 		delete(m.operationCtxs, msg.PipelineID)
 		m.sortPipelines()
-		
+
 		// Save to cache
 		return m, saveVerifyStatusToCacheCmd(m.statusCache, msg.PipelineID, msg.Result)
 
@@ -97,12 +97,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		delete(m.operations, msg.PipelineID)
 		delete(m.operationCtxs, msg.PipelineID)
 		m.sortPipelines()
-		
+
 		// Save status to cache and auto-verify after successful apply
 		cmds := []tea.Cmd{
 			saveApplyStatusToCacheCmd(m.statusCache, msg.PipelineID, msg.Result),
 		}
-		
+
 		// Auto-verify to check if the system is now in desired state
 		if pipeline, _, ok := m.GetPipelineByID(msg.PipelineID); ok {
 			// Create new context for verification
@@ -112,7 +112,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.operations[msg.PipelineID] = Operation{Type: "verifying", PipelineID: msg.PipelineID, StartedAt: time.Now()}
 			cmds = append(cmds, verifyCmd(ctx, pipeline.ID, pipeline.Path, m.pluginReg))
 		}
-		
+
 		return m, tea.Batch(cmds...)
 
 	case ApplyErrorMsg:
@@ -270,29 +270,29 @@ func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Already refreshing, ignore
 			return m, nil
 		}
-		
+
 		if len(m.pipelines) == 0 {
 			return m, nil
 		}
-		
+
 		m.refreshing = true
 		m.refreshProgress = 0
 		m.refreshTotal = len(m.pipelines)
-		
+
 		// Start parallel refresh
 		var cmds []tea.Cmd
 		cmds = append(cmds, m.spinner.Tick)
-		
+
 		// Launch verification for each pipeline
 		for i, pipeline := range m.pipelines {
 			ctx, cancel := context.WithCancel(context.Background())
 			pipelineID := pipeline.ID
 			m.operationCtxs[pipelineID] = cancel
 			m.loading[pipelineID] = true
-			
+
 			cmds = append(cmds, refreshSingleCmd(ctx, pipeline, m.pluginReg, i, len(m.pipelines)))
 		}
-		
+
 		return m, tea.Batch(cmds...)
 
 	// Help
@@ -356,11 +356,11 @@ func (m Model) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		
+
 		if selected == nil {
 			return m, nil
 		}
-		
+
 		// Create context for this operation
 		ctx, cancel := context.WithCancel(context.Background())
 		m.operationCtxs[selected.ID] = cancel
@@ -370,7 +370,7 @@ func (m Model) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			PipelineID: selected.ID,
 			StartedAt:  time.Now(),
 		}
-		
+
 		return m, verifyCmd(ctx, selected.ID, selected.Path, m.pluginReg)
 
 	// Apply pipeline (US4 - with confirmation)
@@ -383,11 +383,11 @@ func (m Model) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		
+
 		if selected == nil {
 			return m, nil
 		}
-		
+
 		// Show confirmation dialog
 		m.confirmAction = "apply"
 		m.confirmPipeline = selected.ID
@@ -405,11 +405,11 @@ func (m Model) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		
+
 		if selected == nil {
 			return m, nil
 		}
-		
+
 		// Create context for this operation
 		ctx, cancel := context.WithCancel(context.Background())
 		m.operationCtxs[selected.ID] = cancel
@@ -419,7 +419,7 @@ func (m Model) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			PipelineID: selected.ID,
 			StartedAt:  time.Now(),
 		}
-		
+
 		return m, verifyCmd(ctx, selected.ID, selected.Path, m.pluginReg)
 
 	// Help
@@ -452,12 +452,12 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// User confirmed action
 		action := m.confirmAction
 		pipelineID := m.confirmPipeline
-		
+
 		// Clear confirmation state
 		m.confirmAction = ""
 		m.confirmPipeline = ""
 		m.confirmMessage = ""
-		
+
 		// Handle the confirmed action
 		switch action {
 		case "apply":
@@ -469,12 +469,12 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			
+
 			if selected == nil {
 				m.viewMode = ViewList
 				return m, nil
 			}
-			
+
 			// Create context and start apply
 			ctx, cancel := context.WithCancel(context.Background())
 			m.operationCtxs[selected.ID] = cancel
@@ -484,11 +484,11 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				PipelineID: selected.ID,
 				StartedAt:  time.Now(),
 			}
-			
+
 			// Return to detail view and start apply
 			m.viewMode = ViewDetail
 			return m, applyCmd(ctx, selected.ID, selected.Path, m.pluginReg)
-		
+
 		case "cancel_verify", "cancel_apply":
 			// Cancel the operation
 			if cancel, ok := m.operationCtxs[pipelineID]; ok {
@@ -497,21 +497,21 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			delete(m.loading, pipelineID)
 			delete(m.operations, pipelineID)
-			
+
 			m.viewMode = ViewDetail
 			return m, nil
-		
+
 		default:
 			m.viewMode = ViewDetail
 			return m, nil
 		}
-	
+
 	case "n", "N", "esc":
 		// User cancelled, go back to detail view
 		m.confirmAction = ""
 		m.confirmPipeline = ""
 		m.confirmMessage = ""
-		
+
 		if m.selectedID != "" {
 			m.viewMode = ViewDetail
 		} else {

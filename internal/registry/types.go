@@ -15,9 +15,9 @@ type Pipeline struct {
 	RegisteredAt time.Time `json:"registered_at"`
 
 	// Runtime state (not persisted in registry)
-	Status     PipelineStatus    `json:"-"`
-	LastRun    time.Time         `json:"-"`
-	LastResult *ExecutionResult  `json:"-"`
+	Status     PipelineStatus   `json:"-"`
+	LastRun    time.Time        `json:"-"`
+	LastResult *ExecutionResult `json:"-"`
 }
 
 // PipelineStatus represents the verification state of a pipeline

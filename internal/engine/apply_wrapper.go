@@ -72,7 +72,7 @@ func ApplyPipeline(ctx context.Context, configPath string, pluginRegistry *plugi
 
 	// Execute the plan
 	results, err := Execute(execCtx, plan)
-	
+
 	// Convert results
 	result := &ApplyPipelineResult{
 		StepCount:   len(cfg.Steps),

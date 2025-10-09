@@ -28,19 +28,19 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, plugin
 	return func() tea.Msg {
 		// Run verification
 		result, err := engine.VerifyPipeline(ctx, configPath, pluginReg)
-		
+
 		if err != nil {
 			// Context cancellation
 			if ctx.Err() != nil {
 				return VerifyCancelledMsg{PipelineID: pipelineID}
 			}
-			
+
 			return VerifyErrorMsg{
 				PipelineID: pipelineID,
 				Error:      err,
 			}
 		}
-		
+
 		return VerifyCompleteMsg{
 			PipelineID: pipelineID,
 			Result:     result,
@@ -53,19 +53,19 @@ func applyCmd(ctx context.Context, pipelineID string, configPath string, pluginR
 	return func() tea.Msg {
 		// Run apply
 		result, err := engine.ApplyPipeline(ctx, configPath, pluginReg)
-		
+
 		if err != nil {
 			// Context cancellation
 			if ctx.Err() != nil {
 				return ApplyCancelledMsg{PipelineID: pipelineID}
 			}
-			
+
 			return ApplyErrorMsg{
 				PipelineID: pipelineID,
 				Error:      err,
 			}
 		}
-		
+
 		return ApplyCompleteMsg{
 			PipelineID: pipelineID,
 			Result:     result,
@@ -84,12 +84,12 @@ func refreshAllCmd(ctx context.Context, pipelines []registry.Pipeline, pluginReg
 func refreshSingleCmd(ctx context.Context, pipeline registry.Pipeline, pluginReg *plugin.PluginRegistry, index int, total int) tea.Cmd {
 	return func() tea.Msg {
 		result, err := engine.VerifyPipeline(ctx, pipeline.Path, pluginReg)
-		
+
 		if err != nil {
 			if ctx.Err() != nil {
 				return RefreshCancelledMsg{}
 			}
-			
+
 			return RefreshPipelineCompleteMsg{
 				PipelineID: pipeline.ID,
 				Index:      index,
@@ -98,7 +98,7 @@ func refreshSingleCmd(ctx context.Context, pipeline registry.Pipeline, pluginReg
 				Error:      err,
 			}
 		}
-		
+
 		return RefreshPipelineCompleteMsg{
 			PipelineID: pipeline.ID,
 			Index:      index,
