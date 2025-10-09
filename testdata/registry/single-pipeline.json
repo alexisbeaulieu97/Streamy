@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "id": "dev-env",
+      "name": "Development Environment",
+      "path": "/home/user/configs/dev.yaml",
+      "description": "Sets up development environment with tools and dependencies",
+      "registered_at": "2025-10-08T10:00:00Z"
+    }
+  ]
+}

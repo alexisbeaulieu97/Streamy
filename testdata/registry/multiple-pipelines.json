@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "pipelines": [
+    {
+      "id": "dev-env",
+      "name": "Development Environment",
+      "path": "/home/user/configs/dev.yaml",
+      "description": "Sets up development environment with tools and dependencies",
+      "registered_at": "2025-10-08T10:00:00Z"
+    },
+    {
+      "id": "web-server",
+      "name": "Web Server",
+      "path": "/home/user/configs/webserver.yaml",
+      "description": "Configures nginx web server with SSL and caching",
+      "registered_at": "2025-10-08T11:30:00Z"
+    },
+    {
+      "id": "database",
+      "name": "Database Setup",
+      "path": "/home/user/configs/database.yaml",
+      "description": "PostgreSQL database with replication and backups",
+      "registered_at": "2025-10-08T12:45:00Z"
+    },
+    {
+      "id": "monitoring",
+      "name": "Monitoring Stack",
+      "path": "/home/user/configs/monitoring.yaml",
+      "description": "Prometheus and Grafana monitoring infrastructure",
+      "registered_at": "2025-10-08T14:15:00Z"
+    },
+    {
+      "id": "backup",
+      "name": "Backup System",
+      "path": "/home/user/configs/backup.yaml",
+      "description": "Automated backup system for critical data",
+      "registered_at": "2025-10-08T15:00:00Z"
+    }
+  ]
+}

@@ -17,16 +17,18 @@ jobs:
         run: gofmt -l . | tee /tmp/gofmt.txt && test ! -s /tmp/gofmt.txt
       - name: Run all tests
         run: go test ./... -coverprofile=coverage_all.out
-      - name: Run unit tests with coverage (excluding cmd)
-        run: go test ./internal/... ./pkg/... -coverprofile=coverage.out -covermode=atomic
+      - name: Run unit tests with coverage (excluding cmd and TUI)
+        run: go test $(go list ./internal/... ./pkg/... | grep -v '/internal/tui') -coverprofile=coverage.out -covermode=atomic
       - name: Enforce coverage threshold
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | awk 'END {print $3}' | sed 's/%//')
-          echo "Coverage (excluding cmd): ${COVERAGE}%"
+          echo "Coverage (excluding cmd and all TUI packages): ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 80" | bc -l) )); then
             echo "Coverage ${COVERAGE}% is below 80% threshold"
             exit 1
           fi
+      - name: Run TUI integration tests
+        run: go test ./tests/... -v
 
   lint:
     runs-on: ubuntu-latest
