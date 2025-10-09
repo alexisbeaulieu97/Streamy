@@ -17,6 +17,13 @@ func newRootCmd() *cobra.Command {
 		Short:         "Streamy automates environment setup from declarative configs",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// If no subcommand is provided, launch the dashboard
+			if len(args) == 0 {
+				return runDashboard()
+			}
+			return cmd.Help()
+		},
 	}
 
 	cmd.PersistentFlags().BoolVarP(&flags.verbose, "verbose", "v", false, "Enable verbose logging")
@@ -25,6 +32,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(newApplyCmd(flags))
 	cmd.AddCommand(newVerifyCmd(flags))
 	cmd.AddCommand(newVersionCmd())
+	cmd.AddCommand(newDashboardCmd())
 
 	return cmd
 }

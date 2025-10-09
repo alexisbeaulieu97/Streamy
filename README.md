@@ -49,6 +49,88 @@ After Phase 3.14 is complete you can use the install/build scripts in `scripts/`
 
    Use `--dry-run` for a safe preview and `--verbose` for detailed logging.
 
+## Dashboard
+
+Streamy includes an interactive TUI dashboard for managing multiple pipeline configurations:
+
+```bash
+streamy dashboard
+```
+
+### Features
+
+- **Pipeline Overview**: View all registered pipelines with real-time status indicators
+- **Status Tracking**: Visual status icons (🟢 satisfied, 🟡 drifted, 🔴 failed, ⚪ unknown)
+- **Smart Sorting**: Pipelines automatically sorted by priority (failed > drifted > satisfied > unknown)
+- **Operations**:
+  - **Verify**: Check if pipeline configuration matches actual system state
+  - **Apply**: Modify system to match configuration (with confirmation)
+  - **Refresh**: Re-verify all pipelines or a single pipeline
+- **Status Caching**: Fast startup with cached statuses from previous runs
+- **Keyboard Navigation**: Efficient keyboard-driven interface
+
+### Dashboard Usage
+
+1. **Register pipelines**:
+   ```bash
+   streamy register dev-env ./configs/dev-env.yaml
+   streamy register prod-env ./configs/prod-env.yaml
+   ```
+
+2. **Launch dashboard**:
+   ```bash
+   streamy dashboard
+   ```
+
+3. **Keyboard Shortcuts**:
+   - **List View**:
+     - `↑`/`↓` or `k`/`j`: Navigate pipelines
+     - `Enter`: View pipeline details
+     - `1`-`9`: Jump to pipeline by number
+     - `r`: Refresh all pipelines
+     - `?`: Show help
+     - `q`: Quit
+   
+   - **Detail View**:
+     - `v`: Verify pipeline
+     - `a`: Apply changes (requires confirmation)
+     - `r`: Refresh this pipeline
+     - `Esc`: Back to list
+     - `?`: Show help
+     - `q`: Quit
+   
+   - **Help View**:
+     - `?`/`Esc`/`q`: Close help
+   
+   - **Confirmation Dialog**:
+     - `y`: Confirm action
+     - `n`/`Esc`: Cancel
+
+4. **Status Indicators**:
+   - 🟢 **Satisfied**: System matches configuration
+   - 🟡 **Drifted**: System differs from configuration
+   - 🔴 **Failed**: Verification or apply failed
+   - ⚪ **Unknown**: Not yet verified
+   - ⚙️ (spinner): Operation in progress
+
+### Pipeline Management
+
+```bash
+# Register a pipeline
+streamy register <name> <config-path> [--description "Pipeline description"]
+
+# List registered pipelines
+streamy list
+
+# Unregister a pipeline
+streamy unregister <name>
+
+# Verify a single pipeline (CLI)
+streamy verify <name>
+```
+
+The dashboard provides a real-time view of all registered pipelines with interactive operations. Status information is cached in `~/.streamy/status-cache.json` for fast startup.
+
 ## Configuration Reference
 
 - **Root fields**: `version`, `name`, `description`, `settings`, `steps`, `validations`.

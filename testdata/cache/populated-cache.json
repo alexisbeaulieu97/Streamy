@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "statuses": {
+    "dev-env": {
+      "status": "satisfied",
+      "last_run": "2025-10-08T14:30:00Z",
+      "summary": "All 5 steps passed",
+      "step_count": 5,
+      "failed_steps": []
+    },
+    "web-server": {
+      "status": "drifted",
+      "last_run": "2025-10-08T14:25:00Z",
+      "summary": "2 steps need changes",
+      "step_count": 8,
+      "failed_steps": []
+    },
+    "database": {
+      "status": "failed",
+      "last_run": "2025-10-08T14:20:00Z",
+      "summary": "Step 'install-postgres' failed",
+      "step_count": 12,
+      "failed_steps": ["install-postgres"]
+    }
+  }
+}
