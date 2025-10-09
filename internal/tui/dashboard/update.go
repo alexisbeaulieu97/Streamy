@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -30,7 +31,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errorMsg = fmt.Sprintf("Terminal too small (%dx%d). Minimum size: %dx%d",
 				m.width, m.height, minWidth, minHeight)
 		} else if m.showError && m.errorMsg != "" &&
-			fmt.Sprintf("Terminal too small") == m.errorMsg[:len("Terminal too small")] {
+			strings.HasPrefix(m.errorMsg, "Terminal too small") {
 			// Clear size error if terminal is now big enough
 			m.showError = false
 			m.errorMsg = ""
@@ -532,8 +533,12 @@ func saveVerifyStatusToCacheCmd(cache *registry.StatusCache, pipelineID string, 
 			StepCount:   result.StepCount,
 			FailedSteps: result.FailedSteps,
 		}
-		cache.Set(pipelineID, cached)
-		cache.Save()
+		if err := cache.Set(pipelineID, cached); err != nil {
+			return ErrorMsg{Message: fmt.Sprintf("Failed to update status cache: %v", err)}
+		}
+		if err := cache.Save(); err != nil {
+			return ErrorMsg{Message: fmt.Sprintf("Failed to persist status cache: %v", err)}
+		}
 		return StatusCacheSavedMsg{PipelineID: pipelineID}
 	}
 }
@@ -548,8 +553,12 @@ func saveApplyStatusToCacheCmd(cache *registry.StatusCache, pipelineID string, r
 			StepCount:   result.StepCount,
 			FailedSteps: result.FailedSteps,
 		}
-		cache.Set(pipelineID, cached)
-		cache.Save()
+		if err := cache.Set(pipelineID, cached); err != nil {
+			return ErrorMsg{Message: fmt.Sprintf("Failed to update status cache: %v", err)}
+		}
+		if err := cache.Save(); err != nil {
+			return ErrorMsg{Message: fmt.Sprintf("Failed to persist status cache: %v", err)}
+		}
 		return StatusCacheSavedMsg{PipelineID: pipelineID}
 	}
 }

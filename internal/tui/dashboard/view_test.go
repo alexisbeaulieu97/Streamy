@@ -141,7 +141,7 @@ func TestView(t *testing.T) {
 	m.confirmAction = "apply"
 	view = m.View()
 	assert.NotEmpty(t, view)
-	assert.Contains(t, view, "Apply configuration")
+	assert.Contains(t, view, "Apply Changes")
 }
 
 func TestView_WithError(t *testing.T) {

@@ -325,6 +325,8 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 	// Execute the command to get the status message
 	msg := cmd()
 	model = runModelUpdate(t, model, msg)
+	counts := model.CountByStatus()
+	assert.Equal(t, 1, counts[registry.StatusSatisfied], "Model should report satisfied pipeline from cache")
 
 	// Get updated pipelines from model
 	updatedPipelines := reg.List()

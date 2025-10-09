@@ -44,6 +44,17 @@ func (m Model) renderListView() string {
 		content.WriteString("\n")
 	}
 
+	// Render info banner when refreshing
+	if m.refreshing {
+		refreshContent := lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			progressStyle.Render(m.spinner.View()),
+			progressStyle.Render(fmt.Sprintf(" Refreshing %d/%d", m.refreshProgress, m.refreshTotal)),
+		)
+		content.WriteString(infoBannerStyle.Render(refreshContent))
+		content.WriteString("\n")
+	}
+
 	// Render pipeline list
 	content.WriteString(m.renderPipelineList())
 	content.WriteString("\n")
@@ -69,11 +80,12 @@ func (m Model) renderHeader() string {
 
 	// Add refresh indicator if refreshing
 	if m.refreshing {
-		summary += fmt.Sprintf("  %s Refreshing %d/%d",
-			m.spinner.View(),
-			m.refreshProgress,
-			m.refreshTotal,
+		refreshSegment := lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			progressStyle.Render(m.spinner.View()),
+			progressStyle.Render(fmt.Sprintf(" Refreshing %d/%d", m.refreshProgress, m.refreshTotal)),
 		)
+		summary = fmt.Sprintf("%s  %s", summary, refreshSegment)
 	}
 
 	headerContent := lipgloss.JoinVertical(
@@ -259,6 +271,25 @@ func (m Model) renderDetailView() string {
 		return "Pipeline not found"
 	}
 
+	formatDetailRow := func(label, value string) string {
+		return lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			detailLabelStyle.Render(fmt.Sprintf("%s:", label)),
+			detailValueStyle.Render(value),
+		)
+	}
+
+	renderSection := func(title string, rows []string) string {
+		if len(rows) == 0 {
+			return ""
+		}
+		body := lipgloss.JoinVertical(lipgloss.Left, rows...)
+		sectionTitle := lipgloss.NewStyle().Bold(true).Render(title)
+		return detailSectionStyle.Render(
+			lipgloss.JoinVertical(lipgloss.Left, sectionTitle, body),
+		)
+	}
+
 	var content strings.Builder
 
 	// Header with pipeline name
@@ -284,33 +315,40 @@ func (m Model) renderDetailView() string {
 	content.WriteString("\n\n")
 
 	// Metadata section
-	metaStyle := lipgloss.NewStyle().Foreground(mutedColor)
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Metadata"))
-	content.WriteString("\n")
-	content.WriteString(fmt.Sprintf("  ID: %s\n", selected.ID))
-	content.WriteString(fmt.Sprintf("  Path: %s\n", selected.Path))
-	content.WriteString(fmt.Sprintf("  Registered: %s\n", selected.RegisteredAt.Format("Jan 2, 2006 15:04")))
-	if !selected.LastRun.IsZero() {
-		content.WriteString(fmt.Sprintf("  Last Run: %s\n", FormatLastRun(selected.LastRun)))
+	metaRows := []string{
+		formatDetailRow("ID", selected.ID),
+		formatDetailRow("Path", selected.Path),
+		formatDetailRow("Registered", selected.RegisteredAt.Format("Jan 2, 2006 15:04")),
 	}
-	content.WriteString("\n")
+	if !selected.LastRun.IsZero() {
+		metaRows = append(metaRows, formatDetailRow("Last Run", FormatLastRun(selected.LastRun)))
+	}
+	if metaSection := renderSection("Metadata", metaRows); metaSection != "" {
+		content.WriteString(metaSection)
+		content.WriteString("\n")
+	}
 
 	// Description section
 	if selected.Description != "" {
-		content.WriteString(lipgloss.NewStyle().Bold(true).Render("Description"))
-		content.WriteString("\n")
-		content.WriteString(fmt.Sprintf("  %s\n", selected.Description))
+		descSection := detailSectionStyle.Render(
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				lipgloss.NewStyle().Bold(true).Render("Description"),
+				detailValueStyle.Render(selected.Description),
+			),
+		)
+		content.WriteString(descSection)
 		content.WriteString("\n")
 	}
 
 	// Last execution result section
 	if selected.LastResult != nil {
-		content.WriteString(lipgloss.NewStyle().Bold(true).Render("Last Execution"))
-		content.WriteString("\n")
-		content.WriteString(fmt.Sprintf("  Operation: %s\n", selected.LastResult.Operation))
-		content.WriteString(fmt.Sprintf("  Completed: %s\n", selected.LastResult.CompletedAt.Format("Jan 2, 2006 15:04:05")))
-		content.WriteString(fmt.Sprintf("  Duration: %s\n", selected.LastResult.Duration.Round(time.Millisecond)))
-		content.WriteString(fmt.Sprintf("  Steps: %d total", len(selected.LastResult.StepResults)))
+		execRows := []string{
+			formatDetailRow("Operation", selected.LastResult.Operation),
+			formatDetailRow("Completed", selected.LastResult.CompletedAt.Format("Jan 2, 2006 15:04:05")),
+			formatDetailRow("Duration", selected.LastResult.Duration.Round(time.Millisecond).String()),
+			formatDetailRow("Steps", fmt.Sprintf("%d total", len(selected.LastResult.StepResults))),
+		}
 
 		// Count step statuses
 		successCount := 0
@@ -322,19 +360,24 @@ func (m Model) renderDetailView() string {
 				failedCount++
 			}
 		}
-		content.WriteString(fmt.Sprintf(" (%d success, %d failed)\n", successCount, failedCount))
+		execRows = append(execRows, formatDetailRow("Summary", fmt.Sprintf("%d success, %d failed", successCount, failedCount)))
 
 		// Show error if present
 		if selected.LastResult.Error != nil {
-			content.WriteString("\n")
-			content.WriteString(lipgloss.NewStyle().Bold(true).Foreground(errorColor).Render("Error"))
-			content.WriteString("\n")
-			content.WriteString(fmt.Sprintf("  %s\n", selected.LastResult.Error.Message))
-			if selected.LastResult.Error.Suggestion != "" {
-				content.WriteString(fmt.Sprintf("  Suggestion: %s\n", selected.LastResult.Error.Suggestion))
+			errorLines := []string{
+				detailValueStyle.Copy().Foreground(errorColor).Bold(true).Render("Error"),
+				detailValueStyle.Render(selected.LastResult.Error.Message),
 			}
+			if selected.LastResult.Error.Suggestion != "" {
+				errorLines = append(errorLines, detailValueStyle.Render(fmt.Sprintf("Suggestion: %s", selected.LastResult.Error.Suggestion)))
+			}
+			execRows = append(execRows, detailSectionStyle.Render(lipgloss.JoinVertical(lipgloss.Left, errorLines...)))
 		}
-		content.WriteString("\n")
+
+		if execSection := renderSection("Last Execution", execRows); execSection != "" {
+			content.WriteString(execSection)
+			content.WriteString("\n")
+		}
 	}
 
 	// Show loading indicator if operation in progress
@@ -343,7 +386,7 @@ func (m Model) renderDetailView() string {
 		if ok {
 			content.WriteString("\n")
 			opMsg := fmt.Sprintf("%s %s in progress...", m.spinner.View(), op.Type)
-			content.WriteString(lipgloss.NewStyle().Foreground(primaryColor).Render(opMsg))
+			content.WriteString(progressStyle.Render(opMsg))
 			content.WriteString("\n")
 		}
 	}
@@ -369,7 +412,7 @@ func (m Model) renderDetailView() string {
 		content.Reset()
 		content.WriteString(strings.Join(lines, "\n"))
 		content.WriteString("\n")
-		content.WriteString(metaStyle.Render("... (content truncated)"))
+		content.WriteString(detailValueStyle.Render("... (content truncated)"))
 		content.WriteString("\n")
 	}
 
@@ -387,48 +430,91 @@ func (m Model) renderHelpView() string {
 		return "Initializing..."
 	}
 
-	title := titleStyle.Render("❓ Streamy Dashboard Help")
+	title := helpTitleStyle.Render("❓ Streamy Dashboard Help")
 
-	helpContent := `
-List View:
-  ↑/↓, j/k      Navigate up/down
-  1-9           Jump to pipeline by number
-  Enter         View pipeline details
-  r             Refresh all pipelines
-  ?             Toggle this help
-  q, Ctrl+C     Quit application
+	type helpEntry struct {
+		key  string
+		desc string
+	}
 
-Detail View:
-  v             Run verification
-  a             Apply configuration (with confirmation)
-  r             Refresh this pipeline
-  Esc           Back to list
-  ?             Toggle this help
-  q, Ctrl+C     Quit application
+	formatEntries := func(entries []helpEntry) string {
+		lines := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			key := helpKeyStyle.Render(entry.key)
+			desc := helpDescStyle.Render(entry.desc)
+			lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Left, key, desc))
+		}
+		return lipgloss.JoinVertical(lipgloss.Left, lines...)
+	}
 
-Status Indicators:
-  🟢 Satisfied   All steps are in desired state
-  🟡 Drifted     Some steps need changes
-  🔴 Failed      Verification failed or errors occurred
-  ⚪ Unknown     Status not yet checked
+	sections := []struct {
+		title   string
+		entries []helpEntry
+	}{
+		{
+			title: "List View",
+			entries: []helpEntry{
+				{"↑/↓, j/k", "Navigate up/down"},
+				{"1-9", "Jump to pipeline by number"},
+				{"Enter", "View pipeline details"},
+				{"r", "Refresh all pipelines"},
+				{"?", "Toggle this help"},
+				{"q, Ctrl+C", "Quit application"},
+			},
+		},
+		{
+			title: "Detail View",
+			entries: []helpEntry{
+				{"v", "Run verification"},
+				{"a", "Apply configuration (with confirmation)"},
+				{"r", "Refresh this pipeline"},
+				{"Esc", "Back to list"},
+				{"?", "Toggle this help"},
+				{"q, Ctrl+C", "Quit application"},
+			},
+		},
+		{
+			title: "Status Indicators",
+			entries: []helpEntry{
+				{"🟢 Satisfied", "All steps are in desired state"},
+				{"🟡 Drifted", "Some steps need changes"},
+				{"🔴 Failed", "Verification failed or errors occurred"},
+				{"⚪ Unknown", "Status not yet checked"},
+			},
+		},
+		{
+			title: "Tips",
+			entries: []helpEntry{
+				{"•", "Pipeline status is cached between sessions"},
+				{"•", "Failed/drifted pipelines are sorted to the top"},
+				{"•", "Use Ctrl+C at any time to safely exit"},
+				{"•", "Refresh updates status from actual system state"},
+			},
+		},
+	}
 
-Tips:
-  • Pipeline status is cached between sessions
-  • Failed/drifted pipelines are sorted to the top
-  • Use Ctrl+C at any time to safely exit
-  • Refresh updates status from actual system state
-`
+	sectionTitleStyle := helpDescStyle.Copy().Bold(true)
+	var formattedSections []string
+	for _, section := range sections {
+		formattedSections = append(formattedSections,
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				sectionTitleStyle.Render(section.title),
+				formatEntries(section.entries),
+			),
+		)
+	}
 
-	helpText := lipgloss.NewStyle().
-		Padding(1, 2).
-		Render(helpContent)
+	helpBody := helpBoxStyle.Render(
+		lipgloss.JoinVertical(lipgloss.Left, formattedSections...),
+	)
 
 	footer := footerStyle.Render("Press ? or Esc to close")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
-		helpText,
+		helpBody,
 		footer,
 	)
 }
@@ -444,31 +530,36 @@ func (m Model) renderConfirmView() string {
 
 	// Build confirmation message
 	var message string
+	var title string
 	switch m.confirmAction {
 	case "cancel_verify":
-		message = "⚠️  Cancel verification?"
+		title = "Cancel Verification"
+		message = "Are you sure you want to stop the verification in progress?"
 	case "cancel_apply":
-		message = "⚠️  Cancel apply operation?"
+		title = "Cancel Apply Operation"
+		message = "Are you sure you want to stop applying changes?"
 	case "apply":
-		message = "⚠️  Apply configuration changes?\n\nThis will modify your system."
+		title = "Apply Changes"
+		message = "This will modify your system configuration."
 	default:
-		message = "Confirm action?"
+		title = "Confirm Action"
+		message = "Proceed with the selected operation?"
 	}
 
-	// Style the dialog
-	dialogStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(warningColor).
-		Padding(1, 2).
-		Width(50).
-		Align(lipgloss.Center)
+	buttons := lipgloss.JoinHorizontal(
+		lipgloss.Center,
+		confirmButtonYesStyle.Render("y = Yes"),
+		confirmButtonNoStyle.Render("n = No"),
+		confirmButtonStyle.Render("Esc = Cancel"),
+	)
 
-	dialog := dialogStyle.Render(
+	dialog := confirmBoxStyle.Render(
 		lipgloss.JoinVertical(
 			lipgloss.Center,
-			message,
+			confirmTitleStyle.Render(fmt.Sprintf("⚠️  %s", title)),
+			helpDescStyle.Render(message),
 			"",
-			lipgloss.NewStyle().Foreground(mutedColor).Render("y = Yes    n = No    Esc = Cancel"),
+			buttons,
 		),
 	)
 
