@@ -26,10 +26,10 @@
 
 **Purpose**: Create helper utilities that all commands will use
 
-- [ ] T001 [P] Create `internal/registry/helpers.go` with `GeneratePipelineID(path string) string` function that sanitizes filename to valid ID
-- [ ] T002 [P] Add `ValidatePipelineID(id string) error` to `internal/registry/helpers.go` that enforces regex `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
-- [ ] T003 [P] Add `SanitizeFilename(name string) string` helper to `internal/registry/helpers.go` for path-to-ID conversion
-- [ ] T004 [P] Create unit tests in `internal/registry/helpers_test.go` for ID generation with edge cases (special chars, long names, empty strings)
+- [X] T001 [P] Create `internal/registry/helpers.go` with `GeneratePipelineID(path string) string` function that sanitizes filename to valid ID
+- [X] T002 [P] Add `ValidatePipelineID(id string) error` to `internal/registry/helpers.go` that enforces regex `^[a-z0-9][a-z0-9-]*[a-z0-9]$`
+- [X] T003 [P] Add `SanitizeFilename(name string) string` helper to `internal/registry/helpers.go` for path-to-ID conversion
+- [X] T004 [P] Create unit tests in `internal/registry/helpers_test.go` for ID generation with edge cases (special chars, long names, empty strings)
 
 ---
 
@@ -39,9 +39,9 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Create `cmd/streamy/registry.go` with parent command `streamy registry` that groups subcommands
-- [ ] T006 Add help text and usage examples to registry parent command
-- [ ] T007 Register registry command group in `cmd/streamy/root.go` by adding `cmd.AddCommand(newRegistryCmd())`
+- [X] T005 Create `cmd/streamy/registry.go` with parent command `streamy registry` that groups subcommands
+- [X] T006 Add help text and usage examples to registry parent command
+- [X] T007 Register registry command group in `cmd/streamy/root.go` by adding `cmd.AddCommand(newRegistryCmd())`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -57,20 +57,20 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T008 [P] [US1] Create `cmd/streamy/register_test.go` with test for successful registration with valid config
-- [ ] T009 [P] [US1] Add test to `cmd/streamy/register_test.go` for duplicate ID error (FR-009)
-- [ ] T010 [P] [US1] Add test to `cmd/streamy/register_test.go` for invalid config file rejection (FR-002)
-- [ ] T011 [P] [US1] Add test to `cmd/streamy/register_test.go` for ID generation from filename
+- [X] T008 [P] [US1] Create `cmd/streamy/register_test.go` with test for successful registration with valid config
+- [X] T009 [P] [US1] Add test to `cmd/streamy/add_test.go` for duplicate ID error (FR-009)
+- [X] T010 [P] [US1] Add test to `cmd/streamy/register_test.go` for invalid config file rejection (FR-002)
+- [X] T011 [P] [US1] Add test to `cmd/streamy/register_test.go` for ID generation from filename
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Create `cmd/streamy/register.go` with command struct, flags (--id, --name, --description), and argument validation (exactly 1 path)
-- [ ] T013 [US1] Implement `validateAndNormalizePath()` in `register.go` that checks file existence and converts to absolute path (FR-010)
-- [ ] T014 [US1] Implement config validation in `register.go` using `config.ParseAndValidate()` from `internal/config` (FR-002)
-- [ ] T015 [US1] Implement registration flow in `register.go`: generate/validate ID, create Pipeline struct, call `Registry.Add()`, call `Registry.Save()` (FR-001, FR-003, FR-004)
-- [ ] T016 [US1] Add error handling with structured error messages and suggestions (FR-014)
-- [ ] T017 [US1] Add verbose logging controlled by `--verbose` flag showing validation and save steps
-- [ ] T018 [US1] Register register command as subcommand in `cmd/streamy/registry.go`
+- [X] T012 [US1] Create `cmd/streamy/add.go` with command struct, flags (--id, --name, --description), and argument validation (exactly 1 path)
+- [X] T013 [US1] Implement `validateAndNormalizePath()` in `register.go` that checks file existence and converts to absolute path (FR-010)
+- [X] T014 [US1] Implement config validation in `register.go` using `config.ParseAndValidate()` from `internal/config` (FR-002)
+- [X] T015 [US1] Implement registration flow in `register.go`: generate/validate ID, create Pipeline struct, call `Registry.Add()`, call `Registry.Save()` (FR-001, FR-003, FR-004)
+- [X] T016 [US1] Add error handling with structured error messages and suggestions (FR-014)
+- [X] T017 [US1] Add verbose logging controlled by `--verbose` flag showing validation and save steps
+- [X] T018 [US1] Register register command as subcommand in `cmd/streamy/registry.go`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - users can register pipelines
 
@@ -84,21 +84,21 @@
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Create `cmd/streamy/list_test.go` with test for table format output with multiple pipelines
-- [ ] T020 [P] [US2] Add test to `cmd/streamy/list_test.go` for JSON format validation with schema check
-- [ ] T021 [P] [US2] Add test to `cmd/streamy/list_test.go` for empty registry friendly message
-- [ ] T022 [P] [US2] Add test to `cmd/streamy/list_test.go` for status icon display (Unicode and ASCII fallback)
+- [X] T019 [P] [US2] Create `cmd/streamy/list_test.go` with test for table format output with multiple pipelines
+- [X] T020 [P] [US2] Add test to `cmd/streamy/list_test.go` for JSON format validation with schema check
+- [X] T021 [P] [US2] Add test to `cmd/streamy/list_test.go` for empty registry friendly message
+- [X] T022 [P] [US2] Add test to `cmd/streamy/list_test.go` for status icon display (Unicode and ASCII fallback)
 
 ### Implementation for User Story 2
 
-- [ ] T023 [US2] Create `cmd/streamy/list.go` with command struct, flags (--format, --json), and no-arguments validation (FR-005)
-- [ ] T024 [US2] Implement table output in `list.go` using `text/tabwriter` with columns: ID, Name, Status, Last Run, Path
-- [ ] T025 [US2] Add status icon formatting in `list.go` with Unicode icons (🟢🟡🔴⚪) and ASCII fallback ([OK][!!][XX][??])
-- [ ] T026 [US2] Implement relative timestamp formatting in `list.go` ("2 hours ago", "1 day ago", "never")
-- [ ] T027 [US2] Implement JSON output in `list.go` marshaling registry + status cache with version and count fields
-- [ ] T028 [US2] Add empty registry handler in `list.go` with friendly message and hint to register
-- [ ] T029 [US2] Add TTY detection in `list.go` to disable colors/icons when output is piped
-- [ ] T030 [US2] Register list command as subcommand in `cmd/streamy/registry.go`
+- [X] T023 [US2] Create `cmd/streamy/list.go` with command struct, flags (--format, --json), and no-arguments validation (FR-005)
+- [X] T024 [US2] Implement table output in `list.go` using `text/tabwriter` with columns: ID, Name, Status, Last Run, Path
+- [X] T025 [US2] Add status icon formatting in `list.go` with Unicode icons (🟢🟡🔴⚪) and ASCII fallback ([OK][!!][XX][??])
+- [X] T026 [US2] Implement relative timestamp formatting in `list.go` ("2 hours ago", "1 day ago", "never")
+- [X] T027 [US2] Implement JSON output in `list.go` marshaling registry + status cache with version and count fields
+- [X] T028 [US2] Add empty registry handler in `list.go` with friendly message and hint to register
+- [X] T029 [US2] Add TTY detection in `list.go` to disable colors/icons when output is piped
+- [X] T030 [US2] Register list command as subcommand in `cmd/streamy/registry.go`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 work together - users can register and view pipelines
 
@@ -112,19 +112,19 @@
 
 ### Tests for User Story 3
 
-- [ ] T031 [P] [US3] Create `cmd/streamy/unregister_test.go` with test for successful removal and registry save
-- [ ] T032 [P] [US3] Add test to `cmd/streamy/unregister_test.go` for pipeline-not-found error (FR-014)
-- [ ] T033 [P] [US3] Add test to `cmd/streamy/unregister_test.go` for confirmation prompt logic with --force bypass
+- [X] T031 [P] [US3] Create `cmd/streamy/remove_test.go` with test for successful removal and registry save
+- [X] T032 [P] [US3] Add test to `cmd/streamy/unregister_test.go` for pipeline-not-found error (FR-014)
+- [X] T033 [P] [US3] Add test to `cmd/streamy/unregister_test.go` for confirmation prompt logic with --force bypass
 
 ### Implementation for User Story 3
 
-- [ ] T034 [US3] Create `cmd/streamy/unregister.go` with command struct, flags (--force), and argument validation (exactly 1 ID) (FR-006)
-- [ ] T035 [US3] Implement confirmation prompt in `unregister.go` using `bufio.Scanner` with "Remove pipeline 'X'? [y/N]" message
-- [ ] T036 [US3] Add TTY detection in `unregister.go` to require --force flag in non-interactive environments
-- [ ] T037 [US3] Implement removal flow in `unregister.go`: call `Registry.Get()` to verify exists, prompt confirmation, call `Registry.Remove()`, call `Registry.Save()`
-- [ ] T038 [US3] Add status cache cleanup in `unregister.go` by optionally calling `StatusCache.Delete(id)` and `StatusCache.Save()`
-- [ ] T039 [US3] Add success message in `unregister.go` indicating pipeline removed and config file not deleted
-- [ ] T040 [US3] Register unregister command as subcommand in `cmd/streamy/registry.go`
+- [X] T034 [US3] Create `cmd/streamy/remove.go` with command struct, flags (--force), and argument validation (exactly 1 ID) (FR-006)
+- [X] T035 [US3] Implement confirmation prompt in `unregister.go` using `bufio.Scanner` with "Remove pipeline 'X'? [y/N]" message
+- [X] T036 [US3] Add TTY detection in `unregister.go` to require --force flag in non-interactive environments
+- [X] T037 [US3] Implement removal flow in `unregister.go`: call `Registry.Get()` to verify exists, prompt confirmation, call `Registry.Remove()`, call `Registry.Save()`
+- [X] T038 [US3] Add status cache cleanup in `unregister.go` by optionally calling `StatusCache.Delete(id)` and `StatusCache.Save()`
+- [X] T039 [US3] Add success message in `unregister.go` indicating pipeline removed and config file not deleted
+- [X] T040 [US3] Register unregister command as subcommand in `cmd/streamy/registry.go`
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 work independently - full register/list/unregister lifecycle
 
@@ -138,22 +138,22 @@
 
 ### Tests for User Story 4
 
-- [ ] T041 [P] [US4] Create `cmd/streamy/refresh_test.go` with test for single pipeline refresh with status update
-- [ ] T042 [P] [US4] Add test to `cmd/streamy/refresh_test.go` for bulk refresh with concurrency using worker pool pattern
-- [ ] T043 [P] [US4] Add test to `cmd/streamy/refresh_test.go` for missing config file graceful handling (FR-011)
-- [ ] T044 [P] [US4] Add test to `cmd/streamy/refresh_test.go` for progress indicator output during bulk refresh (FR-019)
+- [X] T041 [P] [US4] Create `cmd/streamy/refresh_test.go` with test for single pipeline refresh with status update
+- [X] T042 [P] [US4] Add test to `cmd/streamy/refresh_test.go` for bulk refresh with concurrency using worker pool pattern
+- [X] T043 [P] [US4] Add test to `cmd/streamy/refresh_test.go` for missing config file graceful handling (FR-011)
+- [X] T044 [P] [US4] Add test to `cmd/streamy/refresh_test.go` for progress indicator output during bulk refresh (FR-019)
 
 ### Implementation for User Story 4
 
-- [ ] T045 [US4] Create `cmd/streamy/refresh.go` with command struct, flags (--concurrency), and optional pipeline-id argument (FR-007, FR-008)
-- [ ] T046 [US4] Implement single pipeline refresh in `refresh.go`: load config, execute verify via engine, update status cache, print result
-- [ ] T047 [US4] Implement worker pool in `refresh.go` with semaphore channel for concurrent refresh (default concurrency: 5)
-- [ ] T048 [US4] Add progress indicators in `refresh.go` showing "[N/M] pipeline-id... ✓ status" for each verification (FR-019)
-- [ ] T049 [US4] Implement missing config file handling in `refresh.go` that marks status as failed without halting entire refresh (FR-011)
-- [ ] T050 [US4] Add summary report in `refresh.go` showing counts: satisfied, drifted, failed
-- [ ] T051 [US4] Add mutex-protected status cache updates in `refresh.go` for thread-safe concurrent writes
-- [ ] T052 [US4] Add dry-run support in `refresh.go` showing which pipelines would be refreshed without executing
-- [ ] T053 [US4] Register refresh command as subcommand in `cmd/streamy/registry.go`
+- [X] T045 [US4] Create `cmd/streamy/refresh.go` with command struct, flags (--concurrency), and optional pipeline-id argument (FR-007, FR-008)
+- [X] T046 [US4] Implement single pipeline refresh in `refresh.go`: load config, execute verify via engine, update status cache, print result
+- [X] T047 [US4] Implement worker pool in `refresh.go` with semaphore channel for concurrent refresh (default concurrency: 5)
+- [X] T048 [US4] Add progress indicators in `refresh.go` showing "[N/M] pipeline-id... ✓ status" for each verification (FR-019)
+- [X] T049 [US4] Implement missing config file handling in `refresh.go` that marks status as failed without halting entire refresh (FR-011)
+- [X] T050 [US4] Add summary report in `refresh.go` showing counts: satisfied, drifted, failed
+- [X] T051 [US4] Add mutex-protected status cache updates in `refresh.go` for thread-safe concurrent writes
+- [X] T052 [US4] Add dry-run support in `refresh.go` showing which pipelines would be refreshed without executing
+- [X] T053 [US4] Register refresh command as subcommand in `cmd/streamy/registry.go`
 
 **Checkpoint**: At this point, all P1 and P2 user stories complete - MVP+ with batch operations
 
@@ -167,18 +167,18 @@
 
 ### Tests for User Story 5 (OPTIONAL - P3 priority)
 
-- [ ] T054 [P] [US5] Create `cmd/streamy/show_test.go` with test for detailed output including path, description, timestamps
-- [ ] T055 [P] [US5] Add test to `cmd/streamy/show_test.go` for never-verified pipeline showing "never" last run
-- [ ] T056 [P] [US5] Add test to `cmd/streamy/show_test.go` for pipeline-not-found error
-- [ ] T057 [P] [US5] Add test to `cmd/streamy/show_test.go` for JSON output format with complete schema
+- [X] T054 [P] [US5] Create `cmd/streamy/show_test.go` with test for detailed output including path, description, timestamps
+- [X] T055 [P] [US5] Add test to `cmd/streamy/show_test.go` for never-verified pipeline showing "never" last run
+- [X] T056 [P] [US5] Add test to `cmd/streamy/show_test.go` for pipeline-not-found error
+- [X] T057 [P] [US5] Add test to `cmd/streamy/show_test.go` for JSON output format with complete schema
 
 ### Implementation for User Story 5 (OPTIONAL - P3 priority)
 
-- [ ] T058 [US5] Create `cmd/streamy/show.go` with command struct, flags (--json), and argument validation (exactly 1 ID) (FR-018)
-- [ ] T059 [US5] Implement detailed display in `show.go`: pipeline metadata, status, last run, execution result, step count
-- [ ] T060 [US5] Add execution history display in `show.go` showing recent step results with durations
-- [ ] T061 [US5] Add JSON output format in `show.go` with complete pipeline + status + execution result
-- [ ] T062 [US5] Register show command as subcommand in `cmd/streamy/registry.go`
+- [X] T058 [US5] Create `cmd/streamy/show.go` with command struct, flags (--json), and argument validation (exactly 1 ID) (FR-018)
+- [X] T059 [US5] Implement detailed display in `show.go`: pipeline metadata, status, last run, execution result, step count
+- [X] T060 [US5] Add execution history display in `show.go` showing recent step results with durations
+- [X] T061 [US5] Add JSON output format in `show.go` with complete pipeline + status + execution result
+- [X] T062 [US5] Register show command as subcommand in `cmd/streamy/registry.go`
 
 **Checkpoint**: All user stories complete including nice-to-have P3 feature
 

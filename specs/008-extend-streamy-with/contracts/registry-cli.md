@@ -10,17 +10,17 @@ This document defines the command-line interface contracts for registry manageme
 
 ---
 
-## 1. Register Command
+## 1. Add Command
 
 ### Syntax
 
-```bash
-streamy register <config-path> [flags]
+```
+streamy registry add <config-path> [flags]
 ```
 
 ### Description
 
-Registers a new Streamy configuration file in the pipeline registry, making it available for management via CLI and visible in the interactive dashboard.
+Adds a new Streamy configuration file to the pipeline registry, making it available for management via CLI and visible in the interactive dashboard.
 
 ### Arguments
 
@@ -52,11 +52,11 @@ Registers a new Streamy configuration file in the pipeline registry, making it a
 
 **Success**:
 ```
-✓ Registered pipeline 'dev-setup' (Development Environment)
+✓ Added pipeline 'dev-setup' (Development Environment)
   Path: /home/user/configs/dev.yaml
   ID:   dev-setup
 
-Run 'streamy refresh dev-setup' to verify its current status.
+Run 'streamy registry refresh dev-setup' to verify its current status.
 ```
 
 **Success (verbose)**:
@@ -68,11 +68,11 @@ Run 'streamy refresh dev-setup' to verify its current status.
 → Checking for duplicate ID...
 → Adding pipeline to registry...
 → Saving registry to /home/user/.streamy/registry.json
-✓ Registered pipeline 'dev-setup' (Development Environment)
+✓ Added pipeline 'dev-setup' (Development Environment)
   Path: /home/user/configs/dev.yaml
   ID:   dev-setup
 
-Run 'streamy refresh dev-setup' to verify its current status.
+Run 'streamy registry refresh dev-setup' to verify its current status.
 ```
 
 ### Error Cases
@@ -82,7 +82,7 @@ Run 'streamy refresh dev-setup' to verify its current status.
 | Config file not found | 1 | `Error: config file not found: /path/to/config.yaml` | Check the path and try again. Use absolute path or relative path from current directory. |
 | Config parse error | 1 | `Error: invalid config: yaml: line 15: mapping values are not allowed in this context` | Fix the YAML syntax error at the indicated line. |
 | Invalid config (no steps) | 1 | `Error: config must contain at least one step` | Add steps to your configuration file. See https://streamy.dev/docs for examples. |
-| Duplicate ID | 1 | `Error: pipeline with ID 'dev-setup' already exists` | Use --id flag to specify a different ID, or unregister the existing pipeline first. |
+| Duplicate ID | 1 | `Error: pipeline with ID 'dev-setup' already exists` | Use --id flag to specify a different ID, or remove the existing pipeline first. |
 | Permission denied | 1 | `Error: cannot write to registry: permission denied` | Check write permissions for ~/.streamy/ directory. |
 | Invalid ID format | 1 | `Error: invalid pipeline ID 'Dev-Setup': must be lowercase alphanumeric with hyphens` | Use only lowercase letters, numbers, and hyphens. ID must start and end with alphanumeric character. |
 
@@ -94,12 +94,12 @@ Run 'streamy refresh dev-setup' to verify its current status.
 
 ---
 
-## 2. Unregister Command
+## 2. Remove Command
 
 ### Syntax
 
-```bash
-streamy unregister <pipeline-id> [flags]
+```
+streamy registry remove <pipeline-id> [flags]
 ```
 
 ### Description
@@ -134,14 +134,14 @@ Removes a pipeline from the registry. The configuration file is not deleted, onl
 **Success (with prompt)**:
 ```
 Remove pipeline 'dev-setup' from registry? [y/N]: y
-✓ Unregistered pipeline 'dev-setup'
+✓ Removed pipeline 'dev-setup'
 
 The configuration file at /home/user/configs/dev.yaml was not deleted.
 ```
 
 **Success (with --force)**:
 ```
-✓ Unregistered pipeline 'dev-setup'
+✓ Removed pipeline 'dev-setup'
 
 The configuration file at /home/user/configs/dev.yaml was not deleted.
 ```
@@ -156,7 +156,7 @@ Cancelled.
 
 | Error | Exit Code | Output | Suggestion |
 |-------|-----------|--------|------------|
-| Pipeline not found | 1 | `Error: pipeline 'unknown-id' not found in registry` | Run 'streamy list' to see registered pipelines. |
+| Pipeline not found | 1 | `Error: pipeline 'unknown-id' not found in registry` | Run 'streamy registry list' to see registered pipelines. |
 | Permission denied | 1 | `Error: cannot write to registry: permission denied` | Check write permissions for ~/.streamy/ directory. |
 | No TTY (interactive mode required) | 1 | `Error: cannot prompt for confirmation: not a terminal` | Use --force flag when running in non-interactive environments. |
 
@@ -172,8 +172,8 @@ Cancelled.
 
 ### Syntax
 
-```bash
-streamy list [flags]
+```
+streamy registry list [flags]
 ```
 
 ### Description
@@ -188,8 +188,7 @@ None
 
 | Flag | Short | Type | Default | Description |
 |------|-------|------|---------|-------------|
-| `--format` | | string | "table" | Output format: `table` or `json` |
-| `--json` | | bool | false | Shorthand for --format=json |
+| `--json` |  | bool | false | Output in JSON format |
 | `--verbose` | `-v` | bool | false | Enable verbose logging (inherited from root) |
 
 ### Behavior
@@ -197,66 +196,39 @@ None
 1. Loads registry from disk
 2. Loads status cache from disk
 3. Merges pipeline metadata with runtime status
-4. Formats output according to `--format` flag
+4. Formats output according to `--json`
 5. Writes to stdout
 
 ### Output Examples
 
 **Table format (default)**:
 ```
-ID             NAME                     STATUS          LAST RUN         PATH
-dev-setup      Development Environment  🟢 satisfied    2 hours ago      /home/user/configs/dev.yaml
-staging-env    Staging Environment      🟡 drifted      1 day ago        /home/user/configs/staging.yaml
-prod-deploy    Production Deploy        ⚪ unknown      never            /home/user/configs/prod.yaml
-```
-
-**Table format (ASCII fallback, no Unicode support)**:
-```
-ID             NAME                     STATUS          LAST RUN         PATH
-dev-setup      Development Environment  [OK] satisfied  2 hours ago      /home/user/configs/dev.yaml
-staging-env    Staging Environment      [!!] drifted    1 day ago        /home/user/configs/staging.yaml
-prod-deploy    Production Deploy        [??] unknown    never            /home/user/configs/prod.yaml
+ID           NAME                     STATUS          LAST RUN        PATH
+dev-setup    Development Environment  [OK] satisfied  2 hours ago     /home/user/configs/dev.yaml
+staging-env  Staging Environment      [XX] failed     30 minutes ago  /home/user/configs/staging.yaml
 ```
 
 **Empty registry**:
 ```
 No pipelines registered yet.
 
-Run 'streamy register <config-path>' to add your first pipeline.
+Run 'streamy registry add <config-path>' to add your first pipeline.
 ```
 
 **JSON format**:
 ```json
 {
   "version": "1.0",
-  "count": 3,
+  "count": 1,
   "pipelines": [
     {
       "id": "dev-setup",
       "name": "Development Environment",
       "path": "/home/user/configs/dev.yaml",
-      "description": "Local development tools and configs",
+      "description": "Dev environment",
       "status": "satisfied",
       "last_run": "2025-10-09T12:30:00Z",
       "registered_at": "2025-10-08T15:20:00Z"
-    },
-    {
-      "id": "staging-env",
-      "name": "Staging Environment",
-      "path": "/home/user/configs/staging.yaml",
-      "description": "",
-      "status": "drifted",
-      "last_run": "2025-10-08T10:15:00Z",
-      "registered_at": "2025-10-07T09:00:00Z"
-    },
-    {
-      "id": "prod-deploy",
-      "name": "Production Deploy",
-      "path": "/home/user/configs/prod.yaml",
-      "description": "Production environment setup",
-      "status": "unknown",
-      "last_run": null,
-      "registered_at": "2025-10-09T14:00:00Z"
     }
   ]
 }
@@ -266,9 +238,9 @@ Run 'streamy register <config-path>' to add your first pipeline.
 
 | Error | Exit Code | Output | Suggestion |
 |-------|-----------|--------|------------|
-| Registry file corrupted | 1 | `Error: failed to parse registry: invalid JSON` | Registry file may be corrupted. Restore from backup or recreate by re-registering pipelines. |
+| Registry file corrupted | 1 | `Error: failed to parse registry: invalid JSON` | Registry file may be corrupted. Restore from backup or recreate by re-adding pipelines. |
 | Permission denied | 1 | `Error: cannot read registry: permission denied` | Check read permissions for ~/.streamy/registry.json |
-| Invalid format flag | 2 | `Error: invalid format 'csv': must be 'table' or 'json'` | Use --format=table or --format=json |
+| Invalid format flag | 2 | `Error: invalid flag` | Use supported flags only |
 
 ### Exit Codes
 

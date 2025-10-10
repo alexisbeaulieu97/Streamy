@@ -186,7 +186,7 @@ func (m Model) renderEmptyState() string {
 	message := `No pipelines registered yet.
 
 To add a pipeline, use:
-  streamy register <name> <config-file>`
+  streamy registry add <config-path>`
 
 	return emptyStateStyle.Render(message)
 }
