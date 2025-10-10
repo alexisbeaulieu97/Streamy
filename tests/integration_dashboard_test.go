@@ -185,7 +185,7 @@ func TestDashboardEmptyState(t *testing.T) {
 
 	// Assert: Empty state message should appear
 	assert.Contains(t, view, "No pipelines registered", "Should display empty state message")
-	assert.Contains(t, view, "streamy register", "Should suggest register command")
+	assert.Contains(t, view, "streamy registry add", "Should suggest add command")
 
 	// Assert: Status summary should show zeros with icons
 	assert.Contains(t, view, "🟢 0")

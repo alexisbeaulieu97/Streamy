@@ -18,6 +18,7 @@ tests/
 Go 1.25.1: Follow standard conventions
 
 ## Recent Changes
+- 008-extend-streamy-with: Added Go 1.25.1
 - 007-build-an-interactive: Added Go 1.25.1
 
 <!-- MANUAL ADDITIONS START -->
