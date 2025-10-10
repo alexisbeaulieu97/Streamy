@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/spf13/cobra"
 
@@ -211,10 +213,10 @@ func formatRefreshResult(result refreshResult) string {
 		return fmt.Sprintf("✗ failed (%v)", result.Err)
 	}
 
-	status := result.Status
-	label := strings.Title(status.String())
+	c := cases.Title(language.English)
+	label := c.String(result.Status.String())
 
-	switch status {
+	switch result.Status {
 	case registry.StatusSatisfied:
 		return fmt.Sprintf("✓ %s", label)
 	case registry.StatusDrifted:

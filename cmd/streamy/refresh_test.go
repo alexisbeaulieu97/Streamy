@@ -38,7 +38,7 @@ func TestRefreshCommand_SinglePipeline(t *testing.T) {
 	stdout, err := executeRefreshCommand("dev-setup")
 	require.NoError(t, err)
 	require.Contains(t, stdout, "dev-setup")
-	require.Contains(t, stdout, "Satisfied")
+	require.Contains(t, stdout, "✓ Satisfied: 1")
 
 	cache := mustLoadStatusCache(t, statusPath)
 	status, ok := cache.Get("dev-setup")
@@ -124,8 +124,8 @@ func TestRefreshCommand_ProgressOutput(t *testing.T) {
 
 	stdout, err := executeRefreshCommand()
 	require.NoError(t, err)
-	require.Contains(t, stdout, "[1/2] one")
-	require.Contains(t, stdout, "[2/2] two")
+	require.Contains(t, stdout, "[1/2] one... ✓ Satisfied")
+	require.Contains(t, stdout, "[2/2] two... ✓ Satisfied")
 }
 
 // --- Test helpers ---
