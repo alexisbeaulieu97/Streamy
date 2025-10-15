@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
@@ -15,5 +17,4 @@ issues:
     - path: _test\.go
       linters:
         - errcheck
-
 # GitHub Actions workflow configured in .github/workflows/lint.yml (see T078)
