@@ -286,7 +286,10 @@ func (s *Step) DecodeConfig(dst any) error {
 	if dst == nil {
 		return fmt.Errorf("destination cannot be nil")
 	}
-	if s == nil || len(s.rawConfig) == 0 {
+	if s == nil {
+		return fmt.Errorf("step is nil")
+	}
+	if len(s.rawConfig) == 0 {
 		return nil
 	}
 

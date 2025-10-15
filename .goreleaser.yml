@@ -1,8 +1,10 @@
 project_name: streamy
+dist: dist
 
 builds:
   - id: streamy
     main: ./cmd/streamy
+    binary: streamy
     ldflags:
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
@@ -16,18 +18,54 @@ builds:
       - arm64
     env:
       - CGO_ENABLED=0
-    binary: streamy
+    flags:
+      - -trimpath
     hooks:
       post:
         - cmd: chmod +x "{{ .Path }}"
+          platforms: [linux, darwin]
 
 archives:
-  - format: binary
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
     builds:
       - streamy
+    files:
+      - README.md
+      - LICENSE*
+      - CHANGELOG*
+      - docs/*
+    format_overrides:
+      - goos: windows
+        format: zip
 
 checksum:
   name_template: 'checksums.txt'
+  algorithm: sha256
+
+sbom:
+  - artifacts: archive
+    documents:
+      - '{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json'
 
 changelog:
   use: git
+  sort: asc
+  abbrev: -1
+  filters:
+    exclude:
+      - '^test:'
+      - '^chore'
+      - Merge pull request
+      - Merge branch
+      - go mod tidy
+
+release:
+  draft: false
+  prerelease: auto

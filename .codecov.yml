@@ -1,0 +1,21 @@
+codecov:
+  require_ci_to_pass: true
+  max_report_delay: 24
+
+ignore:
+  - "cmd/"
+  - "internal/tui/"
+  - "internal/ui/"
+  - "**/*_test.go"
+
+coverage:
+  precision: 2
+  round: down
+  range: "70..100"
+
+comment:
+  layout: "reach, diff, files, footer"
+  behavior: default
+  require_changes: false
+  require_base: false
+  show_carryforward_flags: false

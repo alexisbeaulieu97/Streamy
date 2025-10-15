@@ -38,11 +38,17 @@ func validatorInstance() *validator.Validate {
 				return true // Allow empty if not required
 			}
 
+			// Reject whitespace-only strings
+			if strings.TrimSpace(urlStr) == "" {
+				return false
+			}
+
 			// Check for network URLs (http/https only with non-empty host)
 			if parsedURL, err := url.Parse(urlStr); err == nil {
 				scheme := strings.ToLower(parsedURL.Scheme)
 				if scheme == "http" || scheme == "https" {
-					if parsedURL.Host != "" {
+					// Ensure host is not empty and doesn't contain spaces
+					if parsedURL.Host != "" && !strings.Contains(parsedURL.Host, " ") {
 						return true
 					}
 				}
@@ -89,7 +95,12 @@ func isValidFilePath(path string) bool {
 		return !strings.Contains(path, "/../") && !strings.HasSuffix(path, "/..")
 	}
 
-	// Accept relative paths (with or without explicit prefix)
-	// Already checked for NUL characters above
-	return true
+	// Check for relative paths with explicit prefixes only
+	if strings.HasPrefix(path, "./") || strings.HasPrefix(path, "../") {
+		// Basic safety checks for relative paths
+		return !strings.Contains(path, "\x00")
+	}
+
+	// Reject all other path formats
+	return false
 }
