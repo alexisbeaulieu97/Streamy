@@ -1,12 +1,16 @@
 package pipeline
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/alexisbeaulieu97/streamy/internal/config"
+	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -460,4 +464,54 @@ func TestConversionHelpersIntegration(t *testing.T) {
 		assert.Equal(t, "test.step4", stepResults[3].StepID)
 		assert.Equal(t, "satisfied", string(stepResults[3].Status))
 	})
+}
+
+func TestVerify_LoggerCreationError(t *testing.T) {
+	s := NewService(plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil))
+
+	ctx := context.Background()
+	req := VerifyRequest{
+		Prepared: &PreparedPipeline{
+			Config: &config.Config{},
+			Path:   "/test/config.yaml",
+		},
+		ConfigPath: "/test/config.yaml",
+		LoggerOptions: logger.Options{
+			Level: "invalid-level", // Invalid level will cause logger creation to fail
+		},
+	}
+
+	outcome, err := s.Verify(ctx, req)
+	assert.Nil(t, outcome)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create logger")
+}
+
+func TestApply_LoggerCreationError(t *testing.T) {
+	s := NewService(plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil))
+
+	ctx := context.Background()
+	req := ApplyRequest{
+		Prepared: &PreparedPipeline{
+			Config: &config.Config{},
+			Path:   "/test/config.yaml",
+		},
+		ConfigPath: "/test/config.yaml",
+		LoggerOptions: logger.Options{
+			Level: "invalid-level", // Invalid level will cause logger creation to fail
+		},
+	}
+
+	outcome, err := s.Apply(ctx, req)
+	assert.Nil(t, outcome)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "create logger")
+}
+
+func TestPrepare_InvalidPath(t *testing.T) {
+	s := NewService(plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil))
+
+	// Test Prepare with invalid path
+	_, err := s.Prepare("/nonexistent/path/to/config.yaml")
+	assert.Error(t, err)
 }

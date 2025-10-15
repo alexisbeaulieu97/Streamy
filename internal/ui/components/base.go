@@ -73,6 +73,8 @@ func (b *BaseComponent) SetAppliers(appliers ...StyleFunc) {
 }
 
 // AddAppliers appends additional style appliers to the existing strategy.
+// If the current strategy is not a CompositeStrategy, it wraps the existing
+// strategy and appends the new appliers, preserving any custom strategy logic.
 func (b *BaseComponent) AddAppliers(appliers ...StyleFunc) {
 	if existing, ok := b.strategy.(CompositeStrategy); ok {
 		// Make a defensive copy of the funcs slice to avoid mutating shared arrays
@@ -81,7 +83,20 @@ func (b *BaseComponent) AddAppliers(appliers ...StyleFunc) {
 		newFuncs = append(newFuncs, appliers...)
 		b.strategy = CompositeStrategy{funcs: newFuncs}
 	} else {
-		b.strategy = NewCompositeStrategy(appliers...)
+		// Wrap existing strategy with new appliers to preserve custom strategy logic
+		currentStrategy := b.strategy
+		wrapper := func(base lipgloss.Style, theme Theme) lipgloss.Style {
+			// Apply existing strategy first if present
+			if currentStrategy != nil {
+				base = currentStrategy.Apply(base, theme)
+			}
+			// Then apply new appliers
+			for _, applier := range appliers {
+				base = applier(base, theme)
+			}
+			return base
+		}
+		b.strategy = NewCompositeStrategy(wrapper)
 	}
 }
 
@@ -180,13 +195,13 @@ func (c Constraints) Constrain(width, height int) (int, int) {
 	if c.MinWidth > 0 && w < c.MinWidth {
 		w = c.MinWidth
 	}
-	if c.MaxWidth > 0 && w > c.MaxWidth {
+	if c.MaxWidth != -1 && w > c.MaxWidth {
 		w = c.MaxWidth
 	}
 	if c.MinHeight > 0 && h < c.MinHeight {
 		h = c.MinHeight
 	}
-	if c.MaxHeight > 0 && h > c.MaxHeight {
+	if c.MaxHeight != -1 && h > c.MaxHeight {
 		h = c.MaxHeight
 	}
 
@@ -195,12 +210,12 @@ func (c Constraints) Constrain(width, height int) (int, int) {
 
 // HasWidth returns true if there's a width constraint.
 func (c Constraints) HasWidth() bool {
-	return c.MinWidth > 0 || c.MaxWidth > 0
+	return c.MinWidth > 0 || c.MaxWidth >= 0
 }
 
 // HasHeight returns true if there's a height constraint.
 func (c Constraints) HasHeight() bool {
-	return c.MinHeight > 0 || c.MaxHeight > 0
+	return c.MinHeight > 0 || c.MaxHeight >= 0
 }
 
 // RenderContext provides layout information and theme to components during rendering.

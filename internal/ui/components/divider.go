@@ -45,7 +45,7 @@ func (d *Divider) ViewWithContext(ctx RenderContext) string {
 
 	// Use constraint width if no explicit width is set
 	if width <= 0 && ctx.Constraints.HasWidth() {
-		if ctx.Constraints.MaxWidth > 0 {
+		if ctx.Constraints.MaxWidth >= 0 {
 			width = ctx.Constraints.MaxWidth
 		} else if ctx.Constraints.MinWidth > 0 {
 			width = ctx.Constraints.MinWidth

@@ -99,6 +99,46 @@ func TestStateError(t *testing.T) {
 	})
 }
 
+func TestErrPluginNotFound(t *testing.T) {
+	err := ErrPluginNotFound{Name: "missing-plugin"}
+	assert.Equal(t, "plugin 'missing-plugin' not found in registry\nHint: ensure the plugin is registered before usage", err.Error())
+}
+
+func TestErrCircularDependencyEmpty(t *testing.T) {
+	err := ErrCircularDependency{Cycle: []string{}}
+	assert.Equal(t, "circular dependency detected\nHint: review plugin dependencies to remove cycles", err.Error())
+}
+
+func TestErrCircularDependencyWithCycle(t *testing.T) {
+	err := ErrCircularDependency{Cycle: []string{"plugin-a", "plugin-b", "plugin-c"}}
+	result := err.Error()
+	assert.Contains(t, result, "circular dependency detected: plugin-a -> plugin-b -> plugin-c -> plugin-a")
+	assert.Contains(t, result, "Hint: break the cycle")
+}
+
+func TestErrVersionConflict(t *testing.T) {
+	err := ErrVersionConflict{
+		Plugin:        "core-plugin",
+		RequiredBy:    map[string]string{"dependent-a": "1.0.0", "dependent-b": "2.0.0"},
+		ActualVersion: "3.0.0",
+	}
+	result := err.Error()
+	assert.Contains(t, result, "version conflict for plugin 'core-plugin' (actual 3.0.0)")
+	assert.Contains(t, result, "Hint: align plugin versions")
+}
+
+func TestErrUndeclaredDependency(t *testing.T) {
+	err := ErrUndeclaredDependency{Caller: "my-plugin", Dependency: "external-service"}
+	expected := "plugin 'my-plugin' attempted to access undeclared dependency 'external-service'\nHint: add 'external-service' to PluginMetadata.Dependencies"
+	assert.Equal(t, expected, err.Error())
+}
+
+func TestErrMissingDependency(t *testing.T) {
+	err := ErrMissingDependency{Plugin: "dependent-plugin", Dependency: "missing-dependency"}
+	expected := "plugin 'dependent-plugin' declares dependency 'missing-dependency' which is not registered\nHint: register the dependency before validating or initializing plugins"
+	assert.Equal(t, expected, err.Error())
+}
+
 func TestAsPluginError(t *testing.T) {
 	t.Run("ValidationError is recognized", func(t *testing.T) {
 		originalErr := NewValidationError("step1", errors.New("bad config"))
