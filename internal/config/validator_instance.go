@@ -13,7 +13,7 @@ var (
 	validatorOnce sync.Once
 	validateInst  *validator.Validate
 
-	semverPattern   = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
+	semverPattern   = regexp.MustCompile(`^\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$`)
 	stepIDPattern   = regexp.MustCompile(`^[a-z0-9_-]+$`)
 	sshGitPattern   = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+:[a-zA-Z0-9._/~-]+$`)
 	validationTypes = map[string]struct{}{"command_exists": {}, "file_exists": {}, "path_contains": {}}

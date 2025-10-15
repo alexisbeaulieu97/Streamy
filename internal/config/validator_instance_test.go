@@ -92,15 +92,17 @@ func TestSemverValidation(t *testing.T) {
 		version  string
 		expected bool
 	}{
-		// Valid semver
-		{"simple", "1.0.0", true},
+		// Valid semver - two component (major.minor) and three component (major.minor.patch)
+		{"two component", "1.0", true},
+		{"three component", "1.0.0", true},
 		{"with prerelease", "1.0.0-alpha", true},
 		{"with build metadata", "1.0.0+build.1", true},
 		{"complex", "2.1.3-beta.2+build.123", true},
+		{"two component with prerelease", "1.0-beta", true},
 
 		// Invalid semver
 		{"empty", "", false},
-		{"single digit", "1.0", false},
+		{"single digit", "1", false},
 		{"no dots", "v1", false},
 		{"too many dots", "1.2.3.4", false},
 		{"invalid chars", "1.x.0", false},
