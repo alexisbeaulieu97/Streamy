@@ -22,8 +22,8 @@ func TestConvertVerificationSummary(t *testing.T) {
 		require.NotNil(t, result)
 		assert.Equal(t, "verify", result.Operation)
 		assert.Equal(t, registry.StatusSatisfied, result.Status)
-		assert.Equal(t, true, result.Success)
-		// The actual implementation returns "All X steps passed"
+		assert.True(t, result.Success)
+		// Summary should indicate all steps passed
 		assert.Contains(t, result.Summary, "steps passed")
 		assert.Equal(t, 0, result.StepCount)
 		assert.Equal(t, time.Duration(0), result.Duration)
@@ -67,8 +67,8 @@ func TestConvertVerificationSummary(t *testing.T) {
 		require.NotNil(t, result)
 		assert.Equal(t, "verify", result.Operation)
 		assert.Equal(t, registry.StatusDrifted, result.Status) // Highest priority status
-		assert.Equal(t, false, result.Success)
-		// The actual implementation returns "X steps need changes"
+		assert.False(t, result.Success)
+		// Summary should indicate steps need changes
 		assert.Contains(t, result.Summary, "steps need changes")
 		assert.Equal(t, 3, result.StepCount)
 		assert.Equal(t, time.Second*5, result.Duration)
@@ -98,7 +98,7 @@ func TestConvertVerificationSummary(t *testing.T) {
 		result := convertVerificationSummary(summary, "/test/config.yaml")
 
 		assert.Equal(t, registry.StatusFailed, result.Status)
-		assert.Equal(t, false, result.Success)
+		assert.False(t, result.Success)
 		assert.Len(t, result.StepResults, 1)
 		require.NotNil(t, result.StepResults[0].Error)
 		assert.Equal(t, "command not found", result.StepResults[0].Error.Message)
@@ -108,7 +108,7 @@ func TestConvertVerificationSummary(t *testing.T) {
 		result := convertVerificationSummary(nil, "/test/config.yaml")
 		assert.NotNil(t, result) // Function never returns nil
 		assert.Equal(t, registry.StatusFailed, result.Status)
-		assert.Equal(t, false, result.Success)
+		assert.False(t, result.Success)
 	})
 }
 
@@ -135,8 +135,8 @@ func TestConvertApplyResults(t *testing.T) {
 		require.NotNil(t, result)
 		assert.Equal(t, "apply", result.Operation)
 		assert.Equal(t, registry.StatusSatisfied, result.Status)
-		assert.Equal(t, true, result.Success)
-		// The actual implementation returns "All X steps applied successfully"
+		assert.True(t, result.Success)
+		// Summary should indicate successful application
 		assert.Contains(t, result.Summary, "steps applied successfully")
 		// StepCount might be calculated differently than expected
 		assert.Equal(t, len(results), len(result.StepResults))
@@ -158,8 +158,8 @@ func TestConvertApplyResults(t *testing.T) {
 		result := convertApplyResults(results, configPath, execErr, nil)
 
 		assert.Equal(t, registry.StatusFailed, result.Status)
-		assert.Equal(t, false, result.Success)
-		// The actual implementation returns the raw error message
+		assert.False(t, result.Success)
+		// Error message should be propagated to the summary
 		assert.Equal(t, "command failed", result.Summary)
 		assert.Equal(t, "command failed", result.Error.Message)
 	})
@@ -172,9 +172,10 @@ func TestConvertApplyResults(t *testing.T) {
 		result := convertApplyResults(results, configPath, nil, validErr)
 
 		assert.Equal(t, registry.StatusFailed, result.Status)
-		assert.Equal(t, false, result.Success)
-		// The actual implementation returns the raw error message
+		assert.False(t, result.Success)
+		// Error message should be propagated to the summary
 		assert.Equal(t, "invalid schema", result.Summary)
+		require.NotNil(t, result.Error)
 		assert.Equal(t, "invalid schema", result.Error.Message)
 	})
 
@@ -185,8 +186,8 @@ func TestConvertApplyResults(t *testing.T) {
 		result := convertApplyResults(results, configPath, nil, nil)
 
 		assert.Equal(t, registry.StatusSatisfied, result.Status)
-		assert.Equal(t, true, result.Success)
-		// The actual implementation returns "All 0 steps applied successfully"
+		assert.True(t, result.Success)
+		// Summary should indicate successful application
 		assert.Contains(t, result.Summary, "steps applied successfully")
 	})
 }
@@ -300,19 +301,17 @@ func TestFailedExecutionResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			before := time.Now().UTC()
 			result := failedExecutionResult(tt.operation, tt.configPath, tt.err)
-			after := time.Now().UTC()
 
 			require.NotNil(t, result)
 			assert.Equal(t, tt.operation, result.Operation)
 			assert.Equal(t, registry.StatusFailed, result.Status)
-			assert.Equal(t, false, result.Success)
+			assert.False(t, result.Success)
 			assert.Equal(t, 0, result.StepCount)
 			assert.Empty(t, result.StepResults)
 			assert.Equal(t, time.Duration(0), result.Duration)
 
 			// Verify timestamp is within expected range
-			assert.True(t, result.CompletedAt.After(before) || result.CompletedAt.Equal(before))
-			assert.True(t, result.CompletedAt.Before(after) || result.CompletedAt.Equal(after))
+			assert.WithinDuration(t, before, result.CompletedAt, time.Since(before))
 
 			if tt.err != nil {
 				require.NotNil(t, result.Error)
@@ -441,7 +440,7 @@ func TestConversionHelpersIntegration(t *testing.T) {
 		require.NotNil(t, result)
 		assert.Equal(t, "verify", result.Operation)
 		assert.Equal(t, registry.StatusDrifted, result.Status) // Highest priority
-		assert.Equal(t, false, result.Success)
+		assert.False(t, result.Success)
 		assert.Equal(t, 4, result.StepCount)
 		assert.Equal(t, time.Second*3, result.Duration)
 		assert.Len(t, result.StepResults, 4)

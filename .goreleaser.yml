@@ -23,11 +23,11 @@ builds:
     hooks:
       post:
         - cmd: chmod +x "{{ .Path }}"
-          platforms: [linux, darwin]
+          only: [linux, darwin]
 
 archives:
   - format: tar.gz
-    name_template: "{{ .ProjectName }}_{{- title .Os }}_{{- if eq .Arch \"amd64\" }}x86_64{{- else if eq .Arch \"386\" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}"
+    name_template: '{{ .ProjectName }}_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}'
     builds:
       - streamy
     files:
@@ -40,22 +40,21 @@ archives:
         format: zip
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
   algorithm: sha256
 
-sbom:
-  - artifacts: archive
+sboms:
+  - artifacts: [archive]
     documents:
-      - '{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json'
+      - "{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json"
 
 changelog:
   use: git
   sort: asc
-  abbrev: -1
   filters:
     exclude:
-      - '^test:'
-      - '^chore'
+      - "^test:"
+      - "^chore"
       - Merge pull request
       - Merge branch
       - go mod tidy

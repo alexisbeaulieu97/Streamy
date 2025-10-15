@@ -47,8 +47,8 @@ func validatorInstance() *validator.Validate {
 			if parsedURL, err := url.Parse(urlStr); err == nil {
 				scheme := strings.ToLower(parsedURL.Scheme)
 				if scheme == "http" || scheme == "https" {
-					// Ensure host is not empty and doesn't contain spaces
-					if parsedURL.Host != "" && !strings.Contains(parsedURL.Host, " ") {
+					// Ensure host is not empty
+					if parsedURL.Host != "" {
 						return true
 					}
 				}

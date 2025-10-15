@@ -146,7 +146,15 @@ func (s *Service) Apply(ctx context.Context, req ApplyRequest) (*ApplyOutcome, e
 	}
 
 	outcome.ExecutionResult = convertApplyResults(domainOutcome.Results, domainOutcome.Prepared.Path, domainOutcome.ExecutionErr, domainOutcome.ValidationErr)
-	outcome.ExecutionResult.StepCount = len(domainOutcome.Prepared.Config.Steps)
+
+	// Guard against nil Prepared/Config to avoid nil deref
+	if domainOutcome.Prepared != nil && domainOutcome.Prepared.Config != nil {
+		outcome.ExecutionResult.StepCount = len(domainOutcome.Prepared.Config.Steps)
+		// If success, align summary with the configured step count.
+		if outcome.ExecutionResult.Success {
+			outcome.ExecutionResult.Summary = fmt.Sprintf("All %d steps applied successfully", outcome.ExecutionResult.StepCount)
+		}
+	}
 
 	if applyErr != nil {
 		return outcome, applyErr
@@ -166,6 +174,11 @@ func convertVerificationSummary(summary *model.VerificationSummary, configPath s
 			StepResults: make([]registry.StepResult, 0),
 			StepCount:   0,
 			Summary:     "verification unavailable",
+			Error: &registry.ErrorDetail{
+				Message:    "Verification did not produce a summary",
+				Context:    fmt.Sprintf("Config: %s", configPath),
+				Suggestion: "Retry 'streamy verify' and check logs",
+			},
 		}
 	}
 

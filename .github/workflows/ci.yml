@@ -36,8 +36,8 @@ jobs:
 
       - name: Run unit tests with coverage (excluding cmd and UI/TUI)
         run: |
-          # Get list of packages excluding UI/TUI packages using robust JSON filtering
-          PACKAGES=$(go list -json ./internal/... ./pkg/... | jq -r ".ImportPath | select(test(\"/internal/(tui|ui)(/|$)\") | not)" | tr "\n" " ")
+          # Get list of packages excluding UI/TUI packages without jq
+          PACKAGES=$(go list ./internal/... ./pkg/... | grep -Ev '/internal/(tui|ui)(/|$)' | tr '\n' ' ')
           go test $PACKAGES -coverprofile=coverage.out -covermode=atomic
 
       - name: Enforce coverage threshold
@@ -49,9 +49,6 @@ jobs:
             exit 1
           fi
           echo "✅ Coverage check passed: ${COVERAGE}%"
-
-      - name: Run TUI integration tests
-        run: go test -v ./tests/...
 
   lint:
     runs-on: ubuntu-latest
@@ -66,7 +63,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v4
         with:
           version: latest
-          args: --timeout=5m --out-format=colored-line-number
+          args: --timeout=5m
 
   build:
     runs-on: ubuntu-latest

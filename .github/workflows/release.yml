@@ -42,8 +42,3 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate SBOM
-        run: |
-          # Using cosign to generate SBOM (requires setup)
-          echo "SBOM generation can be added once cosign is configured"

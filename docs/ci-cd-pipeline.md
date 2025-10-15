@@ -15,9 +15,9 @@ Runs on every push to `main` and all pull requests, plus nightly at 2 AM UTC.
 **Test Job** (Ubuntu Latest, Matrix: Go 1.24, 1.25)
 - ✅ Verifies `go.mod` is tidy
 - ✅ Checks code formatting with `gofmt`
-- ✅ Runs all tests with race detector (`-race`)
+- ✅ Runs tests with the race detector (`-race`)
 - ✅ Measures unit test coverage (excluding `cmd/`, `internal/tui`, `internal/ui`)
-- ✅ Enforces 80% coverage threshold
+- ✅ Enforces an 80% coverage threshold
 - ✅ Runs TUI integration tests
 
 **Lint Job** (Ubuntu Latest)
@@ -45,7 +45,7 @@ Triggers on version tags (e.g., `v1.2.3`).
 2. ✅ Runs full test suite before release
 3. ✅ Builds and publishes with GoReleaser
 4. ✅ Generates checksums (SHA256)
-5. ✅ Creates SBOM (Software Bill of Materials)
+5. ✅ Generates SBOM (Software Bill of Materials) via GoReleaser
 
 #### Permissions:
 - `contents: write` - Create releases
