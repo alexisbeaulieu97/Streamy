@@ -35,7 +35,10 @@ jobs:
         run: go test -race -timeout 10m ./...
 
       - name: Run unit tests with coverage (excluding cmd and UI/TUI)
-        run: go test $(go list ./internal/... ./pkg/... | grep -v '/internal/tui' | grep -v '/internal/ui') -coverprofile=coverage.out -covermode=atomic
+        run: |
+          # Get list of packages excluding UI/TUI packages using robust JSON filtering
+          PACKAGES=$(go list -json ./internal/... ./pkg/... | jq -r ".ImportPath | select(test(\"/internal/(tui|ui)(/|$)\") | not)" | tr "\n" " ")
+          go test $PACKAGES -coverprofile=coverage.out -covermode=atomic
 
       - name: Enforce coverage threshold
         run: |
@@ -64,7 +67,6 @@ jobs:
         with:
           version: latest
           args: --timeout=5m --out-format=colored-line-number
-          cache: true
 
   build:
     runs-on: ubuntu-latest

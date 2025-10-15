@@ -97,10 +97,10 @@ func TestSemverValidation(t *testing.T) {
 		{"with prerelease", "1.0.0-alpha", true},
 		{"with build metadata", "1.0.0+build.1", true},
 		{"complex", "2.1.3-beta.2+build.123", true},
-		{"single digit", "1.0", true},
 
 		// Invalid semver
 		{"empty", "", false},
+		{"single digit", "1.0", false},
 		{"no dots", "v1", false},
 		{"too many dots", "1.2.3.4", false},
 		{"invalid chars", "1.x.0", false},
