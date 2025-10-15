@@ -53,7 +53,7 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
 	for id, status := range statuses {
-		cache.Set(id, registry.CachedStatus{
+		_ = cache.Set(id, registry.CachedStatus{
 			Status:  status,
 			LastRun: time.Now(),
 			Summary: "",
@@ -304,7 +304,7 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
 	lastRun := time.Now().Add(-30 * time.Minute)
-	cache.Set("test-pipeline", registry.CachedStatus{
+	_ = cache.Set("test-pipeline", registry.CachedStatus{
 		Status:  registry.StatusSatisfied,
 		LastRun: lastRun,
 		Summary: "",
@@ -473,7 +473,7 @@ func TestDashboardJSONFiles(t *testing.T) {
 	// Create and save cache
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
-	cache.Set("test-json", registry.CachedStatus{
+	_ = cache.Set("test-json", registry.CachedStatus{
 		Status:  registry.StatusSatisfied,
 		LastRun: time.Now(),
 		Summary: "",

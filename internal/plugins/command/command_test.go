@@ -191,7 +191,7 @@ fi
 
 	// Create the file
 	require.NoError(t, os.WriteFile("/tmp/testfile", []byte("test"), 0644))
-	t.Cleanup(func() { os.Remove("/tmp/testfile") })
+	t.Cleanup(func() { _ = os.Remove("/tmp/testfile") })
 
 	// Test when check command succeeds (file exists)
 	evalResult, err = p.Evaluate(context.Background(), step)
@@ -269,7 +269,7 @@ func TestCommandPlugin_ApplySkipsWhenNoAction(t *testing.T) {
 	require.Equal(t, step.ID, result.StepID)
 }
 
-func TestCommandConvertError(t *testing.T) {
+func TestConvertError(t *testing.T) {
 	t.Run("wraps validation errors", func(t *testing.T) {
 		err := streamyerrors.NewValidationError("field", "invalid", nil)
 		converted := convertError("cmd", err)

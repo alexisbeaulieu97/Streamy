@@ -108,7 +108,7 @@ func runApply(app *AppContext, opts applyOptions) error {
 			return programErr
 		}
 	} else {
-		fmt.Fprintln(os.Stdout, modelState.View())
+		_, _ = fmt.Fprintln(os.Stdout, modelState.View())
 	}
 
 	return execErr

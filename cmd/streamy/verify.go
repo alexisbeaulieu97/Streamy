@@ -74,11 +74,11 @@ func runVerifyInternal(app *AppContext, opts verifyOptions) (int, error) {
 		var parseErr *streamyerrors.ParseError
 		var validationErr *streamyerrors.ValidationError
 		if errors.As(err, &parseErr) {
-			fmt.Fprintf(stderrWriter, "Error parsing configuration: %v\n", err)
+			_, _ = fmt.Fprintf(stderrWriter, "Error parsing configuration: %v\n", err)
 			return 2, nil
 		}
 		if errors.As(err, &validationErr) {
-			fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
+			_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
 			return 2, nil
 		}
 		return 3, err
@@ -91,7 +91,7 @@ func runVerifyInternal(app *AppContext, opts verifyOptions) (int, error) {
 
 	log, err := logger.New(logger.Options{Level: level, HumanReadable: !opts.JSON})
 	if err != nil {
-		fmt.Fprintf(stderrWriter, "Error creating logger: %v\n", err)
+		_, _ = fmt.Fprintf(stderrWriter, "Error creating logger: %v\n", err)
 		return 3, nil
 	}
 
@@ -123,15 +123,15 @@ func runVerifyInternal(app *AppContext, opts verifyOptions) (int, error) {
 	if verifyErr != nil {
 		var validationErr *streamyerrors.ValidationError
 		if errors.As(verifyErr, &validationErr) {
-			fmt.Fprintf(stderrWriter, "Configuration error: %v\n", verifyErr)
+			_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", verifyErr)
 			return 2, nil
 		}
-		fmt.Fprintf(stderrWriter, "Verification error: %v\n", verifyErr)
+		_, _ = fmt.Fprintf(stderrWriter, "Verification error: %v\n", verifyErr)
 		return 3, nil
 	}
 
 	if outcome == nil || outcome.Summary == nil {
-		fmt.Fprintf(stderrWriter, "Verification error: no summary produced\n")
+		_, _ = fmt.Fprintf(stderrWriter, "Verification error: no summary produced\n")
 		return 3, nil
 	}
 

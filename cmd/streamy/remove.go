@@ -65,7 +65,7 @@ func runRemove(cmd *cobra.Command, pipelineID string, opts *removeOptions) error
 			return err
 		}
 		if !confirmed {
-			fmt.Fprintln(cmd.OutOrStdout(), "Cancelled.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Cancelled.")
 			return nil
 		}
 	}
@@ -84,8 +84,8 @@ func runRemove(cmd *cobra.Command, pipelineID string, opts *removeOptions) error
 		_ = statusCache.Save()
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "✓ Removed pipeline '%s'\n", pipelineID)
-	fmt.Fprintf(cmd.OutOrStdout(), "\nThe configuration file at %s was not deleted.\n", pipeline.Path)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Removed pipeline '%s'\n", pipelineID)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nThe configuration file at %s was not deleted.\n", pipeline.Path)
 
 	return nil
 }
@@ -95,7 +95,7 @@ func confirmRemoval(cmd *cobra.Command, pipelineID, pipelineName string) (bool, 
 		return false, newCommandError("remove", "prompting for confirmation", errors.New("not a terminal"), "Use --force when running in non-interactive environments.")
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Remove pipeline '%s' (%s) from registry? [y/N]: ", pipelineID, pipelineName)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Remove pipeline '%s' (%s) from registry? [y/N]: ", pipelineID, pipelineName)
 
 	scanner := bufio.NewScanner(cmd.InOrStdin())
 	if !scanner.Scan() {

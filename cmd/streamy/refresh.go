@@ -79,7 +79,7 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions, app *AppContext) error
 
 	pipelines := reg.List()
 	if len(pipelines) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered. Run 'streamy registry add <config-path>' first.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered. Run 'streamy registry add <config-path>' first.")
 		return nil
 	}
 
@@ -101,9 +101,9 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions, app *AppContext) error
 	})
 
 	if opts.dryRun {
-		fmt.Fprintln(cmd.OutOrStdout(), "Dry-run: Would refresh the following pipelines:")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Dry-run: Would refresh the following pipelines:")
 		for _, p := range pipelines {
-			fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s)\n", p.ID, valueOrFallback(p.Name, "(no name)"))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s)\n", p.ID, valueOrFallback(p.Name, "(no name)"))
 		}
 		return nil
 	}
@@ -124,7 +124,7 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions, app *AppContext) error
 	}
 
 	summary := summarizeResults(results)
-	fmt.Fprintf(cmd.OutOrStdout(), "\nSummary:\n  ✓ Satisfied: %d\n  ✗ Failed:    %d\n  ⚠ Drifted:   %d\n", summary.satisfied, summary.failed, summary.drifted)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nSummary:\n  ✓ Satisfied: %d\n  ✗ Failed:    %d\n  ⚠ Drifted:   %d\n", summary.satisfied, summary.failed, summary.drifted)
 
 	return nil
 }
@@ -149,12 +149,12 @@ func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []
 			defer wg.Done()
 
 			sem <- struct{}{}
-			fmt.Fprintf(out, "[%d/%d] %s... ", i+1, len(pipelines), pipeline.ID)
+			_, _ = fmt.Fprintf(out, "[%d/%d] %s... ", i+1, len(pipelines), pipeline.ID)
 
 			result := refreshPipeline(ctx, service, pipeline, timeout, configPath, perStepTimeout)
 			result.PipelineID = pipeline.ID
 
-			fmt.Fprintf(out, "%s\n", formatRefreshResult(result))
+			_, _ = fmt.Fprintf(out, "%s\n", formatRefreshResult(result))
 
 			results[i] = result
 			<-sem

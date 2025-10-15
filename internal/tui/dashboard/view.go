@@ -347,9 +347,10 @@ func (m Model) renderDetailView() string {
 		successCount := 0
 		failedCount := 0
 		for _, step := range selected.LastResult.StepResults {
-			if step.Status == "success" {
+			switch step.Status {
+			case "success":
 				successCount++
-			} else if step.Status == "failed" {
+			case "failed":
 				failedCount++
 			}
 		}

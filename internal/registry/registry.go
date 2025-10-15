@@ -85,7 +85,7 @@ func (r *Registry) Save() error {
 
 	// Atomic rename
 	if err := os.Rename(tmpPath, r.path); err != nil {
-		os.Remove(tmpPath) // Clean up temp file on failure
+		_ = os.Remove(tmpPath) // Clean up temp file on failure
 		return fmt.Errorf("failed to rename temporary file: %w", err)
 	}
 

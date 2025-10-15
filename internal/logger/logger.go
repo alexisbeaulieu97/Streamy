@@ -37,12 +37,14 @@ func New(opts Options) (*Logger, error) {
 		level = parsed
 	}
 
-	var output io.Writer = writer
+	var output io.Writer
 	if opts.HumanReadable {
 		console := zerolog.NewConsoleWriter()
 		console.Out = writer
 		console.TimeFormat = time.RFC3339
 		output = console
+	} else {
+		output = writer
 	}
 
 	logger := zerolog.New(output).Level(level).With().Timestamp().Logger()

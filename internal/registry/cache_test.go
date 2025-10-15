@@ -169,7 +169,7 @@ func TestStatusCacheConcurrency(t *testing.T) {
 				Summary:   "All steps passed",
 				StepCount: 5,
 			}
-			cache.Set("pipeline-1", status)
+			_ = cache.Set("pipeline-1", status)
 		}
 		done <- true
 	}()

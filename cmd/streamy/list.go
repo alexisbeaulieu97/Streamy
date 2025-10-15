@@ -99,15 +99,15 @@ func enrichPipelinesWithStatus(pipelines []registry.Pipeline, cache *registry.St
 }
 
 func renderEmptyList(cmd *cobra.Command) error {
-	fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered yet.")
-	fmt.Fprintln(cmd.OutOrStdout(), "\nRun 'streamy registry add <config-path>' to add your first pipeline.")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered yet.")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nRun 'streamy registry add <config-path>' to add your first pipeline.")
 	return nil
 }
 
 func renderListTable(cmd *cobra.Command, pipelines []pipelineWithStatus) error {
 	writer := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 
-	fmt.Fprintln(writer, "ID\tNAME\tSTATUS\tLAST RUN\tPATH")
+	_, _ = fmt.Fprintln(writer, "ID\tNAME\tSTATUS\tLAST RUN\tPATH")
 
 	useUnicode := supportsUnicode(cmd.OutOrStdout())
 
@@ -115,7 +115,7 @@ func renderListTable(cmd *cobra.Command, pipelines []pipelineWithStatus) error {
 		statusStr := formatStatus(p.Status.Status, useUnicode)
 		lastRun := formatRelativeTime(p.Status.LastRun)
 
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n",
 			p.Pipeline.ID,
 			valueOrFallback(p.Pipeline.Name, "(no name)"),
 			statusStr,

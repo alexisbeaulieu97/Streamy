@@ -315,7 +315,7 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, f); err != nil {
@@ -392,7 +392,7 @@ func copyFile(src, dst string, preserveMode bool, overwrite bool) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	// Ensure destination directory exists
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
@@ -403,7 +403,7 @@ func copyFile(src, dst string, preserveMode bool, overwrite bool) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return err
