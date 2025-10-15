@@ -153,7 +153,7 @@ type TemplateStep struct {
 	Vars         map[string]string `yaml:"vars,omitempty"`
 	Env          bool              `yaml:"env,omitempty"`
 	AllowMissing bool              `yaml:"allow_missing,omitempty"`
-	Mode         *uint32           `yaml:"mode,omitempty" validate:"omitempty,min=0,max=0777"`
+	Mode         *uint32           `yaml:"mode,omitempty" validate:"omitempty,min=0,max=511"`
 }
 
 // LineInFileStep manages individual lines in text files.
@@ -307,12 +307,22 @@ func extractRawConfig(node *yaml.Node) map[string]any {
 		return map[string]any{}
 	}
 
-	delete(raw, "id")
-	delete(raw, "name")
-	delete(raw, "type")
-	delete(raw, "depends_on")
-	delete(raw, "enabled")
-	delete(raw, "verify_timeout")
+	// Base keys to remove case-insensitively
+	baseKeys := map[string]bool{
+		"id":             true,
+		"name":           true,
+		"type":           true,
+		"depends_on":     true,
+		"enabled":        true,
+		"verify_timeout": true,
+	}
+
+	// Remove base keys case-insensitively
+	for key := range raw {
+		if baseKeys[strings.ToLower(key)] {
+			delete(raw, key)
+		}
+	}
 
 	return raw
 }
