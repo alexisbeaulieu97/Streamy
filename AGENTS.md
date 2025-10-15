@@ -14,3 +14,6 @@ Co-locate tests beside the code by creating `*_test.go` files. Use table-driven 
 
 ## Commit & Pull Request Guidelines
 The history is new, so use Conventional Commits (e.g., `feat: add stream session store`). Keep each commit scoped to a single concern and include any schema or config migrations. Pull requests must summarize the change set, link related issues, and note manual verification (`go test ./...`, local run, etc.). Add screenshots or API examples when touching user-facing flows.
+
+## Agent Workflow
+Always finish editing sessions by running `golanci-lint run` followed by `goimports -w .` so changes stay linted and imports remain organized.

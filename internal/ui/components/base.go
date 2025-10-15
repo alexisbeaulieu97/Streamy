@@ -75,8 +75,11 @@ func (b *BaseComponent) SetAppliers(appliers ...StyleFunc) {
 // AddAppliers appends additional style appliers to the existing strategy.
 func (b *BaseComponent) AddAppliers(appliers ...StyleFunc) {
 	if existing, ok := b.strategy.(CompositeStrategy); ok {
-		existing.funcs = append(existing.funcs, appliers...)
-		b.strategy = existing
+		// Make a defensive copy of the funcs slice to avoid mutating shared arrays
+		newFuncs := make([]StyleFunc, len(existing.funcs), len(existing.funcs)+len(appliers))
+		copy(newFuncs, existing.funcs)
+		newFuncs = append(newFuncs, appliers...)
+		b.strategy = CompositeStrategy{funcs: newFuncs}
 	} else {
 		b.strategy = NewCompositeStrategy(appliers...)
 	}
