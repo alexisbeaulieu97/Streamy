@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -99,6 +100,7 @@ func TestConvertVerificationSummary(t *testing.T) {
 		assert.Equal(t, registry.StatusFailed, result.Status)
 		assert.Equal(t, false, result.Success)
 		assert.Len(t, result.StepResults, 1)
+		require.NotNil(t, result.StepResults[0].Error)
 		assert.Equal(t, "command not found", result.StepResults[0].Error.Message)
 	})
 
@@ -267,8 +269,67 @@ func TestPipelineStatusFromSummary(t *testing.T) {
 	}
 }
 
-// TestFailedExecutionResult is skipped due to implementation issues
-// The core functionality is tested in the other functions
+func TestFailedExecutionResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		operation  string
+		configPath string
+		err        error
+	}{
+		{
+			name:       "verify operation",
+			operation:  "verify",
+			configPath: "/test/config.yaml",
+			err:        errors.New("verification failed"),
+		},
+		{
+			name:       "apply operation",
+			operation:  "apply",
+			configPath: "/test/pipeline.yaml",
+			err:        errors.New("apply error"),
+		},
+		{
+			name:       "nil error",
+			operation:  "test",
+			configPath: "/test/nil.yaml",
+			err:        nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := time.Now().UTC()
+			result := failedExecutionResult(tt.operation, tt.configPath, tt.err)
+			after := time.Now().UTC()
+
+			require.NotNil(t, result)
+			assert.Equal(t, tt.operation, result.Operation)
+			assert.Equal(t, registry.StatusFailed, result.Status)
+			assert.Equal(t, false, result.Success)
+			assert.Equal(t, 0, result.StepCount)
+			assert.Empty(t, result.StepResults)
+			assert.Equal(t, time.Duration(0), result.Duration)
+
+			// Verify timestamp is within expected range
+			assert.True(t, result.CompletedAt.After(before) || result.CompletedAt.Equal(before))
+			assert.True(t, result.CompletedAt.Before(after) || result.CompletedAt.Equal(after))
+
+			if tt.err != nil {
+				require.NotNil(t, result.Error)
+				assert.Equal(t, "PIPELINE_ERROR", result.Error.Code)
+				assert.Equal(t, tt.err.Error(), result.Error.Message)
+				assert.Equal(t, fmt.Sprintf("Config: %s", tt.configPath), result.Error.Context)
+				assert.Equal(t, "Inspect error details and fix configuration", result.Error.Suggestion)
+			} else {
+				require.NotNil(t, result.Error)
+				assert.Equal(t, "PIPELINE_ERROR", result.Error.Code)
+				assert.Equal(t, "unknown error", result.Error.Message)
+				assert.Equal(t, fmt.Sprintf("Config: %s", tt.configPath), result.Error.Context)
+				assert.Equal(t, "Inspect error details and fix configuration", result.Error.Suggestion)
+			}
+		})
+	}
+}
 
 func TestDedupeStrings(t *testing.T) {
 	tests := []struct {

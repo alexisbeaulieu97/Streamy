@@ -303,13 +303,20 @@ func pipelineStatusFromSummary(summary *model.VerificationSummary) registry.Pipe
 }
 
 func failedExecutionResult(operation, configPath string, err error) *registry.ExecutionResult {
+	var message string
+	if err != nil {
+		message = err.Error()
+	} else {
+		message = "unknown error"
+	}
+
 	return &registry.ExecutionResult{
 		Operation: operation,
 		Status:    registry.StatusFailed,
 		Success:   false,
 		Error: &registry.ErrorDetail{
 			Code:       "PIPELINE_ERROR",
-			Message:    err.Error(),
+			Message:    message,
 			Context:    fmt.Sprintf("Config: %s", configPath),
 			Suggestion: "Inspect error details and fix configuration",
 		},
@@ -317,6 +324,8 @@ func failedExecutionResult(operation, configPath string, err error) *registry.Ex
 	}
 }
 
+// dedupeStrings removes duplicate strings from the input slice.
+// Empty strings are skipped by design.
 func dedupeStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
