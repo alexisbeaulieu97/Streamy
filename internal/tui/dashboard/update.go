@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/alexisbeaulieu97/streamy/internal/engine"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -111,7 +110,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.operationCtxs[msg.PipelineID] = cancel
 			m.loading[msg.PipelineID] = true
 			m.operations[msg.PipelineID] = Operation{Type: "verifying", PipelineID: msg.PipelineID, StartedAt: time.Now()}
-			cmds = append(cmds, verifyCmd(ctx, pipeline.ID, pipeline.Path, m.pluginReg))
+			cmds = append(cmds, verifyCmd(ctx, pipeline.ID, pipeline.Path, m.service))
 		}
 
 		return m, tea.Batch(cmds...)
@@ -291,7 +290,7 @@ func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.operationCtxs[pipelineID] = cancel
 			m.loading[pipelineID] = true
 
-			cmds = append(cmds, refreshSingleCmd(ctx, pipeline, m.pluginReg, i, len(m.pipelines)))
+			cmds = append(cmds, refreshSingleCmd(ctx, pipeline, m.service, i, len(m.pipelines)))
 		}
 
 		return m, tea.Batch(cmds...)
@@ -372,7 +371,7 @@ func (m Model) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			StartedAt:  time.Now(),
 		}
 
-		return m, verifyCmd(ctx, selected.ID, selected.Path, m.pluginReg)
+		return m, verifyCmd(ctx, selected.ID, selected.Path, m.service)
 
 	// Apply pipeline (US4 - with confirmation)
 	case "a":
@@ -421,7 +420,7 @@ func (m Model) handleDetailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			StartedAt:  time.Now(),
 		}
 
-		return m, verifyCmd(ctx, selected.ID, selected.Path, m.pluginReg)
+		return m, verifyCmd(ctx, selected.ID, selected.Path, m.service)
 
 	// Help
 	case "?":
@@ -488,7 +487,7 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			// Return to detail view and start apply
 			m.viewMode = ViewDetail
-			return m, applyCmd(ctx, selected.ID, selected.Path, m.pluginReg)
+			return m, applyCmd(ctx, selected.ID, selected.Path, m.service)
 
 		case "cancel_verify", "cancel_apply":
 			// Cancel the operation
@@ -524,7 +523,7 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // saveVerifyStatusToCacheCmd saves verification result to cache
-func saveVerifyStatusToCacheCmd(cache *registry.StatusCache, pipelineID string, result *engine.VerifyPipelineResult) tea.Cmd {
+func saveVerifyStatusToCacheCmd(cache *registry.StatusCache, pipelineID string, result *registry.ExecutionResult) tea.Cmd {
 	return func() tea.Msg {
 		cached := registry.CachedStatus{
 			Status:      result.Status,
@@ -544,7 +543,7 @@ func saveVerifyStatusToCacheCmd(cache *registry.StatusCache, pipelineID string, 
 }
 
 // saveApplyStatusToCacheCmd saves apply result to cache
-func saveApplyStatusToCacheCmd(cache *registry.StatusCache, pipelineID string, result *engine.ApplyPipelineResult) tea.Cmd {
+func saveApplyStatusToCacheCmd(cache *registry.StatusCache, pipelineID string, result *registry.ExecutionResult) tea.Cmd {
 	return func() tea.Msg {
 		cached := registry.CachedStatus{
 			Status:      result.Status,

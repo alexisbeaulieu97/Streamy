@@ -23,6 +23,13 @@ import (
 	templateplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/template"
 )
 
+func newStepWithConfig(t *testing.T, id, typ string, cfg any) *config.Step {
+	t.Helper()
+	step := &config.Step{ID: id, Type: typ, Enabled: true}
+	require.NoError(t, step.SetConfig(cfg))
+	return step
+}
+
 // getAllPlugins returns all plugin implementations for contract testing
 func getAllPlugins() []plugin.Plugin {
 	return []plugin.Plugin{
@@ -238,78 +245,50 @@ func TestApplyContract_UsesEvaluationResult(t *testing.T) {
 func createTestStep(t *testing.T, pluginType, tmpDir, testFile string) *config.Step {
 	switch pluginType {
 	case "symlink":
-		return &config.Step{
-			ID:   "test-symlink",
-			Type: pluginType,
-			Symlink: &config.SymlinkStep{
-				Source: testFile,
-				Target: filepath.Join(tmpDir, "link"),
-			},
-		}
+		return newStepWithConfig(t, "test-symlink", pluginType, config.SymlinkStep{
+			Source: testFile,
+			Target: filepath.Join(tmpDir, "link"),
+		})
 	case "copy":
 		destFile := filepath.Join(tmpDir, "copy.txt")
-		return &config.Step{
-			ID:   "test-copy",
-			Type: pluginType,
-			Copy: &config.CopyStep{
-				Source:      testFile,
-				Destination: destFile,
-			},
-		}
+		return newStepWithConfig(t, "test-copy", pluginType, config.CopyStep{
+			Source:      testFile,
+			Destination: destFile,
+		})
 	case "line_in_file":
-		return &config.Step{
-			ID:   "test-lineinfile",
-			Type: pluginType,
-			LineInFile: &config.LineInFileStep{
-				File:  testFile,
-				Line:  "new line",
-				State: "present",
-			},
-		}
+		return newStepWithConfig(t, "test-lineinfile", pluginType, config.LineInFileStep{
+			File:  testFile,
+			Line:  "new line",
+			State: "present",
+		})
 	case "template":
 		templateFile := filepath.Join(tmpDir, "template.tmpl")
 		require.NoError(t, os.WriteFile(templateFile, []byte("template content: {{ .Var }}"), 0644))
 		outputFile := filepath.Join(tmpDir, "output.txt")
 		mode := uint32(0644)
-		return &config.Step{
-			ID:   "test-template",
-			Type: pluginType,
-			Template: &config.TemplateStep{
-				Source:      templateFile,
-				Destination: outputFile,
-				Vars:        map[string]string{"Var": "value"},
-				Mode:        &mode,
-			},
-		}
+		return newStepWithConfig(t, "test-template", pluginType, config.TemplateStep{
+			Source:      templateFile,
+			Destination: outputFile,
+			Vars:        map[string]string{"Var": "value"},
+			Mode:        &mode,
+		})
 	case "package":
 		// Use a package that's guaranteed to be present so Apply is not invoked.
-		return &config.Step{
-			ID:   "test-package",
-			Type: pluginType,
-			Package: &config.PackageStep{
-				Packages: []string{"bash"},
-				Manager:  "apt",
-			},
-		}
+		return newStepWithConfig(t, "test-package", pluginType, config.PackageStep{
+			Packages: []string{"bash"},
+			Manager:  "apt",
+		})
 	case "repo":
 		source := initContractRepo(t)
-		return &config.Step{
-			ID:   "test-repo",
-			Type: pluginType,
-			Repo: &config.RepoStep{
-				URL:         source,
-				Destination: filepath.Join(tmpDir, "repo"),
-			},
-		}
+		return newStepWithConfig(t, "test-repo", pluginType, config.RepoStep{
+			URL:         source,
+			Destination: filepath.Join(tmpDir, "repo"),
+		})
 	case "command":
-		return &config.Step{
-			ID:   "test-command",
-			Type: pluginType,
-			Command: &config.CommandStep{
-				Command: "echo 'test command'",
-				Check:   "echo 'check command'",
-			},
-		}
+		return newStepWithConfig(t, "test-command", pluginType, config.CommandStep{
+			Command: "echo 'test command'",
+			Check:   "echo 'check command'",
+		})
 	default:
 		t.Fatalf("unknown plugin type: %s", pluginType)
 		return nil

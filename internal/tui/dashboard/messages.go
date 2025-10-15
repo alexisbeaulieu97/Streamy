@@ -3,7 +3,6 @@ package dashboard
 import (
 	"time"
 
-	"github.com/alexisbeaulieu97/streamy/internal/engine"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -43,7 +42,7 @@ type VerifyStartedMsg struct {
 // VerifyCompleteMsg indicates verification completed successfully
 type VerifyCompleteMsg struct {
 	PipelineID string
-	Result     *engine.VerifyPipelineResult
+	Result     *registry.ExecutionResult
 }
 
 // VerifyErrorMsg indicates verification failed
@@ -68,7 +67,7 @@ type ApplyStartedMsg struct {
 // ApplyCompleteMsg indicates apply completed successfully
 type ApplyCompleteMsg struct {
 	PipelineID string
-	Result     *engine.ApplyPipelineResult
+	Result     *registry.ExecutionResult
 }
 
 // ApplyErrorMsg indicates apply failed
@@ -94,13 +93,13 @@ type RefreshPipelineCompleteMsg struct {
 	PipelineID string
 	Index      int
 	Total      int
-	Result     *engine.VerifyPipelineResult
+	Result     *registry.ExecutionResult
 	Error      error
 }
 
 // RefreshCompleteMsg indicates refresh completed
 type RefreshCompleteMsg struct {
-	Results map[string]*engine.VerifyPipelineResult
+	Results map[string]*registry.ExecutionResult
 }
 
 // RefreshCancelledMsg indicates refresh was cancelled

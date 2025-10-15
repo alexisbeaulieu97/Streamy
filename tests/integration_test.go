@@ -130,16 +130,13 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	cfg := &streamconfig.Config{
 		Version: "1.0",
 		Name:    "Fails",
-		Steps: []streamconfig.Step{
-			{
-				ID:      "fail",
-				Type:    "command",
-				Enabled: true,
-				Command: &streamconfig.CommandStep{
-					Command: "__streamy_fail__",
-				},
-			},
-		},
+		Steps: func() []streamconfig.Step {
+			step := streamconfig.Step{ID: "fail", Type: "command", Enabled: true}
+			if err := step.SetConfig(streamconfig.CommandStep{Command: "__streamy_fail__"}); err != nil {
+				t.Fatalf("SetConfig failed: %v", err)
+			}
+			return []streamconfig.Step{step}
+		}(),
 	}
 
 	graph := buildDAG(t, cfg)

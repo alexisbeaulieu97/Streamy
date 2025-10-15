@@ -18,6 +18,14 @@ import (
 	linefileinplugin "github.com/alexisbeaulieu97/streamy/internal/plugins/lineinfile"
 )
 
+func lineInFileStep(id string, enabled bool, dependsOn []string, cfg streamconfig.LineInFileStep) streamconfig.Step {
+	step := streamconfig.Step{ID: id, Type: "line_in_file", Enabled: enabled, DependsOn: append([]string(nil), dependsOn...)}
+	if err := step.SetConfig(cfg); err != nil {
+		panic(err)
+	}
+	return step
+}
+
 func TestIntegration_LineInFile_FreshProfile(t *testing.T) {
 	t.Parallel()
 
@@ -25,16 +33,11 @@ func TestIntegration_LineInFile_FreshProfile(t *testing.T) {
 	profile := filepath.Join(dir, ".bashrc")
 
 	cfg := baseLineInFileConfig([]streamconfig.Step{
-		{
-			ID:      "add_path",
-			Type:    "line_in_file",
-			Enabled: true,
-			LineInFile: &streamconfig.LineInFileStep{
-				File:  profile,
-				Line:  "export PATH=\"$PATH:~/bin\"",
-				State: "present",
-			},
-		},
+		lineInFileStep("add_path", true, nil, streamconfig.LineInFileStep{
+			File:  profile,
+			Line:  "export PATH=\"$PATH:~/bin\"",
+			State: "present",
+		}),
 	})
 
 	results := runLineInFilePlan(t, cfg, false)
@@ -58,18 +61,13 @@ func TestIntegration_LineInFile_ReplaceDebug(t *testing.T) {
 	writeTempFile(t, configPath, "debug=true\nmode=prod\n")
 
 	cfg := baseLineInFileConfig([]streamconfig.Step{
-		{
-			ID:      "replace_debug",
-			Type:    "line_in_file",
-			Enabled: true,
-			LineInFile: &streamconfig.LineInFileStep{
-				File:              configPath,
-				Line:              "debug=false",
-				State:             "present",
-				Match:             "^debug=",
-				OnMultipleMatches: "first",
-			},
-		},
+		lineInFileStep("replace_debug", true, nil, streamconfig.LineInFileStep{
+			File:              configPath,
+			Line:              "debug=false",
+			State:             "present",
+			Match:             "^debug=",
+			OnMultipleMatches: "first",
+		}),
 	})
 
 	results := runLineInFilePlan(t, cfg, false)
@@ -89,16 +87,11 @@ func TestIntegration_LineInFile_RemoveMultiple(t *testing.T) {
 	writeTempFile(t, configPath, "export OLD_VAR=1\nexport OLD_VAR=2\nexport KEEP=1\n")
 
 	cfg := baseLineInFileConfig([]streamconfig.Step{
-		{
-			ID:      "remove_old",
-			Type:    "line_in_file",
-			Enabled: true,
-			LineInFile: &streamconfig.LineInFileStep{
-				File:  configPath,
-				State: "absent",
-				Match: "^export OLD_VAR=",
-			},
-		},
+		lineInFileStep("remove_old", true, nil, streamconfig.LineInFileStep{
+			File:  configPath,
+			State: "absent",
+			Match: "^export OLD_VAR=",
+		}),
 	})
 
 	results := runLineInFilePlan(t, cfg, false)
@@ -118,19 +111,14 @@ func TestIntegration_LineInFile_BackupVerify(t *testing.T) {
 	writeTempFile(t, configPath, "option=old\n")
 
 	cfg := baseLineInFileConfig([]streamconfig.Step{
-		{
-			ID:      "update_option",
-			Type:    "line_in_file",
-			Enabled: true,
-			LineInFile: &streamconfig.LineInFileStep{
-				File:      configPath,
-				Line:      "option=new",
-				State:     "present",
-				Match:     "^option=",
-				Backup:    true,
-				BackupDir: filepath.Join(dir, "backups"),
-			},
-		},
+		lineInFileStep("update_option", true, nil, streamconfig.LineInFileStep{
+			File:      configPath,
+			Line:      "option=new",
+			State:     "present",
+			Match:     "^option=",
+			Backup:    true,
+			BackupDir: filepath.Join(dir, "backups"),
+		}),
 	})
 
 	results := runLineInFilePlan(t, cfg, false)
@@ -153,49 +141,26 @@ func TestIntegration_LineInFile_CompleteShellSetup(t *testing.T) {
 	writeTempFile(t, profile, "export JAVA_HOME=/usr/lib/jvm\n")
 
 	cfg := baseLineInFileConfig([]streamconfig.Step{
-		{
-			ID:      "add_path",
-			Type:    "line_in_file",
-			Enabled: true,
-			LineInFile: &streamconfig.LineInFileStep{
-				File:  profile,
-				Line:  "export PATH=\"$PATH:/opt/dev/bin\"",
-				State: "present",
-			},
-		},
-		{
-			ID:        "set_editor",
-			Type:      "line_in_file",
-			Enabled:   true,
-			DependsOn: []string{"add_path"},
-			LineInFile: &streamconfig.LineInFileStep{
-				File:  profile,
-				Line:  "export EDITOR=vim",
-				State: "present",
-			},
-		},
-		{
-			ID:        "remove_old_java",
-			Type:      "line_in_file",
-			Enabled:   true,
-			DependsOn: []string{"set_editor"},
-			LineInFile: &streamconfig.LineInFileStep{
-				File:  profile,
-				State: "absent",
-				Match: "^export JAVA_HOME=",
-			},
-		},
-		{
-			ID:        "set_java",
-			Type:      "line_in_file",
-			Enabled:   true,
-			DependsOn: []string{"remove_old_java"},
-			LineInFile: &streamconfig.LineInFileStep{
-				File:  profile,
-				Line:  "export JAVA_HOME=/opt/java",
-				State: "present",
-			},
-		},
+		lineInFileStep("add_path", true, nil, streamconfig.LineInFileStep{
+			File:  profile,
+			Line:  "export PATH=\"$PATH:/opt/dev/bin\"",
+			State: "present",
+		}),
+		lineInFileStep("set_editor", true, []string{"add_path"}, streamconfig.LineInFileStep{
+			File:  profile,
+			Line:  "export EDITOR=vim",
+			State: "present",
+		}),
+		lineInFileStep("remove_old_java", true, []string{"set_editor"}, streamconfig.LineInFileStep{
+			File:  profile,
+			State: "absent",
+			Match: "^export JAVA_HOME=",
+		}),
+		lineInFileStep("set_java", true, []string{"remove_old_java"}, streamconfig.LineInFileStep{
+			File:  profile,
+			Line:  "export JAVA_HOME=/opt/java",
+			State: "present",
+		}),
 	})
 
 	results := runLineInFilePlan(t, cfg, false)
@@ -220,16 +185,11 @@ func TestIntegration_LineInFile_DryRun(t *testing.T) {
 	writeTempFile(t, profile, "alias ll='ls -al'\n")
 
 	cfg := baseLineInFileConfig([]streamconfig.Step{
-		{
-			ID:      "remove_alias",
-			Type:    "line_in_file",
-			Enabled: true,
-			LineInFile: &streamconfig.LineInFileStep{
-				File:  profile,
-				State: "absent",
-				Match: "^alias ll",
-			},
-		},
+		lineInFileStep("remove_alias", true, nil, streamconfig.LineInFileStep{
+			File:  profile,
+			State: "absent",
+			Match: "^alias ll",
+		}),
 	})
 
 	results := runLineInFilePlan(t, cfg, true)

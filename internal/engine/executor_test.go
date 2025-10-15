@@ -21,13 +21,14 @@ func TestExecute_SequentialLevels(t *testing.T) {
 	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
 	require.NoError(t, registry.Register(fp))
 
+	step1 := config.Step{ID: "step1", Type: "command", Enabled: true}
+	require.NoError(t, step1.SetConfig(config.CommandStep{Command: "echo 1"}))
+	step2 := config.Step{ID: "step2", Type: "command", Enabled: true, DependsOn: []string{"step1"}}
+	require.NoError(t, step2.SetConfig(config.CommandStep{Command: "echo 2"}))
 	cfg := &config.Config{
 		Version: "1.0",
 		Name:    "sequential",
-		Steps: []config.Step{
-			{ID: "step1", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo 1"}},
-			{ID: "step2", Type: "command", Enabled: true, DependsOn: []string{"step1"}, Command: &config.CommandStep{Command: "echo 2"}},
-		},
+		Steps:   []config.Step{step1, step2},
 	}
 
 	graph, err := BuildDAG(cfg.Steps)
@@ -62,13 +63,14 @@ func TestExecute_ParallelLevels(t *testing.T) {
 	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
 	require.NoError(t, registry.Register(fp))
 
+	stepA := config.Step{ID: "a", Type: "command", Enabled: true}
+	require.NoError(t, stepA.SetConfig(config.CommandStep{Command: "echo a"}))
+	stepB := config.Step{ID: "b", Type: "command", Enabled: true}
+	require.NoError(t, stepB.SetConfig(config.CommandStep{Command: "echo b"}))
 	cfg := &config.Config{
 		Version: "1.0",
 		Name:    "parallel",
-		Steps: []config.Step{
-			{ID: "a", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo a"}},
-			{ID: "b", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo b"}},
-		},
+		Steps:   []config.Step{stepA, stepB},
 	}
 
 	graph, err := BuildDAG(cfg.Steps)
@@ -100,14 +102,16 @@ func TestExecute_FailFastOnError(t *testing.T) {
 	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
 	require.NoError(t, registry.Register(fp))
 
+	step1 := config.Step{ID: "step1", Type: "command", Enabled: true}
+	require.NoError(t, step1.SetConfig(config.CommandStep{Command: "echo 1"}))
+	step2 := config.Step{ID: "step2", Type: "command", Enabled: true, DependsOn: []string{"step1"}}
+	require.NoError(t, step2.SetConfig(config.CommandStep{Command: "exit 1"}))
+	step3 := config.Step{ID: "step3", Type: "command", Enabled: true, DependsOn: []string{"step2"}}
+	require.NoError(t, step3.SetConfig(config.CommandStep{Command: "echo 3"}))
 	cfg := &config.Config{
 		Version: "1.0",
 		Name:    "fail-fast",
-		Steps: []config.Step{
-			{ID: "step1", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo 1"}},
-			{ID: "step2", Type: "command", Enabled: true, DependsOn: []string{"step1"}, Command: &config.CommandStep{Command: "exit 1"}},
-			{ID: "step3", Type: "command", Enabled: true, DependsOn: []string{"step2"}, Command: &config.CommandStep{Command: "echo 3"}},
-		},
+		Steps:   []config.Step{step1, step2, step3},
 	}
 
 	graph, err := BuildDAG(cfg.Steps)
@@ -139,15 +143,13 @@ func TestExecute_RespectsTimeout(t *testing.T) {
 	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
 	require.NoError(t, registry.Register(fp))
 
+	step := config.Step{ID: "slow", Type: "command", Enabled: true}
+	require.NoError(t, step.SetConfig(config.CommandStep{Command: "sleep"}))
 	cfg := &config.Config{
-		Version: "1.0",
-		Name:    "timeout",
-		Settings: config.Settings{
-			Timeout: 1,
-		},
-		Steps: []config.Step{
-			{ID: "slow", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "sleep"}},
-		},
+		Version:  "1.0",
+		Name:     "timeout",
+		Settings: config.Settings{Timeout: 1},
+		Steps:    []config.Step{step},
 	}
 
 	graph, err := BuildDAG(cfg.Steps)
@@ -175,12 +177,12 @@ func TestExecute_HandlesCancellation(t *testing.T) {
 	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
 	require.NoError(t, registry.Register(fp))
 
+	step := config.Step{ID: "long", Type: "command", Enabled: true}
+	require.NoError(t, step.SetConfig(config.CommandStep{Command: "sleep"}))
 	cfg := &config.Config{
 		Version: "1.0",
 		Name:    "cancel",
-		Steps: []config.Step{
-			{ID: "long", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "sleep"}},
-		},
+		Steps:   []config.Step{step},
 	}
 
 	graph, err := BuildDAG(cfg.Steps)
@@ -299,16 +301,15 @@ func TestExecute_ContinueOnError(t *testing.T) {
 	registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
 	require.NoError(t, registry.Register(fp))
 
+	step1 := config.Step{ID: "step1", Type: "command", Enabled: true}
+	require.NoError(t, step1.SetConfig(config.CommandStep{Command: "fail"}))
+	step2 := config.Step{ID: "step2", Type: "command", Enabled: true}
+	require.NoError(t, step2.SetConfig(config.CommandStep{Command: "echo"}))
 	cfg := &config.Config{
-		Version: "1.0",
-		Name:    "continue",
-		Settings: config.Settings{
-			ContinueOnError: true,
-		},
-		Steps: []config.Step{
-			{ID: "step1", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "fail"}},
-			{ID: "step2", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
-		},
+		Version:  "1.0",
+		Name:     "continue",
+		Settings: config.Settings{ContinueOnError: true},
+		Steps:    []config.Step{step1, step2},
 	}
 
 	graph, err := BuildDAG(cfg.Steps)
@@ -381,10 +382,11 @@ func TestVerifySteps_BlocksDependentsWhenPrerequisitesUnsatisfied(t *testing.T) 
 		t.Fatalf("failed to register fake plugin: %v", err)
 	}
 
-	steps := []config.Step{
-		{ID: "provision_vm", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
-		{ID: "deploy_app", Type: "command", Enabled: true, DependsOn: []string{"provision_vm"}, Command: &config.CommandStep{Command: "echo"}},
-	}
+	stepProvision := config.Step{ID: "provision_vm", Type: "command", Enabled: true}
+	require.NoError(t, stepProvision.SetConfig(config.CommandStep{Command: "echo"}))
+	stepDeploy := config.Step{ID: "deploy_app", Type: "command", Enabled: true, DependsOn: []string{"provision_vm"}}
+	require.NoError(t, stepDeploy.SetConfig(config.CommandStep{Command: "echo"}))
+	steps := []config.Step{stepProvision, stepDeploy}
 
 	executor := NewExecutor(nil)
 	execCtx := &ExecutionContext{
@@ -420,9 +422,9 @@ func TestVerifySteps_PropagatesPluginVerificationErrors(t *testing.T) {
 			t.Fatalf("failed to register fake plugin: %v", err)
 		}
 
-		steps := []config.Step{
-			{ID: "lint", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
-		}
+		step := config.Step{ID: "lint", Type: "command", Enabled: true}
+		require.NoError(t, step.SetConfig(config.CommandStep{Command: "echo"}))
+		steps := []config.Step{step}
 
 		executor := NewExecutor(nil)
 		execCtx := &ExecutionContext{
@@ -447,9 +449,9 @@ func TestVerifySteps_PropagatesPluginVerificationErrors(t *testing.T) {
 		registry := plugin.NewPluginRegistry(plugin.DefaultConfig(), nil)
 		require.NoError(t, registry.Register(fp))
 
-		steps := []config.Step{
-			{ID: "lint", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo"}},
-		}
+		step := config.Step{ID: "lint", Type: "command", Enabled: true}
+		require.NoError(t, step.SetConfig(config.CommandStep{Command: "echo"}))
+		steps := []config.Step{step}
 
 		executor := NewExecutor(nil)
 		execCtx := &ExecutionContext{

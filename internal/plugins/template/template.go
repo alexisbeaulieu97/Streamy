@@ -65,9 +65,9 @@ func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*mode
 		}
 	}
 
-	cfg := step.Template
-	if cfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("template configuration missing"))
+	cfg, err := loadTemplateConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	// Check source template exists first
@@ -88,7 +88,7 @@ func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*mode
 	// If no variables are provided, compare raw template content but still validate syntax
 	var rendered string
 	var renderedHash string
-	var err error
+	var renderErr error
 
 	if len(cfg.Vars) == 0 {
 		// No variables - treat as literal copy, but validate template syntax first
@@ -107,9 +107,9 @@ func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*mode
 		renderedHash = hashContent(rendered)
 	} else {
 		// Variables provided - render the template
-		rendered, err = p.renderTemplate(ctx, cfg)
-		if err != nil {
-			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to render template: %w", err))
+		rendered, renderErr = p.renderTemplate(ctx, cfg)
+		if renderErr != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("failed to render template: %w", renderErr))
 		}
 		renderedHash = hashContent(rendered)
 	}
@@ -193,9 +193,9 @@ func (p *templatePlugin) Evaluate(ctx context.Context, step *config.Step) (*mode
 }
 
 func (p *templatePlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
-	cfg := step.Template
-	if cfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("template configuration missing"))
+	cfg, err := loadTemplateConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	// Use evaluation data to avoid recomputation
@@ -276,6 +276,22 @@ func convertError(stepID string, err error) error {
 
 	// Fallback to ExecutionError for unknown error types
 	return plugin.NewExecutionError(stepID, err)
+}
+
+func loadTemplateConfig(step *config.Step) (*config.TemplateStep, error) {
+	if step == nil {
+		return nil, fmt.Errorf("step is nil")
+	}
+
+	if len(step.RawConfig()) == 0 {
+		return nil, fmt.Errorf("template configuration missing")
+	}
+
+	cfg := &config.TemplateStep{}
+	if err := step.DecodeConfig(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 // Preserve all the existing internal helper functions from the original file

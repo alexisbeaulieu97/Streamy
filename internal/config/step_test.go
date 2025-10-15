@@ -20,85 +20,86 @@ func TestValidateStep(t *testing.T) {
 	cases := []stepTestCase{
 		{
 			name: "package step with packages",
-			step: Step{
-				ID:   "install_git",
-				Type: "package",
-				Package: &PackageStep{
-					Packages: []string{"git"},
-					Manager:  "apt",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "install_git"
+				s.Type = "package"
+				require.NoError(t, s.SetConfig(PackageStep{Packages: []string{"git"}, Manager: "apt"}))
+				return s
+			}(),
 		},
 		{
 			name: "package step missing packages",
-			step: Step{
-				ID:      "install_none",
-				Type:    "package",
-				Package: &PackageStep{},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "install_none"
+				s.Type = "package"
+				require.NoError(t, s.SetConfig(PackageStep{}))
+				return s
+			}(),
 			wantError: &streamyerrors.ValidationError{},
 		},
 		{
 			name: "repo step with url and destination",
-			step: Step{
-				ID:   "clone_repo",
-				Type: "repo",
-				Repo: &RepoStep{
-					URL:         "https://example.com/repo.git",
-					Destination: "/tmp/repo",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "clone_repo"
+				s.Type = "repo"
+				require.NoError(t, s.SetConfig(RepoStep{URL: "https://example.com/repo.git", Destination: "/tmp/repo"}))
+				return s
+			}(),
 		},
 		{
 			name: "repo step missing destination",
-			step: Step{
-				ID:   "clone_repo",
-				Type: "repo",
-				Repo: &RepoStep{
-					URL: "https://example.com/repo.git",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "clone_repo"
+				s.Type = "repo"
+				require.NoError(t, s.SetConfig(RepoStep{URL: "https://example.com/repo.git"}))
+				return s
+			}(),
 			wantError: &streamyerrors.ValidationError{},
 		},
 		{
 			name: "symlink step valid",
-			step: Step{
-				ID:   "link_file",
-				Type: "symlink",
-				Symlink: &SymlinkStep{
-					Source: "/tmp/source",
-					Target: "/tmp/target",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "link_file"
+				s.Type = "symlink"
+				require.NoError(t, s.SetConfig(SymlinkStep{Source: "/tmp/source", Target: "/tmp/target"}))
+				return s
+			}(),
 		},
 		{
 			name: "copy step missing destination",
-			step: Step{
-				ID:   "copy_file",
-				Type: "copy",
-				Copy: &CopyStep{
-					Source: "/tmp/src",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "copy_file"
+				s.Type = "copy"
+				require.NoError(t, s.SetConfig(CopyStep{Source: "/tmp/src"}))
+				return s
+			}(),
 			wantError: &streamyerrors.ValidationError{},
 		},
 		{
 			name: "command step with command",
-			step: Step{
-				ID:   "run_script",
-				Type: "command",
-				Command: &CommandStep{
-					Command: "echo hello",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "run_script"
+				s.Type = "command"
+				require.NoError(t, s.SetConfig(CommandStep{Command: "echo hello"}))
+				return s
+			}(),
 		},
 		{
 			name: "command step missing command",
-			step: Step{
-				ID:      "run_script",
-				Type:    "command",
-				Command: &CommandStep{},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "run_script"
+				s.Type = "command"
+				require.NoError(t, s.SetConfig(CommandStep{}))
+				return s
+			}(),
 			wantError: &streamyerrors.ValidationError{},
 		},
 	}
@@ -125,10 +126,10 @@ func TestValidateStepWithNilPointer(t *testing.T) {
 
 	// Test package step with nil config
 	step := Step{
-		ID:      "test",
-		Type:    "package",
-		Package: nil,
+		ID:   "test",
+		Type: "package",
 	}
+	require.NoError(t, step.SetConfig(nil))
 	err := ValidateStep(step)
 	require.Error(t, err)
 }
@@ -143,68 +144,68 @@ func TestValidateStep_TemplateAndLineInFile(t *testing.T) {
 	}{
 		{
 			name: "template step valid",
-			step: Step{
-				ID:   "render_template",
-				Type: "template",
-				Template: &TemplateStep{
-					Source:      "/tmp/template.tmpl",
-					Destination: "/tmp/output.txt",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "render_template"
+				s.Type = "template"
+				require.NoError(t, s.SetConfig(TemplateStep{Source: "/tmp/template.tmpl", Destination: "/tmp/output.txt"}))
+				return s
+			}(),
 			wantError: false,
 		},
 		{
 			name: "template step missing source",
-			step: Step{
-				ID:   "render_template",
-				Type: "template",
-				Template: &TemplateStep{
-					Destination: "/tmp/output.txt",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "render_template"
+				s.Type = "template"
+				require.NoError(t, s.SetConfig(TemplateStep{Destination: "/tmp/output.txt"}))
+				return s
+			}(),
 			wantError: true,
 		},
 		{
 			name: "template step nil config",
-			step: Step{
-				ID:       "render_template",
-				Type:     "template",
-				Template: nil,
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "render_template"
+				s.Type = "template"
+				require.NoError(t, s.SetConfig(nil))
+				return s
+			}(),
 			wantError: true,
 		},
 		{
 			name: "line_in_file step valid",
-			step: Step{
-				ID:   "ensure_line",
-				Type: "line_in_file",
-				LineInFile: &LineInFileStep{
-					File:  "/tmp/file.txt",
-					Line:  "some line",
-					State: "present",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "ensure_line"
+				s.Type = "line_in_file"
+				require.NoError(t, s.SetConfig(LineInFileStep{File: "/tmp/file.txt", Line: "some line", State: "present"}))
+				return s
+			}(),
 			wantError: false,
 		},
 		{
 			name: "line_in_file step missing file",
-			step: Step{
-				ID:   "ensure_line",
-				Type: "line_in_file",
-				LineInFile: &LineInFileStep{
-					Line:  "some line",
-					State: "present",
-				},
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "ensure_line"
+				s.Type = "line_in_file"
+				require.NoError(t, s.SetConfig(LineInFileStep{Line: "some line", State: "present"}))
+				return s
+			}(),
 			wantError: true,
 		},
 		{
 			name: "line_in_file step nil config",
-			step: Step{
-				ID:         "ensure_line",
-				Type:       "line_in_file",
-				LineInFile: nil,
-			},
+			step: func() Step {
+				var s Step
+				s.ID = "ensure_line"
+				s.Type = "line_in_file"
+				require.NoError(t, s.SetConfig(nil))
+				return s
+			}(),
 			wantError: true,
 		},
 		{

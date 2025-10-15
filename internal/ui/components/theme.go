@@ -1,17 +1,19 @@
 package components
 
 import (
-	"sync"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
 const paletteShadeCount = 10
 
+// PaletteShades represents a Tailwind-style color scale with 10 shades from lightest to darkest.
+// Shades are indexed from 50 (lightest) to 900 (darkest), matching Tailwind's numbering.
 type PaletteShades struct {
 	colors [paletteShadeCount]lipgloss.Color
 }
 
+// NewPaletteShades creates a palette shade scale from the provided colors.
+// Colors should be ordered from lightest to darkest. Accepts up to 10 colors.
 func NewPaletteShades(colors ...lipgloss.Color) PaletteShades {
 	var shades PaletteShades
 	for i := 0; i < paletteShadeCount && i < len(colors); i++ {
@@ -20,6 +22,8 @@ func NewPaletteShades(colors ...lipgloss.Color) PaletteShades {
 	return shades
 }
 
+// Color returns the color at the specified shade level.
+// Returns an empty string if the shade is out of bounds.
 func (ps PaletteShades) Color(shade PaletteShade) lipgloss.Color {
 	index := int(shade)
 	if index < 0 || index >= paletteShadeCount {
@@ -227,7 +231,32 @@ type InputStyles struct {
 	Focus   lipgloss.Style
 }
 
-// Theme represents the global styling theme for components
+// VariantRegistry maps component variants to their styling strategies.
+// This allows themes to define variant styling data-driven rather than code-driven.
+type VariantRegistry struct {
+	strategies map[interface{}]StyleStrategy
+}
+
+// NewVariantRegistry creates a new variant registry.
+func NewVariantRegistry() *VariantRegistry {
+	return &VariantRegistry{
+		strategies: make(map[interface{}]StyleStrategy),
+	}
+}
+
+// Register adds a variant-to-strategy mapping.
+func (vr *VariantRegistry) Register(variant interface{}, strategy StyleStrategy) {
+	vr.strategies[variant] = strategy
+}
+
+// Get retrieves the strategy for a variant, or nil if not found.
+func (vr *VariantRegistry) Get(variant interface{}) StyleStrategy {
+	return vr.strategies[variant]
+}
+
+// Theme represents an immutable styling theme for components.
+// Themes should be created once and reused. All modification operations
+// return new theme instances rather than mutating the original.
 type Theme struct {
 	Palette    Palette
 	Colors     ColorPalette
@@ -235,41 +264,14 @@ type Theme struct {
 	Spacing    SpacingConfig
 	Typography TypographyScale
 	Input      InputStyles
+	Variants   *VariantRegistry
 }
 
-// ThemeManager coordinates access to a Theme instance.
-type ThemeManager struct {
-	mu    sync.RWMutex
-	theme Theme
-}
-
-// NewThemeManager allocates a ThemeManager with the provided theme.
-func NewThemeManager(theme Theme) *ThemeManager {
-	return &ThemeManager{theme: cloneTheme(normalizeTheme(theme))}
-}
-
-// SetTheme replaces the managed theme.
-func (m *ThemeManager) SetTheme(theme Theme) {
-	m.mu.Lock()
-	m.theme = cloneTheme(normalizeTheme(theme))
-	m.mu.Unlock()
-}
-
-// Theme returns a copy of the managed theme.
-func (m *ThemeManager) Theme() Theme {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return cloneTheme(m.theme)
-}
-
-func normalizeTheme(theme Theme) Theme {
-	theme.Spacing = normalizeSpacingConfig(theme.Spacing)
-	return theme
-}
-
-func cloneTheme(theme Theme) Theme {
-	theme.Spacing = cloneSpacingConfig(theme.Spacing)
-	return theme
+// Normalize returns a new theme with all fields properly initialized.
+// This ensures that partially-specified themes have sensible defaults.
+func (t Theme) Normalize() Theme {
+	t.Spacing = normalizeSpacingConfig(t.Spacing)
+	return t
 }
 
 func normalizeSpacingConfig(cfg SpacingConfig) SpacingConfig {
@@ -280,13 +282,6 @@ func normalizeSpacingConfig(cfg SpacingConfig) SpacingConfig {
 		cfg.Margin = defaultSpacingTable()
 	}
 	return cfg
-}
-
-func cloneSpacingConfig(cfg SpacingConfig) SpacingConfig {
-	return SpacingConfig{
-		Margin:  cfg.Margin,
-		Padding: cfg.Padding,
-	}
 }
 
 func spacingTableIsZero(table spacingTable) bool {
@@ -486,6 +481,12 @@ func DefaultTheme() Theme {
 			Foreground(palette.Surface.OnBase),
 	}
 
+	// Initialize variant registry with component styling strategies
+	variants := NewVariantRegistry()
+	registerButtonVariants(variants)
+	registerBadgeVariants(variants)
+	registerAlertVariants(variants)
+
 	theme := Theme{
 		Palette:    palette,
 		Colors:     colorFamilies,
@@ -493,30 +494,125 @@ func DefaultTheme() Theme {
 		Spacing:    spacing,
 		Typography: typography,
 		Input:      input,
+		Variants:   variants,
 	}
 
-	return normalizeTheme(theme)
+	return theme.Normalize()
+}
+
+// registerButtonVariants populates button variant strategies
+func registerButtonVariants(registry *VariantRegistry) {
+	registry.Register(ButtonVariantPrimary, NewCompositeStrategy(
+		Background(PalettePrimary),
+		PaddingX(SpacingSizeMedium),
+		PaddingY(SpacingSizeExtraSmall),
+	))
+	registry.Register(ButtonVariantSecondary, NewCompositeStrategy(
+		Background(PaletteSecondary),
+		PaddingX(SpacingSizeMedium),
+		PaddingY(SpacingSizeExtraSmall),
+	))
+	registry.Register(ButtonVariantSuccess, NewCompositeStrategy(
+		Background(PaletteSuccess),
+		PaddingX(SpacingSizeMedium),
+		PaddingY(SpacingSizeExtraSmall),
+	))
+	registry.Register(ButtonVariantError, NewCompositeStrategy(
+		Background(PaletteDanger),
+		PaddingX(SpacingSizeMedium),
+		PaddingY(SpacingSizeExtraSmall),
+	))
+	registry.Register(ButtonVariantWarning, NewCompositeStrategy(
+		Background(PaletteWarning),
+		PaddingX(SpacingSizeMedium),
+		PaddingY(SpacingSizeExtraSmall),
+	))
+	registry.Register(ButtonVariantInfo, NewCompositeStrategy(
+		Background(PaletteInfo),
+		PaddingX(SpacingSizeMedium),
+		PaddingY(SpacingSizeExtraSmall),
+	))
+	registry.Register(ButtonVariantMuted, NewCompositeStrategy(
+		Background(PaletteNeutral),
+		PaddingX(SpacingSizeMedium),
+		PaddingY(SpacingSizeExtraSmall),
+	))
+}
+
+// registerBadgeVariants populates badge variant strategies
+func registerBadgeVariants(registry *VariantRegistry) {
+	registry.Register(BadgeVariantPrimary, NewCompositeStrategy(
+		Background(PalettePrimary),
+		PaddingX(SpacingSizeSmall),
+		Border(BorderVariantRounded),
+	))
+	registry.Register(BadgeVariantSecondary, NewCompositeStrategy(
+		Background(PaletteSecondary),
+		PaddingX(SpacingSizeSmall),
+		Border(BorderVariantRounded),
+	))
+	registry.Register(BadgeVariantSuccess, NewCompositeStrategy(
+		Background(PaletteSuccess),
+		PaddingX(SpacingSizeSmall),
+		Border(BorderVariantRounded),
+	))
+	registry.Register(BadgeVariantWarning, NewCompositeStrategy(
+		Background(PaletteWarning),
+		PaddingX(SpacingSizeSmall),
+		Border(BorderVariantRounded),
+	))
+	registry.Register(BadgeVariantError, NewCompositeStrategy(
+		Background(PaletteDanger),
+		PaddingX(SpacingSizeSmall),
+		Border(BorderVariantRounded),
+	))
+	registry.Register(BadgeVariantInfo, NewCompositeStrategy(
+		Background(PaletteInfo),
+		PaddingX(SpacingSizeSmall),
+		Border(BorderVariantRounded),
+	))
+	registry.Register(BadgeVariantDefault, NewCompositeStrategy(
+		Background(PaletteNeutral),
+		PaddingX(SpacingSizeSmall),
+		Border(BorderVariantRounded),
+	))
+}
+
+// registerAlertVariants populates alert variant strategies
+func registerAlertVariants(registry *VariantRegistry) {
+	registry.Register(AlertVariantSuccess, NewCompositeStrategy(
+		Background(PaletteSuccess),
+	))
+	registry.Register(AlertVariantWarning, NewCompositeStrategy(
+		Background(PaletteWarning),
+	))
+	registry.Register(AlertVariantError, NewCompositeStrategy(
+		Background(PaletteDanger),
+	))
+	registry.Register(AlertVariantInfo, NewCompositeStrategy(
+		Background(PaletteInfo),
+	))
 }
 
 func defaultTypography(p Palette) TypographyScale {
 	base := lipgloss.NewStyle().Foreground(p.Surface.OnBase)
 
-	title := base.Copy().
+	title := base.
 		Bold(true).
 		Foreground(p.Primary.Base)
 
-	subtitle := base.Copy().
+	subtitle := base.
 		Foreground(p.Secondary.Muted).
 		Faint(true)
 
-	body := base.Copy()
+	body := base
 
-	code := base.Copy().
+	code := base.
 		Foreground(p.Secondary.Base).
 		Background(p.Surface.Muted).
 		Padding(0, 1)
 
-	emphasis := base.Copy().
+	emphasis := base.
 		Bold(true)
 
 	return TypographyScale{
@@ -526,20 +622,20 @@ func defaultTypography(p Palette) TypographyScale {
 		Body:       body,
 		Code:       code,
 		Emphasis:   emphasis,
-		TextXs:     body.Copy().Faint(true),
-		TextSm:     body.Copy(),
-		TextBase:   body.Copy(),
-		TextLg:     body.Copy().Bold(true),
-		TextXl:     body.Copy().Bold(true).Underline(true),
-		Text2Xl:    body.Copy().Bold(true).Underline(true).MarginTop(1),
-		Text3Xl:    body.Copy().Bold(true).Underline(true).MarginTop(1).MarginBottom(1),
-		FontLight:  body.Copy().Faint(true),
-		FontNormal: body.Copy(),
-		FontMedium: body.Copy().Bold(true),
-		FontSemibold: body.Copy().
+		TextXs:     body.Faint(true),
+		TextSm:     body,
+		TextBase:   body,
+		TextLg:     body.Bold(true),
+		TextXl:     body.Bold(true).Underline(true),
+		Text2Xl:    body.Bold(true).Underline(true).MarginTop(1),
+		Text3Xl:    body.Bold(true).Underline(true).MarginTop(1).MarginBottom(1),
+		FontLight:  body.Faint(true),
+		FontNormal: body,
+		FontMedium: body.Bold(true),
+		FontSemibold: body.
 			Bold(true).
 			Underline(true),
-		FontBold: body.Copy().
+		FontBold: body.
 			Bold(true).
 			Italic(true),
 	}
@@ -564,7 +660,14 @@ func DarkTheme() Theme {
 	}
 
 	theme.Typography = defaultTypography(theme.Palette)
-	return normalizeTheme(theme)
+
+	// Re-register variants with updated palette
+	theme.Variants = NewVariantRegistry()
+	registerButtonVariants(theme.Variants)
+	registerBadgeVariants(theme.Variants)
+	registerAlertVariants(theme.Variants)
+
+	return theme.Normalize()
 }
 
 // LightTheme returns a light theme variant
@@ -572,23 +675,12 @@ func LightTheme() Theme {
 	return DefaultTheme()
 }
 
-// Theme variables for easy access
-var defaultThemeManager = NewThemeManager(DefaultTheme())
-
-// SetTheme sets the global theme
-func SetTheme(theme Theme) {
-	defaultThemeManager.SetTheme(theme)
-}
-
-// GetTheme returns the current global theme
-func GetTheme() Theme {
-	return defaultThemeManager.Theme()
-}
-
 // Helper functions to access theme properties using typed variants
 
-func PaletteColor(family PaletteFamily, shade PaletteShade) (lipgloss.Color, bool) {
-	shades := GetTheme().Colors.Shades(family)
+// PaletteColor returns the color for a given palette family and shade.
+// Returns an empty string and false if the shade is invalid.
+func PaletteColor(theme Theme, family PaletteFamily, shade PaletteShade) (lipgloss.Color, bool) {
+	shades := theme.Colors.Shades(family)
 	color := shades.Color(shade)
 	if color == "" {
 		return "", false
@@ -596,8 +688,8 @@ func PaletteColor(family PaletteFamily, shade PaletteShade) (lipgloss.Color, boo
 	return color, true
 }
 
-func BorderStyle(variant BorderVariant) lipgloss.Border {
-	theme := GetTheme()
+// BorderForVariant returns the border style for the given variant.
+func BorderForVariant(theme Theme, variant BorderVariant) lipgloss.Border {
 	switch variant {
 	case BorderVariantNormal:
 		return theme.Borders.Normal
@@ -612,12 +704,14 @@ func BorderStyle(variant BorderVariant) lipgloss.Border {
 	}
 }
 
-func PaddingValue(size SpacingSize) int {
-	return spacingLookup(GetTheme().Spacing.Padding, size)
+// PaddingValue returns the padding value for the given size.
+func PaddingValue(theme Theme, size SpacingSize) int {
+	return spacingLookup(theme.Spacing.Padding, size)
 }
 
-func MarginValue(size SpacingSize) int {
-	return spacingLookup(GetTheme().Spacing.Margin, size)
+// MarginValue returns the margin value for the given size.
+func MarginValue(theme Theme, size SpacingSize) int {
+	return spacingLookup(theme.Spacing.Margin, size)
 }
 
 func spacingLookup(table spacingTable, size SpacingSize) int {
@@ -628,9 +722,9 @@ func spacingLookup(table spacingTable, size SpacingSize) int {
 	return table[index]
 }
 
-// TypographyStyle returns the specified typography style from the current theme.
-func TypographyStyle(variant TypographyVariant) lipgloss.Style {
-	typo := GetTheme().Typography
+// TypographyStyle returns the specified typography style from the given theme.
+func TypographyStyle(theme Theme, variant TypographyVariant) lipgloss.Style {
+	typo := theme.Typography
 	switch variant {
 	case TypographyVariantTitle:
 		return typo.Title
@@ -671,43 +765,24 @@ func TypographyStyle(variant TypographyVariant) lipgloss.Style {
 	}
 }
 
-func InputStyle(state InputState) lipgloss.Style {
-	input := GetTheme().Input
+// InputStyle returns the input style for the given state.
+func InputStyle(theme Theme, state InputState) lipgloss.Style {
+	input := theme.Input
 	if state == InputStateFocus {
 		return input.Focus
 	}
 	return input.Default
 }
 
-// StyleApplier represents a function that can apply styling to a lipgloss.Style
-type StyleApplier interface {
-	Apply(base lipgloss.Style, theme Theme) lipgloss.Style
-}
-
-// StyleFunc implements StyleApplier for a function type
-type StyleFunc func(lipgloss.Style, Theme) lipgloss.Style
-
-func (fn StyleFunc) Apply(base lipgloss.Style, theme Theme) lipgloss.Style {
-	return fn(base, theme)
-}
-
-// Style applies a series of modifiers to create a final style
-func Style(base lipgloss.Style, appliers ...StyleApplier) lipgloss.Style {
-	theme := GetTheme()
-	for _, applier := range appliers {
-		base = applier.Apply(base, theme)
-	}
-	return base
-}
-
-func cloneAppliers(base []StyleApplier, extras ...StyleApplier) []StyleApplier {
-	cloned := make([]StyleApplier, len(base)+len(extras))
-	copy(cloned, base)
-	copy(cloned[len(base):], extras)
-	return cloned
-}
-
 // ColourSet represents a semantic color set with base, on-base, muted, and contrast colors.
+// This provides complete color combinations that work well together:
+//
+//   - Base: The primary background or brand color
+//   - OnBase: Text/content color that contrasts well with Base
+//   - Muted: A desaturated variant of Base for subtle accents
+//   - Contrast: An accent color that "pops" against Base
+//
+// All colors are adaptive, providing both light and dark mode variants.
 type ColourSet struct {
 	Base     lipgloss.AdaptiveColor
 	OnBase   lipgloss.AdaptiveColor
@@ -715,9 +790,12 @@ type ColourSet struct {
 	Contrast lipgloss.AdaptiveColor
 }
 
-// PaletteSlot provides access to a semantic colour slot.
+// PaletteSlot provides access to a semantic colour slot from a Palette.
+// Use the predefined slots (PalettePrimary, PaletteSuccess, etc.) for type-safe access.
 type PaletteSlot func(Palette) ColourSet
 
+// Predefined semantic palette slots for type-safe theme access.
+// Use these with style modifiers: Background(PalettePrimary), Foreground(PaletteSuccess), etc.
 var (
 	PalettePrimary   PaletteSlot = func(p Palette) ColourSet { return p.Primary }
 	PaletteSecondary PaletteSlot = func(p Palette) ColourSet { return p.Secondary }
@@ -731,7 +809,12 @@ var (
 
 // Fluent modifier functions
 
-// Background applies a semantic background colour and matching foreground.
+// Background applies a semantic background colour and matching foreground for optimal contrast.
+// This is the recommended way to apply colors, as it automatically handles text legibility.
+//
+// Example:
+//
+//	card := NewCard().WithAppliers(Background(PalettePrimary))
 func Background(slot PaletteSlot) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		cs := slot(theme.Palette)
@@ -739,7 +822,12 @@ func Background(slot PaletteSlot) StyleFunc {
 	}
 }
 
-// Foreground applies a semantic foreground colour.
+// Foreground applies a semantic foreground colour without changing the background.
+// Use this for text color changes when the background should remain unchanged.
+//
+// Example:
+//
+//	text := NewText("Error").WithAppliers(Foreground(PaletteDanger))
 func Foreground(slot PaletteSlot) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		cs := slot(theme.Palette)
@@ -747,24 +835,10 @@ func Foreground(slot PaletteSlot) StyleFunc {
 	}
 }
 
+// Border applies a border style from the theme.
 func Border(variant BorderVariant) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
-		return base.Border(borderForVariant(theme, variant))
-	}
-}
-
-func borderForVariant(theme Theme, variant BorderVariant) lipgloss.Border {
-	switch variant {
-	case BorderVariantNormal:
-		return theme.Borders.Normal
-	case BorderVariantThick:
-		return theme.Borders.Thick
-	case BorderVariantDouble:
-		return theme.Borders.Double
-	case BorderVariantRounded:
-		return theme.Borders.Rounded
-	default:
-		return theme.Borders.None
+		return base.Border(BorderForVariant(theme, variant))
 	}
 }
 
@@ -813,14 +887,14 @@ func MarginY(size SpacingSize) StyleFunc {
 // Typography applies typography styling
 func Typography(variant TypographyVariant) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
-		return base.Inherit(TypographyStyle(variant))
+		return base.Inherit(TypographyStyle(theme, variant))
 	}
 }
 
 // Predefined style bundles for common component patterns
 
-func CardBaseStyle() []StyleApplier {
-	return []StyleApplier{
+func CardBaseStyle() []StyleFunc {
+	return []StyleFunc{
 		Background(PaletteSurface),
 		Border(BorderVariantRounded),
 		Margin(SpacingSizeSmall),
@@ -828,8 +902,8 @@ func CardBaseStyle() []StyleApplier {
 	}
 }
 
-func ButtonPrimaryStyle() []StyleApplier {
-	return []StyleApplier{
+func ButtonPrimaryStyle() []StyleFunc {
+	return []StyleFunc{
 		Background(PalettePrimary),
 		Border(BorderVariantRounded),
 		PaddingX(SpacingSizeMedium),
@@ -838,8 +912,8 @@ func ButtonPrimaryStyle() []StyleApplier {
 	}
 }
 
-func ButtonSecondaryStyle() []StyleApplier {
-	return []StyleApplier{
+func ButtonSecondaryStyle() []StyleFunc {
+	return []StyleFunc{
 		Background(PaletteSecondary),
 		Border(BorderVariantRounded),
 		PaddingX(SpacingSizeMedium),
@@ -848,32 +922,32 @@ func ButtonSecondaryStyle() []StyleApplier {
 	}
 }
 
-func AlertSuccessStyle() []StyleApplier {
-	return []StyleApplier{
+func AlertSuccessStyle() []StyleFunc {
+	return []StyleFunc{
 		Background(PaletteSuccess),
 		Border(BorderVariantNormal),
 		Padding(SpacingSizeSmall),
 	}
 }
 
-func AlertErrorStyle() []StyleApplier {
-	return []StyleApplier{
+func AlertErrorStyle() []StyleFunc {
+	return []StyleFunc{
 		Background(PaletteDanger),
 		Border(BorderVariantNormal),
 		Padding(SpacingSizeSmall),
 	}
 }
 
-func AlertWarningStyle() []StyleApplier {
-	return []StyleApplier{
+func AlertWarningStyle() []StyleFunc {
+	return []StyleFunc{
 		Background(PaletteWarning),
 		Border(BorderVariantNormal),
 		Padding(SpacingSizeSmall),
 	}
 }
 
-func AlertInfoStyle() []StyleApplier {
-	return []StyleApplier{
+func AlertInfoStyle() []StyleFunc {
+	return []StyleFunc{
 		Background(PaletteInfo),
 		Border(BorderVariantNormal),
 		Padding(SpacingSizeSmall),
@@ -882,15 +956,17 @@ func AlertInfoStyle() []StyleApplier {
 
 // Utility functions for typed styling
 
-func BackgroundPalette(family PaletteFamily, shade PaletteShade) lipgloss.Style {
-	if color, ok := PaletteColor(family, shade); ok {
+// BackgroundPalette creates a style with a background color from a specific palette shade.
+func BackgroundPalette(theme Theme, family PaletteFamily, shade PaletteShade) lipgloss.Style {
+	if color, ok := PaletteColor(theme, family, shade); ok {
 		return lipgloss.NewStyle().Background(color)
 	}
 	return lipgloss.NewStyle()
 }
 
-func TextPalette(family PaletteFamily, shade PaletteShade) lipgloss.Style {
-	if color, ok := PaletteColor(family, shade); ok {
+// TextPalette creates a style with a foreground color from a specific palette shade.
+func TextPalette(theme Theme, family PaletteFamily, shade PaletteShade) lipgloss.Style {
+	if color, ok := PaletteColor(theme, family, shade); ok {
 		return lipgloss.NewStyle().Foreground(color)
 	}
 	return lipgloss.NewStyle()

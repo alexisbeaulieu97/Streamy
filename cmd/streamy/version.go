@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/alexisbeaulieu97/streamy/internal/components"
+	"github.com/alexisbeaulieu97/streamy/internal/ui/components"
 	"github.com/spf13/cobra"
 )
 
@@ -18,19 +18,15 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Display build information",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cardData := components.CardData{
-				Title:       "Streamy",
-				Description: "A powerful configuration management and deployment tool",
-				Icon:        "🚀",
-				Metadata: map[string]string{
-					"Version": version,
-					"Commit":  commit,
-					"Built":   date,
-				},
-			}
+			header := components.NewHeader("Streamy")
+			divider := components.NewDivider().WithChar("─")
+			info := components.NewText("Version: " + version).WithAppliers(components.Typography(components.TypographyVariantTextSm))
+			commitText := components.NewText("Commit: " + commit).WithAppliers(components.Typography(components.TypographyVariantTextSm))
+			dateText := components.NewText("Built: " + date).WithAppliers(components.Typography(components.TypographyVariantTextSm))
 
-			card := components.StatusCard(cardData, "info")
-			fmt.Fprintln(cmd.OutOrStdout(), card.View())
+			card := components.NewCard(header, divider, info, commitText, dateText)
+			fmt.Println(card.View())
+
 			return nil
 		},
 	}

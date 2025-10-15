@@ -15,6 +15,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	pluginpkg "github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"gopkg.in/yaml.v3"
 )
 
 func TestCommandPlugin_EvaluateUsesCheckCommand(t *testing.T) {
@@ -33,14 +34,11 @@ exit 0
 	t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
 	require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
 
-	step := &config.Step{
-		ID:   "run_command",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "echo hello",
-			Check:   "check-script",
-		},
-	}
+	step := &config.Step{ID: "run_command", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{
+		Command: "echo hello",
+		Check:   "check-script",
+	}))
 
 	p := New()
 	require.Implements(t, (*pluginpkg.Plugin)(nil), p)
@@ -65,17 +63,14 @@ func TestCommandPlugin_ApplyRunsCommandWithEnvAndWorkdir(t *testing.T) {
 	workDir := t.TempDir()
 	outputFile := filepath.Join(workDir, "result.txt")
 
-	step := &config.Step{
-		ID:   "run_command",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "echo $CUSTOM_VALUE > result.txt",
-			WorkDir: workDir,
-			Env: map[string]string{
-				"CUSTOM_VALUE": "streamy",
-			},
+	step := &config.Step{ID: "run_command", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{
+		Command: "echo $CUSTOM_VALUE > result.txt",
+		WorkDir: workDir,
+		Env: map[string]string{
+			"CUSTOM_VALUE": "streamy",
 		},
-	}
+	}))
 
 	p := New()
 
@@ -102,14 +97,11 @@ func TestCommandPlugin_EvaluateForDryRun(t *testing.T) {
 	}
 	workDir := t.TempDir()
 
-	step := &config.Step{
-		ID:   "run_command",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "touch should_not_exist",
-			WorkDir: workDir,
-		},
-	}
+	step := &config.Step{ID: "run_command", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{
+		Command: "touch should_not_exist",
+		WorkDir: workDir,
+	}))
 
 	p := New()
 
@@ -182,14 +174,11 @@ fi
 	t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
 	require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
 
-	step := &config.Step{
-		ID:   "check_file",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "echo hello",
-			Check:   "check-script",
-		},
-	}
+	step := &config.Step{ID: "check_file", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{
+		Command: "echo hello",
+		Check:   "check-script",
+	}))
 
 	p := New()
 
@@ -213,13 +202,8 @@ fi
 }
 
 func TestCommandPlugin_EvaluateWithoutCheckCommand(t *testing.T) {
-	step := &config.Step{
-		ID:   "no_check",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "echo hello",
-		},
-	}
+	step := &config.Step{ID: "no_check", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{Command: "echo hello"}))
 
 	p := New()
 
@@ -230,18 +214,31 @@ func TestCommandPlugin_EvaluateWithoutCheckCommand(t *testing.T) {
 	require.Contains(t, evalResult.Message, "no verification command specified")
 }
 
+func TestCommandPlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
+	yamlStr := `
+id: raw_command
+type: command
+command: echo raw
+`
+	var step config.Step
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), &step)
+	require.NoError(t, err)
+	require.True(t, evalResult.RequiresAction)
+}
+
 func TestCommandPlugin_EvaluateWithErrorInCheckCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX shell assumptions do not hold on Windows")
 	}
-	step := &config.Step{
-		ID:   "error_check",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "echo hello",
-			Check:   "nonexistent-command",
-		},
-	}
+	step := &config.Step{ID: "error_check", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{
+		Command: "echo hello",
+		Check:   "nonexistent-command",
+	}))
 
 	p := New()
 
@@ -253,13 +250,8 @@ func TestCommandPlugin_EvaluateWithErrorInCheckCommand(t *testing.T) {
 }
 
 func TestCommandPlugin_ApplySkipsWhenNoAction(t *testing.T) {
-	step := &config.Step{
-		ID:   "skip",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "echo noop",
-		},
-	}
+	step := &config.Step{ID: "skip", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{Command: "echo noop"}))
 
 	eval := &model.EvaluationResult{
 		StepID:         step.ID,

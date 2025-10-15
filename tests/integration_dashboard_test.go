@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
@@ -31,7 +32,7 @@ func setupTestPluginRegistry(t *testing.T) *plugin.PluginRegistry {
 }
 
 // setupTestDashboard creates a temporary registry and cache with pipelines
-func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses map[string]registry.PipelineStatus) (string, *registry.Registry, *registry.StatusCache, *plugin.PluginRegistry) {
+func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses map[string]registry.PipelineStatus) (string, *registry.Registry, *registry.StatusCache, *pipelineapp.Service) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -63,8 +64,9 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 
 	// Create plugin registry
 	pluginReg := setupTestPluginRegistry(t)
+	svc := pipelineapp.NewService(pluginReg)
 
-	return tmpDir, reg, cache, pluginReg
+	return tmpDir, reg, cache, svc
 }
 
 // runModelUpdate runs the model's Update function with a message
@@ -121,13 +123,13 @@ func TestDashboardDisplaysPipelines(t *testing.T) {
 		"database":   registry.StatusFailed,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, pipelines, statuses)
+	_, reg, cache, svc := setupTestDashboard(t, pipelines, statuses)
 
 	// Load pipelines from registry
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 40})
 
 	// Get the rendered view
@@ -172,12 +174,13 @@ func TestDashboardEmptyState(t *testing.T) {
 
 	// Plugin registry
 	pluginReg := setupTestPluginRegistry(t)
+	svc := pipelineapp.NewService(pluginReg)
 
 	// Load pipelines (should be empty)
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Get the rendered view
@@ -233,13 +236,13 @@ func TestDashboardSortsByPriority(t *testing.T) {
 		"pipeline-d": registry.StatusUnknown,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, pipelines, statuses)
+	_, reg, cache, svc := setupTestDashboard(t, pipelines, statuses)
 
 	// Load pipelines from registry
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Get the rendered view
@@ -311,12 +314,13 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 
 	// Plugin registry
 	pluginReg := setupTestPluginRegistry(t)
+	svc := pipelineapp.NewService(pluginReg)
 
 	// Load pipelines from registry
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 
 	// Trigger Init() to load cached statuses
 	cmd := model.Init()
@@ -350,7 +354,7 @@ func TestDashboardHandlesWindowResize(t *testing.T) {
 		RegisteredAt: time.Now(),
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusSatisfied,
 	})
 
@@ -358,7 +362,7 @@ func TestDashboardHandlesWindowResize(t *testing.T) {
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 
 	// Test with narrow width
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 40, Height: 10})
@@ -400,7 +404,7 @@ func TestDashboardNavigationWithKeyboard(t *testing.T) {
 		},
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, pipelines, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, pipelines, map[string]registry.PipelineStatus{
 		"pipeline-1": registry.StatusSatisfied,
 		"pipeline-2": registry.StatusSatisfied,
 		"pipeline-3": registry.StatusSatisfied,
@@ -410,7 +414,7 @@ func TestDashboardNavigationWithKeyboard(t *testing.T) {
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Get initial view (cursor at 0)
@@ -499,7 +503,7 @@ func TestDashboardFormatLastRun(t *testing.T) {
 		LastRun:      lastRunTime,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-time": registry.StatusSatisfied,
 	})
 
@@ -507,7 +511,7 @@ func TestDashboardFormatLastRun(t *testing.T) {
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Get the rendered view
@@ -532,7 +536,7 @@ func TestDashboardNavigateToDetail(t *testing.T) {
 		RegisteredAt: time.Now(),
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusSatisfied,
 	})
 
@@ -540,7 +544,7 @@ func TestDashboardNavigateToDetail(t *testing.T) {
 	loadedPipelines := reg.List()
 
 	// Create dashboard model
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Verify we start in list view
@@ -573,12 +577,12 @@ func TestDashboardBackToList(t *testing.T) {
 		RegisteredAt: time.Now(),
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusSatisfied,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Navigate to detail view
@@ -622,14 +626,14 @@ func TestDashboardDirectSelection(t *testing.T) {
 		},
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, pipelines, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, pipelines, map[string]registry.PipelineStatus{
 		"pipeline-1": registry.StatusSatisfied,
 		"pipeline-2": registry.StatusSatisfied,
 		"pipeline-3": registry.StatusSatisfied,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Press '3' to jump to the third pipeline
@@ -684,12 +688,12 @@ func TestDashboardDetailViewWithResult(t *testing.T) {
 		},
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusFailed,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 80, Height: 40}) // Taller to avoid truncation
 
 	// Navigate to detail view
@@ -721,12 +725,12 @@ func TestDashboardVerifyTriggersOperation(t *testing.T) {
 		Status:       registry.StatusUnknown,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusUnknown,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Navigate to detail view
@@ -758,12 +762,12 @@ func TestDashboardVerifyShowsLoadingIndicator(t *testing.T) {
 		Status:       registry.StatusUnknown,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusUnknown,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Navigate to detail view and trigger verify
@@ -792,12 +796,12 @@ func TestDashboardApplyRequiresConfirmation(t *testing.T) {
 		Status:       registry.StatusDrifted,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusDrifted,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Navigate to detail view
@@ -826,12 +830,12 @@ func TestDashboardApplyConfirmationAccept(t *testing.T) {
 		Status:       registry.StatusDrifted,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusDrifted,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Navigate to detail view and trigger apply
@@ -862,12 +866,12 @@ func TestDashboardApplyConfirmationReject(t *testing.T) {
 		Status:       registry.StatusDrifted,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusDrifted,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Navigate to detail view and trigger apply
@@ -926,10 +930,10 @@ func TestDashboardRefreshAllPipelines(t *testing.T) {
 		"pipeline-3": registry.StatusUnknown,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, pipelines, statuses)
+	_, reg, cache, svc := setupTestDashboard(t, pipelines, statuses)
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Press 'r' to refresh all
@@ -967,10 +971,10 @@ func TestDashboardRefreshShowsProgress(t *testing.T) {
 		"pipeline-2": registry.StatusUnknown,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, pipelines, statuses)
+	_, reg, cache, svc := setupTestDashboard(t, pipelines, statuses)
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Start refresh
@@ -1002,12 +1006,12 @@ func TestDashboardRefreshSinglePipeline(t *testing.T) {
 		Status:       registry.StatusUnknown,
 	}
 
-	_, reg, cache, pluginReg := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
+	_, reg, cache, svc := setupTestDashboard(t, []registry.Pipeline{pipeline}, map[string]registry.PipelineStatus{
 		"test-pipeline": registry.StatusUnknown,
 	})
 
 	loadedPipelines := reg.List()
-	model := dashboard.NewModel(loadedPipelines, reg, cache, pluginReg)
+	model := dashboard.NewModel(loadedPipelines, reg, cache, svc)
 	model = runModelUpdate(t, model, tea.WindowSizeMsg{Width: 100, Height: 40})
 
 	// Navigate to detail view

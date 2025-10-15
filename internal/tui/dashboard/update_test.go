@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/alexisbeaulieu97/streamy/internal/engine"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -113,9 +112,7 @@ func TestUpdate_VerifyCompleteMsg(t *testing.T) {
 	// Test verify complete
 	msg := VerifyCompleteMsg{
 		PipelineID: "test-1",
-		Result: &engine.VerifyPipelineResult{
-			Status: registry.StatusSatisfied,
-		},
+		Result:     &registry.ExecutionResult{Status: registry.StatusSatisfied},
 	}
 
 	newModel, _ := m.Update(msg)
@@ -172,9 +169,7 @@ func TestUpdate_ApplyCompleteMsg(t *testing.T) {
 	// Test apply complete
 	msg := ApplyCompleteMsg{
 		PipelineID: "test-1",
-		Result: &engine.ApplyPipelineResult{
-			Status: registry.StatusSatisfied,
-		},
+		Result:     &registry.ExecutionResult{Status: registry.StatusSatisfied},
 	}
 
 	newModel, _ := m.Update(msg)
@@ -257,9 +252,7 @@ func TestUpdate_RefreshPipelineCompleteMsg(t *testing.T) {
 	msg := RefreshPipelineCompleteMsg{
 		PipelineID: "test-1",
 		Index:      0,
-		Result: &engine.VerifyPipelineResult{
-			Status: registry.StatusSatisfied,
-		},
+		Result:     &registry.ExecutionResult{Status: registry.StatusSatisfied},
 	}
 
 	newModel, _ := m.Update(msg)

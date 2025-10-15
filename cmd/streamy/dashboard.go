@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -12,29 +10,29 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/tui/dashboard"
 )
 
-func newDashboardCmd() *cobra.Command {
+func newDashboardCmd(app *AppContext) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dashboard",
 		Short: "Launch the interactive dashboard",
 		Long:  `Launch the interactive TUI dashboard to view and manage all registered pipelines.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDashboard()
+			return runDashboard(app)
 		},
 	}
 
 	return cmd
 }
 
-func runDashboard() error {
-	// Determine registry and cache paths
-	homeDir, err := os.UserHomeDir()
+func runDashboard(app *AppContext) error {
+	registryPath, err := defaultRegistryPath()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to determine registry path: %w", err)
 	}
 
-	streamyDir := filepath.Join(homeDir, ".streamy")
-	registryPath := filepath.Join(streamyDir, "registry.json")
-	cachePath := filepath.Join(streamyDir, "status-cache.json")
+	cachePath, err := defaultStatusCachePath()
+	if err != nil {
+		return fmt.Errorf("failed to determine status cache path: %w", err)
+	}
 
 	// Load registry
 	reg, err := registry.NewRegistry(registryPath)
@@ -51,11 +49,10 @@ func runDashboard() error {
 	// Get pipelines
 	pipelines := reg.List()
 
-	// Get plugin registry
-	pluginReg := getAppRegistry()
+	pipelineSvc := app.Pipeline
 
 	// Create dashboard model
-	m := dashboard.NewModel(pipelines, reg, cache, pluginReg)
+	m := dashboard.NewModel(pipelines, reg, cache, pipelineSvc)
 
 	// Create and run Bubble Tea program
 	p := tea.NewProgram(m, tea.WithAltScreen())

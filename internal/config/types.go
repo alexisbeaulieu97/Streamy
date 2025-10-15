@@ -39,13 +39,7 @@ type Step struct {
 	Enabled       bool     `yaml:"enabled,omitempty"`
 	VerifyTimeout int      `yaml:"verify_timeout,omitempty" validate:"omitempty,min=1,max=600"`
 
-	Package    *PackageStep    `yaml:",inline,omitempty"`
-	Repo       *RepoStep       `yaml:",inline,omitempty"`
-	Symlink    *SymlinkStep    `yaml:",inline,omitempty"`
-	Copy       *CopyStep       `yaml:",inline,omitempty"`
-	Command    *CommandStep    `yaml:",inline,omitempty"`
-	Template   *TemplateStep   `yaml:",inline,omitempty"`
-	LineInFile *LineInFileStep `yaml:",inline,omitempty"`
+	rawConfig map[string]any
 }
 
 // UnmarshalYAML customises step decoding to populate type-specific structures without conflicts.
@@ -79,59 +73,7 @@ func (s *Step) UnmarshalYAML(value *yaml.Node) error {
 		s.VerifyTimeout = 0
 	}
 
-	s.Package = nil
-	s.Repo = nil
-	s.Symlink = nil
-	s.Copy = nil
-	s.Command = nil
-	s.Template = nil
-	s.LineInFile = nil
-
-	switch base.Type {
-	case "package":
-		var pkg PackageStep
-		if err := value.Decode(&pkg); err != nil {
-			return err
-		}
-		s.Package = &pkg
-	case "repo":
-		var repo RepoStep
-		if err := value.Decode(&repo); err != nil {
-			return err
-		}
-		s.Repo = &repo
-	case "symlink":
-		var link SymlinkStep
-		if err := value.Decode(&link); err != nil {
-			return err
-		}
-		s.Symlink = &link
-	case "copy":
-		var cp CopyStep
-		if err := value.Decode(&cp); err != nil {
-			return err
-		}
-		s.Copy = &cp
-	case "command":
-		var cmd CommandStep
-		if err := value.Decode(&cmd); err != nil {
-			return err
-		}
-		s.Command = &cmd
-	case "template":
-		var tmpl TemplateStep
-		if err := value.Decode(&tmpl); err != nil {
-			return err
-		}
-		s.Template = &tmpl
-	case "line_in_file":
-		var lif LineInFileStep
-		if err := value.Decode(&lif); err != nil {
-			return err
-		}
-		s.LineInFile = &lif
-	}
-
+	s.rawConfig = extractRawConfig(value)
 	return nil
 }
 
@@ -150,27 +92,22 @@ func (c *CopyStep) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func validateTemplateConfiguration(step Step) error {
-	cfg := step.Template
-	if cfg == nil {
-		return streamyerrors.NewValidationError(step.ID, "template configuration is required", nil)
-	}
-
+func validateTemplateConfiguration(stepID string, cfg TemplateStep) error {
 	if strings.TrimSpace(cfg.Source) == "" {
-		return streamyerrors.NewValidationError(step.ID, "template source is required", nil)
+		return streamyerrors.NewValidationError(stepID, "template source is required", nil)
 	}
 
 	if strings.TrimSpace(cfg.Destination) == "" {
-		return streamyerrors.NewValidationError(step.ID, "template destination is required", nil)
+		return streamyerrors.NewValidationError(stepID, "template destination is required", nil)
 	}
 
 	if strings.TrimSpace(cfg.Source) == strings.TrimSpace(cfg.Destination) {
-		return streamyerrors.NewValidationError(step.ID, "template destination must differ from source", nil)
+		return streamyerrors.NewValidationError(stepID, "template destination must differ from source", nil)
 	}
 
 	for name := range cfg.Vars {
 		if !templateVarNamePattern.MatchString(name) {
-			return streamyerrors.NewValidationError(step.ID, fmt.Sprintf("template variable %q is invalid; must match %s", name, templateVarNamePattern.String()), nil)
+			return streamyerrors.NewValidationError(stepID, fmt.Sprintf("template variable %q is invalid; must match %s", name, templateVarNamePattern.String()), nil)
 		}
 	}
 
@@ -305,4 +242,77 @@ func hasYAMLKey(node *yaml.Node, key string) bool {
 		}
 	}
 	return false
+}
+
+// RawConfig returns a shallow copy of the plugin-specific configuration block.
+func (s *Step) RawConfig() map[string]any {
+	if s == nil || s.rawConfig == nil {
+		return map[string]any{}
+	}
+
+	raw := make(map[string]any, len(s.rawConfig))
+	for k, v := range s.rawConfig {
+		raw[k] = v
+	}
+	return raw
+}
+
+// SetConfig replaces the step's plugin-specific configuration payload.
+func (s *Step) SetConfig(cfg any) error {
+	if s == nil {
+		return fmt.Errorf("step is nil")
+	}
+	if cfg == nil {
+		s.rawConfig = map[string]any{}
+		return nil
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	s.rawConfig = raw
+	return nil
+}
+
+// DecodeConfig unmarshals the plugin-specific configuration into dst without touching legacy fields.
+func (s *Step) DecodeConfig(dst any) error {
+	if dst == nil {
+		return fmt.Errorf("destination cannot be nil")
+	}
+	if s == nil || len(s.rawConfig) == 0 {
+		return nil
+	}
+
+	data, err := yaml.Marshal(s.rawConfig)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(data, dst)
+}
+
+func extractRawConfig(node *yaml.Node) map[string]any {
+	if node == nil {
+		return map[string]any{}
+	}
+
+	var raw map[string]any
+	if err := node.Decode(&raw); err != nil || raw == nil {
+		return map[string]any{}
+	}
+
+	delete(raw, "id")
+	delete(raw, "name")
+	delete(raw, "type")
+	delete(raw, "depends_on")
+	delete(raw, "enabled")
+	delete(raw, "verify_timeout")
+
+	return raw
 }

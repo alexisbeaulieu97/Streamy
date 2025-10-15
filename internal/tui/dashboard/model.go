@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -18,7 +18,7 @@ type Model struct {
 	pipelines   []registry.Pipeline
 	registry    *registry.Registry
 	statusCache *registry.StatusCache
-	pluginReg   *plugin.PluginRegistry
+	service     *pipelineapp.Service
 
 	// UI state
 	viewMode     ViewMode
@@ -65,7 +65,7 @@ type Operation struct {
 }
 
 // NewModel creates a new dashboard model
-func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *registry.StatusCache, pluginReg *plugin.PluginRegistry) Model {
+func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *registry.StatusCache, svc *pipelineapp.Service) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = spinnerStyle
@@ -74,7 +74,7 @@ func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *regi
 		pipelines:       pipelines,
 		registry:        reg,
 		statusCache:     cache,
-		pluginReg:       pluginReg,
+		service:         svc,
 		viewMode:        ViewList,
 		cursor:          0,
 		loading:         make(map[string]bool),

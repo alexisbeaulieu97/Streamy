@@ -85,6 +85,9 @@ type ExecutionResult struct {
 	Operation   string         `json:"operation"` // "verify" or "apply"
 	Status      PipelineStatus `json:"status"`
 	Success     bool           `json:"success"`
+	Summary     string         `json:"summary"`
+	StepCount   int            `json:"step_count"`
+	FailedSteps []string       `json:"failed_steps,omitempty"`
 	StepResults []StepResult   `json:"step_results"`
 	Duration    time.Duration  `json:"duration"`
 	CompletedAt time.Time      `json:"completed_at"`

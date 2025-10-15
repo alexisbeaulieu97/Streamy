@@ -66,9 +66,9 @@ func (p *copyPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 		}
 	}
 
-	cfg := step.Copy
-	if cfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("copy configuration missing"))
+	cfg, err := loadCopyConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	// Gather evaluation data (read-only)
@@ -223,6 +223,11 @@ func (p *copyPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 }
 
 func (p *copyPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
+	cfg, err := loadCopyConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
+	}
+
 	// Use evaluation data to avoid recomputation
 	var data *copyEvaluationData
 	if evalResult != nil {
@@ -232,15 +237,10 @@ func (p *copyPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResu
 	}
 	if data == nil {
 		// Fallback to recomputing evaluation data
-		cfg := step.Copy
-		if cfg == nil {
-			return nil, plugin.NewValidationError(step.ID, fmt.Errorf("copy configuration missing"))
-		}
-
 		// Check source to determine if it's a directory
-		srcInfo, err := os.Stat(cfg.Source)
-		if err != nil {
-			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("cannot stat source: %w", err))
+		srcInfo, statErr := os.Stat(cfg.Source)
+		if statErr != nil {
+			return nil, plugin.NewExecutionError(step.ID, fmt.Errorf("cannot stat source: %w", statErr))
 		}
 
 		data = &copyEvaluationData{
@@ -255,8 +255,6 @@ func (p *copyPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResu
 			data.PreserveMode = cfg.PreserveMode
 		}
 	}
-
-	cfg := step.Copy
 
 	// Perform the copy operation
 	if data.IsDirectory {
@@ -295,6 +293,22 @@ func (p *copyPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResu
 }
 
 // Helper functions
+
+func loadCopyConfig(step *config.Step) (*config.CopyStep, error) {
+	if step == nil {
+		return nil, fmt.Errorf("step is nil")
+	}
+
+	if len(step.RawConfig()) == 0 {
+		return nil, fmt.Errorf("copy configuration missing")
+	}
+
+	cfg := &config.CopyStep{}
+	if err := step.DecodeConfig(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
 
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)

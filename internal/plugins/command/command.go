@@ -62,9 +62,9 @@ type commandEvaluationData struct {
 }
 
 func (p *commandPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
-	cfg := step.Command
-	if cfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration missing"))
+	cfg, err := loadCommandConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration decode failed: %w", err))
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -157,9 +157,9 @@ func (p *commandPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 }
 
 func (p *commandPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
-	cfg := step.Command
-	if cfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration missing"))
+	cfg, err := loadCommandConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration decode failed: %w", err))
 	}
 
 	// Use evaluation data to avoid recomputation
@@ -171,10 +171,10 @@ func (p *commandPlugin) Apply(ctx context.Context, evalResult *model.EvaluationR
 	}
 	if data == nil {
 		// Fallback to re-evaluating
-		var err error
-		evalResult, err = p.Evaluate(ctx, step)
-		if err != nil {
-			return nil, convertError(step.ID, err)
+		var evalErr error
+		evalResult, evalErr = p.Evaluate(ctx, step)
+		if evalErr != nil {
+			return nil, convertError(step.ID, evalErr)
 		}
 		typed, ok := evalResult.InternalData.(*commandEvaluationData)
 		if !ok || typed == nil {
@@ -245,6 +245,23 @@ func determineShell(explicit string) (string, []string, error) {
 	}
 
 	return "", nil, fmt.Errorf("no suitable shell found")
+}
+
+func loadCommandConfig(step *config.Step) (*config.CommandStep, error) {
+	if step == nil {
+		return nil, fmt.Errorf("step is nil")
+	}
+
+	raw := step.RawConfig()
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("command configuration missing")
+	}
+
+	cfg := &config.CommandStep{}
+	if err := step.DecodeConfig(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 func buildEnv(custom map[string]string) []string {

@@ -47,10 +47,18 @@ type LineInFileConfig struct {
 
 // newConfigFromStep extracts and validates the line_in_file configuration.
 func newConfigFromStep(step *config.Step) (*LineInFileConfig, error) {
-	cfg := step.LineInFile
-	if cfg == nil {
+	if step == nil {
+		return nil, streamyerrors.NewValidationError("", "lineinfile configuration missing", nil)
+	}
+
+	if len(step.RawConfig()) == 0 {
 		return nil, streamyerrors.NewValidationError(step.ID, "lineinfile configuration missing", nil)
 	}
+	var decoded config.LineInFileStep
+	if err := step.DecodeConfig(&decoded); err != nil {
+		return nil, streamyerrors.NewValidationError(step.ID, fmt.Sprintf("failed to decode lineinfile config: %v", err), err)
+	}
+	cfg := &decoded
 
 	normalized := &LineInFileConfig{
 		File:              strings.TrimSpace(cfg.File),

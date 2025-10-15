@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
@@ -52,9 +53,10 @@ steps:
 	require.NoError(t, os.WriteFile(configPath, []byte(testConfig), 0644))
 
 	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
+	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
 
-	cmd := verifyCmd(ctx, "test-1", configPath, pluginReg)
+	cmd := verifyCmd(ctx, "test-1", configPath, svc)
 	assert.NotNil(t, cmd)
 
 	// Execute command
@@ -88,9 +90,10 @@ steps:
 	require.NoError(t, os.WriteFile(configPath, []byte(testConfig), 0644))
 
 	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
+	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
 
-	cmd := applyCmd(ctx, "test-1", configPath, pluginReg)
+	cmd := applyCmd(ctx, "test-1", configPath, svc)
 	assert.NotNil(t, cmd)
 
 	// Execute command
@@ -111,13 +114,14 @@ steps:
 func TestRefreshAllCmd(t *testing.T) {
 	ctx := context.Background()
 	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
+	svc := pipelineapp.NewService(pluginReg)
 
 	pipelines := []registry.Pipeline{
 		{ID: "test-1", Name: "Test 1", Path: "/tmp/test1.yaml"},
 		{ID: "test-2", Name: "Test 2", Path: "/tmp/test2.yaml"},
 	}
 
-	cmd := refreshAllCmd(ctx, pipelines, pluginReg)
+	cmd := refreshAllCmd(ctx, pipelines, svc)
 	assert.NotNil(t, cmd)
 
 	// Execute command - this returns RefreshStartedMsg
@@ -146,6 +150,7 @@ steps:
 	require.NoError(t, os.WriteFile(configPath, []byte(testConfig), 0644))
 
 	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
+	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
 
 	pipeline := registry.Pipeline{
@@ -154,7 +159,7 @@ steps:
 		Path: configPath,
 	}
 
-	cmd := refreshSingleCmd(ctx, pipeline, pluginReg, 0, 1)
+	cmd := refreshSingleCmd(ctx, pipeline, svc, 0, 1)
 	assert.NotNil(t, cmd)
 
 	// Execute command
@@ -171,9 +176,10 @@ steps:
 
 func TestVerifyCmd_InvalidPipeline(t *testing.T) {
 	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
+	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
 
-	cmd := verifyCmd(ctx, "test-1", "/nonexistent/path.yaml", pluginReg)
+	cmd := verifyCmd(ctx, "test-1", "/nonexistent/path.yaml", svc)
 	assert.NotNil(t, cmd)
 
 	msg := cmd()
@@ -188,9 +194,10 @@ func TestVerifyCmd_InvalidPipeline(t *testing.T) {
 
 func TestApplyCmd_InvalidPipeline(t *testing.T) {
 	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
+	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
 
-	cmd := applyCmd(ctx, "test-1", "/nonexistent/path.yaml", pluginReg)
+	cmd := applyCmd(ctx, "test-1", "/nonexistent/path.yaml", svc)
 	assert.NotNil(t, cmd)
 
 	msg := cmd()
@@ -206,10 +213,11 @@ func TestApplyCmd_InvalidPipeline(t *testing.T) {
 func TestRefreshAllCmd_EmptyPipelines(t *testing.T) {
 	ctx := context.Background()
 	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
+	svc := pipelineapp.NewService(pluginReg)
 
 	pipelines := []registry.Pipeline{}
 
-	cmd := refreshAllCmd(ctx, pipelines, pluginReg)
+	cmd := refreshAllCmd(ctx, pipelines, svc)
 	assert.NotNil(t, cmd)
 
 	// Execute command

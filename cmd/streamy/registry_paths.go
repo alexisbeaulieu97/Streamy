@@ -20,5 +20,5 @@ func defaultStatusCachePath() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(home, ".streamy", "status.json"), nil
+	return filepath.Join(home, ".streamy", "status-cache.json"), nil
 }

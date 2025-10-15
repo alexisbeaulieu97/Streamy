@@ -28,13 +28,9 @@ func TestTemplateBasicFunctionality(t *testing.T) {
 		t.Fatal("Schema returned nil")
 	}
 
-	// Test basic evaluation with missing source
-	step := &config.Step{
-		ID: "test-template",
-		Template: &config.TemplateStep{
-			Source:      "/nonexistent/source.template",
-			Destination: "/tmp/test-template",
-		},
+	step := &config.Step{ID: "test-template", Type: "template"}
+	if err := step.SetConfig(config.TemplateStep{Source: "/nonexistent/source", Destination: "/tmp/test-template"}); err != nil {
+		t.Fatalf("SetConfig failed: %v", err)
 	}
 
 	evalResult, err := p.Evaluate(context.TODO(), step)
@@ -67,10 +63,7 @@ func TestTemplateBasicFunctionality(t *testing.T) {
 func TestTemplateEvaluateInvalidConfig(t *testing.T) {
 	p := New()
 
-	step := &config.Step{
-		ID: "test-template-invalid",
-		// No Template configuration
-	}
+	step := &config.Step{ID: "test-template-invalid", Type: "template"}
 
 	_, err := p.Evaluate(context.TODO(), step)
 	if err == nil {

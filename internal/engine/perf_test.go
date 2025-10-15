@@ -66,11 +66,9 @@ func generateLinearSteps(count int) []config.Step {
 	steps := make([]config.Step, count)
 	for i := 0; i < count; i++ {
 		id := fmt.Sprintf("step_%d", i)
-		step := config.Step{
-			ID:      id,
-			Type:    "command",
-			Enabled: true,
-			Command: &config.CommandStep{Command: "noop"},
+		step := config.Step{ID: id, Type: "command", Enabled: true}
+		if err := step.SetConfig(config.CommandStep{Command: "noop"}); err != nil {
+			panic(err)
 		}
 		if i > 0 {
 			step.DependsOn = []string{fmt.Sprintf("step_%d", i-1)}

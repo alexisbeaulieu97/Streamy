@@ -3,6 +3,7 @@ package packageplugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,7 +12,15 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"gopkg.in/yaml.v3"
 )
+
+func newPackageStep(t *testing.T, id string, cfg config.PackageStep) *config.Step {
+	t.Helper()
+	step := &config.Step{ID: id, Type: "package", Enabled: true}
+	require.NoError(t, step.SetConfig(cfg))
+	return step
+}
 
 func TestPackagePlugin_Metadata(t *testing.T) {
 	t.Parallel()
@@ -40,13 +49,7 @@ func TestPackagePlugin_EvaluateForMissingPackage(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "install_package",
-		Type: "package",
-		Package: &config.PackageStep{
-			Packages: []string{"nonexistent-test-package-12345"},
-		},
-	}
+	step := newPackageStep(t, "install_package", config.PackageStep{Packages: []string{"nonexistent-test-package-12345"}})
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
@@ -62,13 +65,7 @@ func TestPackagePlugin_EvaluateForExistingPackage(t *testing.T) {
 	p := New()
 
 	// Use a common package that's likely to be installed
-	step := &config.Step{
-		ID:   "check_existing_package",
-		Type: "package",
-		Package: &config.PackageStep{
-			Packages: []string{"curl"}, // Common package
-		},
-	}
+	step := newPackageStep(t, "check_existing_package", config.PackageStep{Packages: []string{"curl"}})
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
@@ -89,13 +86,7 @@ func TestPackagePlugin_ApplyInstallPackage(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "install_test_package",
-		Type: "package",
-		Package: &config.PackageStep{
-			Packages: []string{"test-package-12345"},
-		},
-	}
+	step := newPackageStep(t, "install_test_package", config.PackageStep{Packages: []string{"test-package-12345"}})
 
 	// First evaluate
 	evalResult, err := p.Evaluate(context.Background(), step)
@@ -117,14 +108,7 @@ func TestPackagePlugin_EvaluateVersionMismatch(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "version_mismatch",
-		Type: "package",
-		Package: &config.PackageStep{
-			Packages: []string{"curl"},
-			// Version: "999.999.999", // Non-existent version - not in struct
-		},
-	}
+	step := newPackageStep(t, "version_mismatch", config.PackageStep{Packages: []string{"curl"}})
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
@@ -140,14 +124,7 @@ func TestPackagePlugin_ApplyWithUpgrade(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "upgrade_package",
-		Type: "package",
-		Package: &config.PackageStep{
-			Packages: []string{"curl"},
-			Update:   true,
-		},
-	}
+	step := newPackageStep(t, "upgrade_package", config.PackageStep{Packages: []string{"curl"}, Update: true})
 
 	// First evaluate
 	evalResult, err := p.Evaluate(context.Background(), step)
@@ -167,11 +144,7 @@ func TestPackagePlugin_EvaluateErrors(t *testing.T) {
 	t.Run("returns error when package config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:      "test_package",
-			Type:    "package",
-			Package: nil,
-		}
+		step := &config.Step{ID: "test_package", Type: "package"}
 
 		_, err := p.Evaluate(context.Background(), step)
 		require.Error(t, err)
@@ -181,13 +154,7 @@ func TestPackagePlugin_EvaluateErrors(t *testing.T) {
 	t.Run("returns satisfied when packages list is empty", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:   "test_package",
-			Type: "package",
-			Package: &config.PackageStep{
-				Packages: []string{},
-			},
-		}
+		step := newPackageStep(t, "test_package", config.PackageStep{Packages: []string{}})
 
 		evalResult, err := p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
@@ -201,11 +168,7 @@ func TestPackagePlugin_ApplyErrors(t *testing.T) {
 	t.Run("returns error when package config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:      "test_package",
-			Type:    "package",
-			Package: nil,
-		}
+		step := &config.Step{ID: "test_package", Type: "package", Enabled: true}
 
 		evalResult := &model.EvaluationResult{
 			StepID:         step.ID,
@@ -218,6 +181,24 @@ func TestPackagePlugin_ApplyErrors(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "package configuration missing")
 	})
+}
+
+func TestPackagePlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
+	p := New()
+
+	yamlStr := fmt.Sprintf(`
+id: raw_package
+type: package
+packages:
+  - curl
+`)
+
+	var step config.Step
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
+
+	evalResult, err := p.Evaluate(context.Background(), &step)
+	require.NoError(t, err)
+	require.Equal(t, step.ID, evalResult.StepID)
 }
 
 // Contract tests for the new plugin interface
@@ -239,13 +220,7 @@ func TestPackagePlugin_Contract(t *testing.T) {
 		})
 
 		t.Run("Evaluate is idempotent", func(t *testing.T) {
-			step := &config.Step{
-				ID:   "idempotent-test",
-				Type: "package",
-				Package: &config.PackageStep{
-					Packages: []string{"nonexistent-package-12345"},
-				},
-			}
+			step := newPackageStep(t, "idempotent-test", config.PackageStep{Packages: []string{"nonexistent-package-12345"}})
 			ctx := context.Background()
 
 			// Call Evaluate twice
@@ -265,13 +240,8 @@ func TestPackagePlugin_Contract(t *testing.T) {
 func TestPackagePlugin_ApplySkipsWhenNoAction(t *testing.T) {
 	p := New()
 
-	step := &config.Step{
-		ID:   "skip",
-		Type: "package",
-		Package: &config.PackageStep{
-			Packages: []string{"bash"},
-		},
-	}
+	step := &config.Step{ID: "skip", Type: "package", Enabled: true}
+	require.NoError(t, step.SetConfig(config.PackageStep{Packages: []string{"bash"}}))
 
 	eval := &model.EvaluationResult{
 		StepID:         step.ID,

@@ -54,7 +54,7 @@ Each step entry must contain:
 | `depends_on`| array    | ❌       | Existing step IDs, no cycles allowed |
 | `enabled`   | bool     | ❌       | Defaults to `true` |
 
-Type-specific fields are inlined. Only the relevant section must be present.
+Type-specific fields are inlined. Only the relevant section must be present. During execution the engine keeps these fields inside the step's `rawConfig`. Plugins should decode them with `step.DecodeConfig(&config.<StepType>Step{})`, and helpers/tests should populate them via `step.SetConfig(config.<StepType>Step{...})`.
 
 ### package Step
 

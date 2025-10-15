@@ -25,7 +25,7 @@ Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error
 
 **`step *config.Step`**
 - Fully parsed and validated step configuration
-- Contains plugin-specific configuration (e.g., `step.Package`, `step.Symlink`)
+- Contains plugin-specific configuration via `rawConfig` (decode with `step.DecodeConfig(&config.PackageStep{})`, `step.DecodeConfig(&config.SymlinkStep{})`, etc.)
 - MUST NOT be modified by verification logic
 - All fields accessible per plugin type
 
@@ -257,7 +257,11 @@ return &VerificationResult{
 log.Debug().
     Str("step_id", step.ID).
     Str("plugin", "symlink").
-    Str("target", step.Symlink.Target).
+    cfg := config.SymlinkStep{}
+    if err := step.DecodeConfig(&cfg); err != nil {
+        return nil, plugin.NewValidationError(step.ID, fmt.Errorf("invalid symlink configuration: %w", err))
+    }
+    Str("target", cfg.Target).
     Msg("checking symlink target")
 ```
 
@@ -284,12 +288,13 @@ log.Debug().
 ### Symlink Plugin
 
 **Verification Logic**:
-1. Call `os.Readlink(step.Symlink.Target)`
-2. If error is `os.ErrNotExist`: return `missing`
-3. If other error (permission, loop): return `blocked`
-4. Compare readlink result to `step.Symlink.Source`
-5. If match: return `satisfied`
-6. If differ: return `drifted`
+1. Decode configuration: `var cfg config.SymlinkStep; err := step.DecodeConfig(&cfg)`
+2. If decoding fails, return `blocked` with message `invalid symlink configuration` (include the decode error in `Error`)
+3. Call `os.Readlink(cfg.Target)`
+4. If error is `os.ErrNotExist`: return `missing`
+5. If other error (permission, loop): return `blocked`
+6. Compare readlink result to `cfg.Source`
+7. If match: return `satisfied`; otherwise return `drifted`
 
 **Status Examples**:
 - `satisfied`: "symlink /usr/bin/python points to /usr/bin/python3.11"
@@ -405,85 +410,3 @@ func TestVerifyCancellation(t *testing.T) {
     assert.ErrorIs(t, err, context.Canceled)
 }
 ```
-
-### Test: Timeout Handling
-```go
-func TestVerifyTimeout(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-    defer cancel()
-    
-    result, err := plugin.Verify(ctx, step)
-    // Either returns immediately with timeout error, or completes fast enough
-    assert.True(t, err == nil || errors.Is(err, context.DeadlineExceeded))
-}
-```
-
-### Test: Status Accuracy
-```go
-func TestVerifyStatusAccuracy(t *testing.T) {
-    tests := []struct {
-        name     string
-        setup    func()
-        expected VerificationStatus
-    }{
-        {"satisfied", setupSatisfiedState, StatusSatisfied},
-        {"missing", setupMissingState, StatusMissing},
-        {"drifted", setupDriftedState, StatusDrifted},
-        {"blocked", setupBlockedState, StatusBlocked},
-    }
-    
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            tt.setup()
-            result, _ := plugin.Verify(ctx, step)
-            assert.Equal(t, tt.expected, result.Status)
-        })
-    }
-}
-```
-
-### Test: Message Clarity
-```go
-func TestVerifyMessageNotEmpty(t *testing.T) {
-    result, err := plugin.Verify(ctx, step)
-    require.NoError(t, err)
-    assert.NotEmpty(t, result.Message)
-    assert.Greater(t, len(result.Message), 10, "message should be descriptive")
-}
-```
-
-### Test: Idempotency
-```go
-func TestVerifyIdempotent(t *testing.T) {
-    result1, err1 := plugin.Verify(ctx, step)
-    result2, err2 := plugin.Verify(ctx, step)
-    
-    require.NoError(t, err1)
-    require.NoError(t, err2)
-    assert.Equal(t, result1.Status, result2.Status)
-    assert.Equal(t, result1.Message, result2.Message)
-}
-```
-
----
-
-## Version Compatibility
-
-**Current Version**: 1.0.0  
-**Stability**: Unstable (pre-1.0 Streamy release)
-
-**Breaking Changes Policy**:
-- Pre-1.0: Breaking changes allowed with clear migration path
-- Post-1.0: Plugin API versioned; breaking changes require major version bump
-
-**Migration Path** (for existing plugins):
-1. Add `Verify()` method stub returning `StatusUnknown`
-2. Implement verification logic per plugin type
-3. Add contract tests
-4. Update plugin documentation
-
----
-
-**Contract Status**: Complete  
-**Last Updated**: October 4, 2025  
-**Next Review**: Post-implementation feedback cycle

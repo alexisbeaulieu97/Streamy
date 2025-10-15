@@ -29,12 +29,9 @@ func TestSymlinkBasicFunctionality(t *testing.T) {
 	}
 
 	// Test basic evaluation
-	step := &config.Step{
-		ID: "test-symlink",
-		Symlink: &config.SymlinkStep{
-			Source: "/nonexistent/source",
-			Target: "/tmp/test-symlink",
-		},
+	step := &config.Step{ID: "test-symlink"}
+	if err := step.SetConfig(config.SymlinkStep{Source: "/nonexistent/source", Target: "/tmp/test-symlink"}); err != nil {
+		t.Fatalf("SetConfig failed: %v", err)
 	}
 
 	evalResult, err := p.Evaluate(context.TODO(), step)

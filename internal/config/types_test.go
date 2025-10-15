@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,13 +27,10 @@ manager: apt
 		require.Equal(t, "install_git", step.ID)
 		require.Equal(t, "package", step.Type)
 		require.True(t, step.Enabled)
-		require.NotNil(t, step.Package)
-		require.Equal(t, []string{"git", "curl"}, step.Package.Packages)
-		require.Equal(t, "apt", step.Package.Manager)
-		require.Nil(t, step.Repo)
-		require.Nil(t, step.Symlink)
-		require.Nil(t, step.Copy)
-		require.Nil(t, step.Command)
+		var cfg PackageStep
+		require.NoError(t, step.DecodeConfig(&cfg))
+		require.Equal(t, []string{"git", "curl"}, cfg.Packages)
+		require.Equal(t, "apt", cfg.Manager)
 	})
 
 	t.Run("unmarshals repo step", func(t *testing.T) {
@@ -50,12 +48,12 @@ depth: 1
 		require.NoError(t, err)
 		require.Equal(t, "clone_repo", step.ID)
 		require.Equal(t, "repo", step.Type)
-		require.NotNil(t, step.Repo)
-		require.Equal(t, "https://github.com/example/repo.git", step.Repo.URL)
-		require.Equal(t, "/tmp/repo", step.Repo.Destination)
-		require.Equal(t, "main", step.Repo.Branch)
-		require.Equal(t, 1, step.Repo.Depth)
-		require.Nil(t, step.Package)
+		var cfg RepoStep
+		require.NoError(t, step.DecodeConfig(&cfg))
+		require.Equal(t, "https://github.com/example/repo.git", cfg.URL)
+		require.Equal(t, "/tmp/repo", cfg.Destination)
+		require.Equal(t, "main", cfg.Branch)
+		require.Equal(t, 1, cfg.Depth)
 	})
 
 	t.Run("unmarshals symlink step", func(t *testing.T) {
@@ -72,10 +70,11 @@ force: true
 		require.NoError(t, err)
 		require.Equal(t, "link_config", step.ID)
 		require.Equal(t, "symlink", step.Type)
-		require.NotNil(t, step.Symlink)
-		require.Equal(t, "/etc/config", step.Symlink.Source)
-		require.Equal(t, "/home/user/.config", step.Symlink.Target)
-		require.True(t, step.Symlink.Force)
+		var cfg SymlinkStep
+		require.NoError(t, step.DecodeConfig(&cfg))
+		require.Equal(t, "/etc/config", cfg.Source)
+		require.Equal(t, "/home/user/.config", cfg.Target)
+		require.True(t, cfg.Force)
 	})
 
 	t.Run("unmarshals copy step", func(t *testing.T) {
@@ -93,11 +92,12 @@ overwrite: true
 		require.NoError(t, err)
 		require.Equal(t, "copy_files", step.ID)
 		require.Equal(t, "copy", step.Type)
-		require.NotNil(t, step.Copy)
-		require.Equal(t, "/tmp/src", step.Copy.Source)
-		require.Equal(t, "/tmp/dst", step.Copy.Destination)
-		require.True(t, step.Copy.Recursive)
-		require.True(t, step.Copy.Overwrite)
+		var cfg CopyStep
+		require.NoError(t, step.DecodeConfig(&cfg))
+		require.Equal(t, "/tmp/src", cfg.Source)
+		require.Equal(t, "/tmp/dst", cfg.Destination)
+		require.True(t, cfg.Recursive)
+		require.True(t, cfg.Overwrite)
 	})
 
 	t.Run("unmarshals command step", func(t *testing.T) {
@@ -118,12 +118,39 @@ env:
 		require.NoError(t, err)
 		require.Equal(t, "run_script", step.ID)
 		require.Equal(t, "command", step.Type)
-		require.NotNil(t, step.Command)
-		require.Equal(t, "echo hello", step.Command.Command)
-		require.Equal(t, "which echo", step.Command.Check)
-		require.Equal(t, "/bin/bash", step.Command.Shell)
-		require.Equal(t, "/tmp", step.Command.WorkDir)
-		require.Equal(t, map[string]string{"FOO": "bar", "BAZ": "qux"}, step.Command.Env)
+		var cfg CommandStep
+		require.NoError(t, step.DecodeConfig(&cfg))
+		require.Equal(t, "echo hello", cfg.Command)
+		require.Equal(t, "which echo", cfg.Check)
+		require.Equal(t, "/bin/bash", cfg.Shell)
+		require.Equal(t, "/tmp", cfg.WorkDir)
+		require.Equal(t, map[string]string{"FOO": "bar", "BAZ": "qux"}, cfg.Env)
+
+		raw := step.RawConfig()
+		require.Equal(t, map[string]any{
+			"command": "echo hello",
+			"check":   "which echo",
+			"shell":   "/bin/bash",
+			"workdir": "/tmp",
+			"env": map[string]any{
+				"FOO": "bar",
+				"BAZ": "qux",
+			},
+		}, raw)
+
+		// Mutating the returned map must not change the internal state.
+		raw["command"] = "mutated"
+		fresh := step.RawConfig()
+		require.Equal(t, "echo hello", fresh["command"])
+
+		var decoded CommandStep
+		err = step.DecodeConfig(&decoded)
+		require.NoError(t, err)
+		require.Equal(t, "echo hello", decoded.Command)
+		require.Equal(t, "which echo", decoded.Check)
+		require.Equal(t, "/bin/bash", decoded.Shell)
+		require.Equal(t, "/tmp", decoded.WorkDir)
+		require.Equal(t, map[string]string{"FOO": "bar", "BAZ": "qux"}, decoded.Env)
 	})
 
 	t.Run("unmarshals step with enabled=false", func(t *testing.T) {
@@ -192,8 +219,89 @@ packages: not_a_list
 `
 		var step Step
 		err := yaml.Unmarshal([]byte(yamlStr), &step)
+		require.NoError(t, err)
+
+		err = ValidateStep(step)
 		require.Error(t, err)
 	})
+}
+
+func TestStepSetConfigRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	mode := uint32(0o644)
+
+	tests := []struct {
+		name     string
+		stepID   string
+		stepType string
+		cfg      any
+	}{
+		{
+			name:     "package step",
+			stepID:   "pkg",
+			stepType: "package",
+			cfg:      PackageStep{Packages: []string{"git", "curl"}, Manager: "apt", Update: true},
+		},
+		{
+			name:     "repo step",
+			stepID:   "repo",
+			stepType: "repo",
+			cfg:      RepoStep{URL: "https://example.com/repo.git", Destination: "/tmp/repo", Branch: "main", Depth: 1},
+		},
+		{
+			name:     "symlink step",
+			stepID:   "symlink",
+			stepType: "symlink",
+			cfg:      SymlinkStep{Source: "/tmp/source", Target: "/tmp/target", Force: true},
+		},
+		{
+			name:     "copy step",
+			stepID:   "copy",
+			stepType: "copy",
+			cfg:      CopyStep{Source: "/tmp/source", Destination: "/tmp/destination", Recursive: true, Overwrite: true, PreserveMode: true, PreserveModeSet: true},
+		},
+		{
+			name:     "command step",
+			stepID:   "command",
+			stepType: "command",
+			cfg:      CommandStep{Command: "echo hello", Check: "which echo", Shell: "/bin/bash", WorkDir: "/tmp", Env: map[string]string{"FOO": "bar"}},
+		},
+		{
+			name:     "template step",
+			stepID:   "template",
+			stepType: "template",
+			cfg:      TemplateStep{Source: "./template.tmpl", Destination: "./output", Vars: map[string]string{"NAME": "Streamy"}, Env: true, AllowMissing: true, Mode: &mode},
+		},
+		{
+			name:     "line in file step",
+			stepID:   "line",
+			stepType: "line_in_file",
+			cfg:      LineInFileStep{File: "/tmp/file", Line: "some line", State: "present", Match: "", Backup: true, BackupDir: "/tmp/backup", Encoding: "utf-8"},
+		},
+	}
+
+	// Core step-level keys that must never leak into RawConfig.
+	forbiddenKeys := []string{"id", "name", "type", "depends_on", "enabled", "verify_timeout"}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			step := Step{ID: tt.stepID, Type: tt.stepType}
+			require.NoError(t, step.SetConfig(tt.cfg))
+
+			decodedPtr := reflect.New(reflect.TypeOf(tt.cfg))
+			require.NoError(t, step.DecodeConfig(decodedPtr.Interface()))
+			require.Equal(t, tt.cfg, decodedPtr.Elem().Interface())
+
+			raw := step.RawConfig()
+			for _, key := range forbiddenKeys {
+				require.NotContains(t, raw, key, "rawConfig leaked core step field")
+			}
+		})
+	}
 }
 
 func TestCopyStepUnmarshalYAML(t *testing.T) {
@@ -260,17 +368,15 @@ func TestStepMap(t *testing.T) {
 
 	t.Run("creates map from empty slice", func(t *testing.T) {
 		t.Parallel()
-		steps := []Step{}
-		m := StepMap(steps)
+		m := StepMap(nil)
 		require.Empty(t, m)
 	})
 
 	t.Run("creates map from single step", func(t *testing.T) {
 		t.Parallel()
-		steps := []Step{
-			{ID: "step1", Type: "command", Command: &CommandStep{Command: "echo test"}},
-		}
-		m := StepMap(steps)
+		step := Step{ID: "step1", Type: "command"}
+		require.NoError(t, step.SetConfig(CommandStep{Command: "echo test"}))
+		m := StepMap([]Step{step})
 		require.Len(t, m, 1)
 		require.Contains(t, m, "step1")
 		require.Equal(t, "command", m["step1"].Type)
@@ -278,12 +384,13 @@ func TestStepMap(t *testing.T) {
 
 	t.Run("creates map from multiple steps", func(t *testing.T) {
 		t.Parallel()
-		steps := []Step{
-			{ID: "step1", Type: "command", Command: &CommandStep{Command: "echo 1"}},
-			{ID: "step2", Type: "command", Command: &CommandStep{Command: "echo 2"}},
-			{ID: "step3", Type: "package", Package: &PackageStep{Packages: []string{"git"}}},
-		}
-		m := StepMap(steps)
+		step1 := Step{ID: "step1", Type: "command"}
+		require.NoError(t, step1.SetConfig(CommandStep{Command: "echo 1"}))
+		step2 := Step{ID: "step2", Type: "command"}
+		require.NoError(t, step2.SetConfig(CommandStep{Command: "echo 2"}))
+		step3 := Step{ID: "step3", Type: "package"}
+		require.NoError(t, step3.SetConfig(PackageStep{Packages: []string{"git"}}))
+		m := StepMap([]Step{step1, step2, step3})
 		require.Len(t, m, 3)
 		require.Contains(t, m, "step1")
 		require.Contains(t, m, "step2")
@@ -295,33 +402,36 @@ func TestStepMap(t *testing.T) {
 
 	t.Run("later steps override earlier with same ID", func(t *testing.T) {
 		t.Parallel()
-		steps := []Step{
-			{ID: "duplicate", Type: "command", Command: &CommandStep{Command: "first"}},
-			{ID: "duplicate", Type: "command", Command: &CommandStep{Command: "second"}},
-		}
-		m := StepMap(steps)
+		first := Step{ID: "duplicate", Type: "command"}
+		require.NoError(t, first.SetConfig(CommandStep{Command: "first"}))
+		second := Step{ID: "duplicate", Type: "command"}
+		require.NoError(t, second.SetConfig(CommandStep{Command: "second"}))
+		m := StepMap([]Step{first, second})
 		require.Len(t, m, 1)
-		require.Equal(t, "second", m["duplicate"].Command.Command)
+		var cfg CommandStep
+		step := m["duplicate"]
+		require.NoError(t, (&step).DecodeConfig(&cfg))
+		require.Equal(t, "second", cfg.Command)
 	})
 
 	t.Run("preserves step details in map", func(t *testing.T) {
 		t.Parallel()
-		steps := []Step{
-			{
-				ID:        "complex_step",
-				Name:      "Complex Step",
-				Type:      "command",
-				DependsOn: []string{"dep1", "dep2"},
-				Enabled:   false,
-				Command:   &CommandStep{Command: "complex command"},
-			},
+		base := Step{
+			ID:        "complex_step",
+			Name:      "Complex Step",
+			Type:      "command",
+			DependsOn: []string{"dep1", "dep2"},
+			Enabled:   false,
 		}
-		m := StepMap(steps)
+		require.NoError(t, base.SetConfig(CommandStep{Command: "complex command"}))
+		m := StepMap([]Step{base})
 		step := m["complex_step"]
 		require.Equal(t, "Complex Step", step.Name)
 		require.Equal(t, []string{"dep1", "dep2"}, step.DependsOn)
 		require.False(t, step.Enabled)
-		require.Equal(t, "complex command", step.Command.Command)
+		var cfg CommandStep
+		require.NoError(t, (&step).DecodeConfig(&cfg))
+		require.Equal(t, "complex command", cfg.Command)
 	})
 }
 
@@ -473,177 +583,101 @@ func TestValidateTemplateConfiguration(t *testing.T) {
 
 	t.Run("valid template configuration", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/template.tmpl",
-				Destination: "/path/to/output.txt",
-				Vars: map[string]string{
-					"VAR1": "value1",
-					"VAR2": "value2",
-				},
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "/path/to/template.tmpl",
+			Destination: "/path/to/output.txt",
+			Vars:        map[string]string{"VAR1": "value1", "VAR2": "value2"},
+		})
 		require.NoError(t, err)
-	})
-
-	t.Run("error when template configuration is nil", func(t *testing.T) {
-		t.Parallel()
-		step := Step{
-			ID:       "test-template",
-			Type:     "template",
-			Template: nil,
-		}
-		err := validateTemplateConfiguration(step)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "template configuration is required")
 	})
 
 	t.Run("error when source is empty", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "",
-				Destination: "/path/to/output.txt",
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Destination: "/path/to/output.txt",
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template source is required")
 	})
 
 	t.Run("error when source is whitespace", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "   ",
-				Destination: "/path/to/output.txt",
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "   ",
+			Destination: "/path/to/output.txt",
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template source is required")
 	})
 
 	t.Run("error when destination is empty", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/template.tmpl",
-				Destination: "",
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source: "/path/to/template.tmpl",
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template destination is required")
 	})
 
 	t.Run("error when destination is whitespace", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/template.tmpl",
-				Destination: "   ",
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "/path/to/template.tmpl",
+			Destination: "   ",
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template destination is required")
 	})
 
 	t.Run("error when source equals destination", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/file.txt",
-				Destination: "/path/to/file.txt",
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "/path/to/file.txt",
+			Destination: "/path/to/file.txt",
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template destination must differ from source")
 	})
 
 	t.Run("error when source equals destination with whitespace", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/file.txt",
-				Destination: "  /path/to/file.txt  ",
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "/path/to/file.txt",
+			Destination: "  /path/to/file.txt  ",
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template destination must differ from source")
 	})
 
 	t.Run("error when variable name is invalid - starts with number", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/template.tmpl",
-				Destination: "/path/to/output.txt",
-				Vars: map[string]string{
-					"123VAR": "value1",
-				},
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "/path/to/template.tmpl",
+			Destination: "/path/to/output.txt",
+			Vars:        map[string]string{"123VAR": "value1"},
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template variable \"123VAR\" is invalid")
 	})
 
 	t.Run("error when variable name is invalid - contains special chars", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/template.tmpl",
-				Destination: "/path/to/output.txt",
-				Vars: map[string]string{
-					"VAR!": "value1",
-				},
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "/path/to/template.tmpl",
+			Destination: "/path/to/output.txt",
+			Vars:        map[string]string{"VAR!": "value1"},
+		})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "template variable \"VAR!\" is invalid")
 	})
 
 	t.Run("valid variable names", func(t *testing.T) {
 		t.Parallel()
-		step := Step{
-			ID:   "test-template",
-			Type: "template",
-			Template: &TemplateStep{
-				Source:      "/path/to/template.tmpl",
-				Destination: "/path/to/output.txt",
-				Vars: map[string]string{
-					"VAR1":         "value1",
-					"my_var":       "value2",
-					"MyVar":        "value3",
-					"VAR_WITH_123": "value4",
-				},
-			},
-		}
-		err := validateTemplateConfiguration(step)
+		err := validateTemplateConfiguration("test-template", TemplateStep{
+			Source:      "/path/to/template.tmpl",
+			Destination: "/path/to/output.txt",
+			Vars:        map[string]string{"VAR_1": "value1", "VAR_TWO": "value2"},
+		})
 		require.NoError(t, err)
 	})
 }
