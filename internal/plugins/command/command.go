@@ -64,7 +64,11 @@ type commandEvaluationData struct {
 func (p *commandPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
 	cfg, err := loadCommandConfig(step)
 	if err != nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration decode failed: %w", err))
+		stepID := ""
+		if step != nil {
+			stepID = step.ID
+		}
+		return nil, plugin.NewValidationError(stepID, fmt.Errorf("command configuration decode failed: %w", err))
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -159,7 +163,11 @@ func (p *commandPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 func (p *commandPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
 	cfg, err := loadCommandConfig(step)
 	if err != nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("command configuration decode failed: %w", err))
+		stepID := ""
+		if step != nil {
+			stepID = step.ID
+		}
+		return nil, plugin.NewValidationError(stepID, fmt.Errorf("command configuration decode failed: %w", err))
 	}
 
 	// Use evaluation data to avoid recomputation

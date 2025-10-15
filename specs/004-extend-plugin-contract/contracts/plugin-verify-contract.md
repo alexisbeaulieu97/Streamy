@@ -24,7 +24,7 @@ Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error
 - Timeout deadline enforced by executor based on step's `verify_timeout` configuration
 
 **`step *config.Step`**
-- Fully parsed and validated step configuration
+- Parsed step configuration; plugin-specific validation occurs during `DecodeConfig`
 - Contains plugin-specific configuration via `rawConfig` (decode with `step.DecodeConfig(&config.PackageStep{})`, `step.DecodeConfig(&config.SymlinkStep{})`, etc.)
 - MUST NOT be modified by verification logic
 - All fields accessible per plugin type
@@ -38,8 +38,11 @@ Verify(ctx context.Context, step *config.Step) (*model.VerificationResult, error
 
 **`error`**
 - MUST be nil when verification completes (even if status is blocked)
-- MUST be non-nil only for unexpected infrastructure failures (panic recovery, null pointer, etc.)
-- Expected verification failures (missing resources, permission errors) MUST be represented via `VerificationResult.Status` and `VerificationResult.Error`
+- MUST be non-nil only for:
+  - Context cancellation (`context.Canceled`)
+  - Timeout/deadline exceeded (`context.DeadlineExceeded`)
+  - Unexpected infrastructure failures (panic recovery, null pointer, etc.)
+- Expected verification failures (missing resources, permission errors, decode/validation errors) MUST be represented via `VerificationResult.Status` and `VerificationResult.Error` while returning a nil Go error
 
 ---
 
@@ -254,13 +257,19 @@ return &VerificationResult{
 
 **Example**:
 ```go
+cfg := config.SymlinkStep{}
+if err := step.DecodeConfig(&cfg); err != nil {
+    return &model.VerificationResult{
+        StepID:  step.ID,
+        Status:  model.StatusBlocked,
+        Message: "invalid symlink configuration",
+        Error:   fmt.Errorf("decode config: %w", err),
+    }, nil
+}
+
 log.Debug().
     Str("step_id", step.ID).
     Str("plugin", "symlink").
-    cfg := config.SymlinkStep{}
-    if err := step.DecodeConfig(&cfg); err != nil {
-        return nil, plugin.NewValidationError(step.ID, fmt.Errorf("invalid symlink configuration: %w", err))
-    }
     Str("target", cfg.Target).
     Msg("checking symlink target")
 ```
@@ -272,11 +281,13 @@ log.Debug().
 ### Package Plugin
 
 **Verification Logic**:
-1. Query system package manager (`apt list --installed`, `brew list`, etc.)
-2. For each package in `step.Package.Packages`:
+1. Decode configuration: `var cfg config.PackageStep; err := step.DecodeConfig(&cfg)`
+2. If decoding fails, return `blocked` with message `invalid package configuration` (include decode error in `Error`)
+3. Query system package manager (`apt list --installed`, `brew list`, etc.)
+4. For each package in `cfg.Packages`:
    - If not installed: return `missing`
    - If version specified and doesn't match: return `drifted` with message
-3. If all packages match: return `satisfied`
+5. If all packages match: return `satisfied`
 
 **Status Examples**:
 - `satisfied`: "packages git, curl installed"
@@ -337,12 +348,14 @@ log.Debug().
 ### Command Plugin
 
 **Verification Logic**:
-1. Check if `step.Command.Verify` is specified
-2. If not specified: return `unknown` with message "no verification command specified"
-3. If specified: execute command with timeout
-4. If exit code 0: return `satisfied`
-5. If exit code non-zero: return `missing` (resource not in expected state)
-6. If execution error (timeout, not found): return `blocked`
+1. Decode configuration: `var cfg config.CommandStep; err := step.DecodeConfig(&cfg)`
+2. If decoding fails, return `blocked` with message `invalid command configuration` (include decode error in `Error`)
+3. Check if `cfg.Check` (or equivalent verify command) is specified
+4. If not specified: return `unknown` with message "no verification command specified"
+5. If specified: execute command with timeout
+6. If exit code 0: return `satisfied`
+7. If exit code non-zero: return `missing` (resource not in expected state)
+8. If execution error (timeout, not found): return `blocked`
 
 **Status Examples**:
 - `satisfied`: "verification command succeeded (exit code 0)"
@@ -363,14 +376,16 @@ log.Debug().
 ### Repo Plugin
 
 **Verification Logic**:
-1. Check if directory exists at `step.Repo.Path`
-2. If not exists: return `missing`
-3. If exists but not a git repo: return `blocked` (or `drifted` depending on design)
-4. Query remote URL: `git config --get remote.origin.url`
-5. If doesn't match `step.Repo.URL`: return `drifted`
-6. Query current branch: `git rev-parse --abbrev-ref HEAD`
-7. If doesn't match `step.Repo.Branch`: return `drifted`
-8. If all match: return `satisfied`
+1. Decode configuration: `var cfg config.RepoStep; err := step.DecodeConfig(&cfg)`
+2. If decoding fails, return `blocked` with message `invalid repo configuration` (include decode error in `Error`)
+3. Check if directory exists at `cfg.Destination`
+4. If not exists: return `missing`
+5. If exists but not a git repo: return `blocked` (or `drifted` depending on design)
+6. Query remote URL: `git config --get remote.origin.url`
+7. If doesn't match `cfg.URL`: return `drifted`
+8. Query current branch: `git rev-parse --abbrev-ref HEAD`
+9. If doesn't match `cfg.Branch`: return `drifted`
+10. If all match: return `satisfied`
 
 **Status Examples**:
 - `satisfied`: "repository at /opt/myrepo on branch main (remote: github.com/user/repo)"

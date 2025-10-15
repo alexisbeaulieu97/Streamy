@@ -199,6 +199,10 @@ func refreshPipeline(service *pipeline.Service, p registry.Pipeline, timeout tim
 		if result.StepCount == 0 {
 			result.StepCount = len(prepared.Config.Steps)
 		}
+		switch result.Status {
+		case registry.StatusSatisfied, registry.StatusDrifted:
+			result.Err = nil
+		}
 	}
 
 	if result.StepCount == 0 {

@@ -19,7 +19,7 @@ func NewPanel(children ...ui.Renderable) *Panel {
 		WithPadding(UniformSpacing(1))
 
 	// Apply subtle panel theme
-	container.WithAppliers(
+	container = container.WithAppliers(
 		Background(PaletteSurface),
 	)
 
@@ -58,7 +58,22 @@ func (p *Panel) WithHeader(header ui.Renderable) *Panel {
 // WithFooter adds a footer to the panel.
 func (p *Panel) WithFooter(footer ui.Renderable) *Panel {
 	p.footer = footer
-	p.Add(HorizontalDivider(), footer)
+
+	currentChildren := p.Children()
+	remainingChildren := currentChildren
+
+	// Strip existing footer pattern (divider + footer) if present at the end.
+	if len(currentChildren) >= 2 {
+		if _, ok := currentChildren[len(currentChildren)-2].(*Divider); ok {
+			remainingChildren = currentChildren[:len(currentChildren)-2]
+		}
+	}
+
+	allChildren := append([]ui.Renderable{}, remainingChildren...)
+	allChildren = append(allChildren, HorizontalDivider(), footer)
+
+	p.SetChildren(allChildren)
+	p.SetLayout(VStack(allChildren...))
 	return p
 }
 

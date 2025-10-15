@@ -48,6 +48,10 @@ func (b *Badge) computeStyle(theme Theme) lipgloss.Style {
 	baseStyle := b.ComputeStyle(theme)
 
 	// Use variant registry for consistent styling
+	if theme.Variants == nil {
+		return baseStyle
+	}
+
 	if strategy := theme.Variants.Get(b.variant); strategy != nil {
 		return strategy.Apply(baseStyle, theme)
 	}

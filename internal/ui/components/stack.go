@@ -63,7 +63,7 @@ func (s *Stack) ViewWithContext(ctx RenderContext) string {
 
 	// Merge stack constraints with parent context constraints
 	effectiveConstraints := s.mergeConstraints(ctx.Constraints)
-	
+
 	// Derive child constraints based on layout direction
 	childCtx := ctx.WithConstraints(s.deriveChildConstraints(effectiveConstraints))
 
@@ -113,7 +113,7 @@ func (s *Stack) ViewWithContext(ctx RenderContext) string {
 // mergeConstraints combines stack-level constraints with parent context constraints.
 func (s *Stack) mergeConstraints(parentConstraints Constraints) Constraints {
 	result := parentConstraints
-	
+
 	// Stack constraints override parent constraints if more restrictive
 	if s.constraints.MaxWidth > 0 && (result.MaxWidth <= 0 || s.constraints.MaxWidth < result.MaxWidth) {
 		result.MaxWidth = s.constraints.MaxWidth
@@ -127,14 +127,14 @@ func (s *Stack) mergeConstraints(parentConstraints Constraints) Constraints {
 	if s.constraints.MinHeight > result.MinHeight {
 		result.MinHeight = s.constraints.MinHeight
 	}
-	
+
 	return result
 }
 
 // deriveChildConstraints computes constraints for child components based on layout direction.
 func (s *Stack) deriveChildConstraints(parentConstraints Constraints) Constraints {
 	childConstraints := parentConstraints
-	
+
 	// For horizontal stacks, divide width among children
 	if s.direction == DirectionHorizontal && parentConstraints.MaxWidth > 0 && len(s.children) > 0 {
 		// Account for gaps
@@ -144,10 +144,10 @@ func (s *Stack) deriveChildConstraints(parentConstraints Constraints) Constraint
 			childConstraints.MaxWidth = availableWidth / len(s.children)
 		}
 	}
-	
+
 	// For vertical stacks, width propagates unchanged
 	// Height division would require measuring rendered content first
-	
+
 	return childConstraints
 }
 

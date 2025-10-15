@@ -28,21 +28,21 @@
 // # Core Components
 //
 // Primitive components:
-//  - Text: Styled text content
-//  - Spacer: Empty space for layout
-//  - Divider: Visual separators
+//   - Text: Styled text content
+//   - Spacer: Empty space for layout
+//   - Divider: Visual separators
 //
 // Layout components:
-//  - Stack: Vertical/horizontal arrangement with gaps and alignment
-//  - Container: Generic box with borders and padding
+//   - Stack: Vertical/horizontal arrangement with gaps and alignment
+//   - Container: Generic box with borders and padding
 //
 // Semantic components:
-//  - Card: Styled container for grouped content
-//  - Panel: Lighter container for sections
-//  - Button: Interactive button (visual-only for now)
-//  - Badge: Status indicators
-//  - Alert: Notification messages
-//  - Header: Titles and headings
+//   - Card: Styled container for grouped content
+//   - Panel: Lighter container for sections
+//   - Button: Interactive button (visual-only for now)
+//   - Badge: Status indicators
+//   - Alert: Notification messages
+//   - Header: Titles and headings
 //
 // # Style Modifiers
 //
@@ -55,12 +55,12 @@
 //	)
 //
 // Available modifiers:
-//  - Background(slot): Semantic background color with matching foreground
-//  - Foreground(slot): Semantic text color
-//  - Border(variant): Border style from theme
-//  - Padding/PaddingX/PaddingY(size): Spacing from theme scale
-//  - Margin/MarginX/MarginY(size): Margin from theme scale
-//  - Typography(variant): Typography preset from theme
+//   - Background(slot): Semantic background color with matching foreground
+//   - Foreground(slot): Semantic text color
+//   - Border(variant): Border style from theme
+//   - Padding/PaddingX/PaddingY(size): Spacing from theme scale
+//   - Margin/MarginX/MarginY(size): Margin from theme scale
+//   - Typography(variant): Typography preset from theme
 //
 // # Composition
 //

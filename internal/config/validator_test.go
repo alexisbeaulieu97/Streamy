@@ -26,7 +26,7 @@ func TestValidateConfig(t *testing.T) {
 	}
 
 	duplicateIDs := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Duplicate IDs",
 		Steps: func() []Step {
 			stepA := Step{ID: "dup", Type: "command"}
@@ -38,7 +38,7 @@ func TestValidateConfig(t *testing.T) {
 	}
 
 	missingDependency := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Missing Dependency",
 		Steps: func() []Step {
 			first := Step{ID: "first", Type: "command"}
@@ -50,7 +50,7 @@ func TestValidateConfig(t *testing.T) {
 	}
 
 	cycleConfig := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Cycle",
 		Steps: func() []Step {
 			a := Step{ID: "a", Type: "command", Enabled: true, DependsOn: []string{"c"}}
@@ -64,7 +64,7 @@ func TestValidateConfig(t *testing.T) {
 	}
 
 	disabledCycle := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Disabled Cycle",
 		Steps: func() []Step {
 			x := Step{ID: "x", Type: "command", Enabled: false, DependsOn: []string{"y"}}

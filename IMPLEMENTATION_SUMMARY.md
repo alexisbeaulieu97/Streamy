@@ -24,11 +24,11 @@ Legacy string-based helpers and the token translator were removed to keep the Go
 
 ```go
 badge := components.Style(
-	lipgloss.NewStyle(),
-	components.Background(components.PaletteSuccess),
-	components.Border(components.BorderVariantRounded),
-	components.PaddingX(components.SpacingSizeSmall),
-	components.Typography(components.TypographyVariantEmphasis),
+  lipgloss.NewStyle(),
+  components.Background(components.PaletteSuccess),
+  components.Border(components.BorderVariantRounded),
+  components.PaddingX(components.SpacingSizeSmall),
+  components.Typography(components.TypographyVariantEmphasis),
 )
 
 button := components.SimpleButton("Deploy").WithFocus(true).View()
@@ -46,4 +46,3 @@ alert  := components.ErrorAlert("Build failed").View()
 - card text wrapping expectations
 
 All tests pass.
-

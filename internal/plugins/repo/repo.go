@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
@@ -292,12 +293,8 @@ func convertError(stepID string, err error) error {
 }
 
 type repoConfig struct {
-	RepositoryPath string
 	*config.RepoStep
-	RawConfig      map[string]any
-	BranchOverride string
-	DepthOverride  string
-	URLOverride    string
+	RawConfig map[string]any
 }
 
 func loadRepoConfig(step *config.Step) (*repoConfig, error) {
@@ -305,11 +302,7 @@ func loadRepoConfig(step *config.Step) (*repoConfig, error) {
 		return nil, fmt.Errorf("step is nil")
 	}
 
-	repoPath := ""
-	if step != nil {
-		repoPath = strings.TrimSpace(os.Getenv("STREAMY_REPO_PATH"))
-	}
-
+	repoPath := strings.TrimSpace(os.Getenv("STREAMY_REPO_PATH"))
 	branch := strings.TrimSpace(os.Getenv("STREAMY_REPO_BRANCH"))
 	depth := strings.TrimSpace(os.Getenv("STREAMY_REPO_DEPTH"))
 	url := strings.TrimSpace(os.Getenv("STREAMY_REPO_URL"))
@@ -324,12 +317,25 @@ func loadRepoConfig(step *config.Step) (*repoConfig, error) {
 		return nil, fmt.Errorf("repo configuration decode failed: %w", err)
 	}
 
+	if repoPath != "" {
+		cfg.Destination = repoPath
+	}
+	if branch != "" {
+		cfg.Branch = branch
+	}
+	if depth != "" {
+		parsedDepth, err := strconv.Atoi(depth)
+		if err != nil {
+			return nil, fmt.Errorf("invalid STREAMY_REPO_DEPTH %q: %w", depth, err)
+		}
+		cfg.Depth = parsedDepth
+	}
+	if url != "" {
+		cfg.URL = url
+	}
+
 	return &repoConfig{
-		RepositoryPath: repoPath,
-		RepoStep:       cfg,
-		RawConfig:      raw,
-		BranchOverride: branch,
-		DepthOverride:  depth,
-		URLOverride:    url,
+		RepoStep:  cfg,
+		RawConfig: raw,
 	}, nil
 }

@@ -156,6 +156,19 @@ func (s *Service) Apply(ctx context.Context, req ApplyRequest) (*ApplyOutcome, e
 }
 
 func convertVerificationSummary(summary *model.VerificationSummary, configPath string) *registry.ExecutionResult {
+	if summary == nil {
+		return &registry.ExecutionResult{
+			Operation:   "verify",
+			Status:      registry.StatusFailed,
+			Success:     false,
+			Duration:    0,
+			CompletedAt: time.Now().UTC(),
+			StepResults: make([]registry.StepResult, 0),
+			StepCount:   0,
+			Summary:     "verification unavailable",
+		}
+	}
+
 	result := &registry.ExecutionResult{
 		Operation:   "verify",
 		Status:      pipelineStatusFromSummary(summary),
@@ -188,18 +201,16 @@ func convertVerificationSummary(summary *model.VerificationSummary, configPath s
 		result.StepResults = append(result.StepResults, stepResult)
 	}
 
-	result.StepCount = len(summary.Results)
+	result.StepCount = summary.TotalSteps
 	result.FailedSteps = dedupeStrings(failed)
 
 	switch {
-	case summary == nil:
-		result.Summary = "verification unavailable"
 	case summary.Missing > 0 || summary.Drifted > 0:
 		result.Summary = fmt.Sprintf("%d steps need changes", summary.Missing+summary.Drifted)
 	case summary.Blocked > 0 || summary.Unknown > 0:
 		result.Summary = fmt.Sprintf("%d steps failed or unknown", summary.Blocked+summary.Unknown)
 	default:
-		result.Summary = fmt.Sprintf("All %d steps passed", summary.Satisfied)
+		result.Summary = fmt.Sprintf("All %d steps passed", summary.TotalSteps)
 	}
 
 	if len(result.FailedSteps) > 0 && result.Error == nil {

@@ -117,7 +117,7 @@ func runVerifyInternal(app *AppContext, opts verifyOptions) (int, error) {
 		LoggerOptions:  logger.Options{Level: level, HumanReadable: !opts.JSON},
 		Verbose:        opts.Verbose,
 		PerStepTimeout: perStepTimeout,
-		DefaultTimeout: 30 * time.Second,
+		DefaultTimeout: perStepTimeout,
 	})
 
 	if verifyErr != nil {

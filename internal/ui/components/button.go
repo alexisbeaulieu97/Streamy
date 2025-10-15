@@ -41,10 +41,11 @@ func (b *Button) computeStyle(theme Theme) lipgloss.Style {
 
 	// Use variant registry for consistent styling
 	var style lipgloss.Style
-	if strategy := theme.Variants.Get(b.variant); strategy != nil {
-		style = strategy.Apply(baseStyle, theme)
-	} else {
-		style = baseStyle
+	style = baseStyle
+	if theme.Variants != nil {
+		if strategy := theme.Variants.Get(b.variant); strategy != nil {
+			style = strategy.Apply(baseStyle, theme)
+		}
 	}
 
 	// Apply state-specific styling

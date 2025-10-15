@@ -35,16 +35,25 @@ func VerticalSpacer(height int) *Spacer {
 
 // View renders the spacer as empty space.
 func (s *Spacer) View() string {
-	if s.width <= 0 && s.height <= 0 {
+	w := s.width
+	if w < 0 {
+		w = 0
+	}
+	h := s.height
+	if h < 0 {
+		h = 0
+	}
+
+	if w == 0 && h == 0 {
 		return ""
 	}
 
 	// Create horizontal space
-	line := strings.Repeat(" ", s.width)
+	line := strings.Repeat(" ", w)
 
 	// Create vertical space
-	if s.height > 1 {
-		lines := make([]string, s.height)
+	if h > 1 {
+		lines := make([]string, h)
 		for i := range lines {
 			lines[i] = line
 		}

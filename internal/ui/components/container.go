@@ -35,12 +35,12 @@ func (c *Container) View() string {
 
 // ViewWithContext renders the container with layout context.
 func (c *Container) ViewWithContext(ctx RenderContext) string {
-	if len(c.children) == 0 {
-		return c.ComputeStyle(ctx.Theme).Render("")
+	// Render the layout if children exist, otherwise use empty content so
+	// borders/padding/margins still render.
+	var content string
+	if len(c.children) > 0 {
+		content = c.layout.ViewWithContext(ctx)
 	}
-
-	// Render the layout
-	content := c.layout.ViewWithContext(ctx)
 
 	// Build the container style
 	containerStyle := c.ComputeStyle(ctx.Theme)

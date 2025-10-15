@@ -271,6 +271,9 @@ type Theme struct {
 // This ensures that partially-specified themes have sensible defaults.
 func (t Theme) Normalize() Theme {
 	t.Spacing = normalizeSpacingConfig(t.Spacing)
+	if t.Variants == nil {
+		t.Variants = NewVariantRegistry()
+	}
 	return t
 }
 
@@ -838,7 +841,7 @@ func Foreground(slot PaletteSlot) StyleFunc {
 // Border applies a border style from the theme.
 func Border(variant BorderVariant) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
-		return base.Border(BorderForVariant(theme, variant))
+		return base.BorderStyle(BorderForVariant(theme, variant))
 	}
 }
 

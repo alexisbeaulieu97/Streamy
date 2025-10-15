@@ -74,7 +74,7 @@ func buildDashboard() *components.Card {
 
 func buildStatRow(label, value string, badgeFunc func(string) *components.Badge) *components.Stack {
 	return components.HStack(
-		components.EmphasisText(label + ":"),
+		components.EmphasisText(label+":"),
 		badgeFunc(value),
 	).WithGap(1)
 }
@@ -100,7 +100,7 @@ func buildPipelineItem(name, status, time string) *components.Stack {
 
 	nameText := components.EmphasisText(name)
 	timeText := components.NewText(time).WithAppliers(components.Typography(components.TypographyVariantTextSm))
-	
+
 	return components.HStack(
 		components.NewText(icon),
 		nameText,
