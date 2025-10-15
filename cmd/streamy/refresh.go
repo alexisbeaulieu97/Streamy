@@ -20,12 +20,12 @@ import (
 )
 
 type refreshOptions struct {
-	concurrency      int
-	pipelineID       string
-	dryRun           bool
-	timeout          time.Duration
-	configPath       string
-	perStepTimeout   time.Duration
+	concurrency    int
+	pipelineID     string
+	dryRun         bool
+	timeout        time.Duration
+	configPath     string
+	perStepTimeout time.Duration
 }
 
 type refreshResult struct {
@@ -134,6 +134,7 @@ func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []
 		concurrency = 1
 	}
 
+	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
 	results := make([]refreshResult, len(pipelines))
@@ -150,7 +151,7 @@ func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []
 			sem <- struct{}{}
 			fmt.Fprintf(out, "[%d/%d] %s... ", i+1, len(pipelines), pipeline.ID)
 
-			result := refreshPipeline(service, pipeline, timeout, configPath, perStepTimeout)
+			result := refreshPipeline(ctx, service, pipeline, timeout, configPath, perStepTimeout)
 			result.PipelineID = pipeline.ID
 
 			fmt.Fprintf(out, "%s\n", formatRefreshResult(result))
@@ -164,8 +165,7 @@ func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []
 	return results
 }
 
-func refreshPipeline(service *pipeline.Service, p registry.Pipeline, timeout time.Duration, configPath string, perStepTimeout time.Duration) refreshResult {
-	ctx := context.Background()
+func refreshPipeline(ctx context.Context, service *pipeline.Service, p registry.Pipeline, timeout time.Duration, configPath string, perStepTimeout time.Duration) refreshResult {
 	var cancel context.CancelFunc
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, timeout)

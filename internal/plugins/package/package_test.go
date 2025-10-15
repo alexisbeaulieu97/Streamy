@@ -3,7 +3,6 @@ package packageplugin
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -186,12 +185,12 @@ func TestPackagePlugin_ApplyErrors(t *testing.T) {
 func TestPackagePlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
 	p := New()
 
-	yamlStr := fmt.Sprintf(`
+	yamlStr := `
 id: raw_package
 type: package
 packages:
   - curl
-`)
+`
 
 	var step config.Step
 	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
