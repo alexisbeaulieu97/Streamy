@@ -185,7 +185,7 @@ func refreshPipeline(ctx context.Context, service *pipeline.Service, p registry.
 	outcome, verifyErr := service.Verify(ctx, pipeline.VerifyRequest{
 		Prepared:       prepared,
 		LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
-		DefaultTimeout: 30 * time.Second,
+		DefaultTimeout: perStepTimeout,
 		ConfigPath:     configPath,
 		PerStepTimeout: perStepTimeout,
 	})

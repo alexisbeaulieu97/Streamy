@@ -123,7 +123,7 @@ type PackageStep struct {
 
 // RepoStep clones a git repository.
 type RepoStep struct {
-	URL         string `yaml:"url" validate:"required,url"`
+	URL         string `yaml:"url" validate:"required,git_url"`
 	Destination string `yaml:"destination" validate:"required"`
 	Branch      string `yaml:"branch,omitempty"`
 	Depth       int    `yaml:"depth,omitempty" validate:"omitempty,min=0"`

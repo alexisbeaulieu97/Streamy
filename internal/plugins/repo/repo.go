@@ -337,6 +337,11 @@ func loadRepoConfig(step *config.Step) (*repoConfig, error) {
 		cfg.URL = url
 	}
 
+	// Validate the configuration after environment overrides
+	if err := config.GetValidator().Struct(cfg); err != nil {
+		return nil, fmt.Errorf("repo configuration validation failed: %w", err)
+	}
+
 	return &repoConfig{
 		RepoStep:  cfg,
 		RawConfig: raw,

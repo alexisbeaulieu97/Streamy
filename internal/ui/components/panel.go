@@ -61,23 +61,26 @@ func (p *Panel) WithHeader(header ui.Renderable) *Panel {
 
 // WithFooter adds a footer to the panel.
 func (p *Panel) WithFooter(footer ui.Renderable) *Panel {
-	p.footer = footer
+	// Capture the prior footer before overwriting it
+	priorFooter := p.footer
 
 	currentChildren := p.Children()
 	remainingChildren := currentChildren
 
 	// Strip existing footer pattern (divider + footer) if present at the end.
-	// Only strip when penultimate is a Divider AND last child is not a Divider.
+	// Only strip when penultimate is a Divider AND the last element is pointer-equal to priorFooter
 	if len(currentChildren) >= 2 {
 		penultimate := currentChildren[len(currentChildren)-2]
 		last := currentChildren[len(currentChildren)-1]
 		if _, ok := penultimate.(*Divider); ok {
-			if _, lastIsDivider := last.(*Divider); !lastIsDivider {
+			if priorFooter != nil && last == priorFooter {
 				remainingChildren = currentChildren[:len(currentChildren)-2]
 			}
 		}
 	}
 
+	// Set the new footer
+	p.footer = footer
 	allChildren := append([]ui.Renderable{}, remainingChildren...)
 	allChildren = append(allChildren, HorizontalDivider(), footer)
 
@@ -96,7 +99,7 @@ func (p *Panel) WithTitle(title string) *Panel {
 
 // WithBorder adds a border to the panel.
 func (p *Panel) WithBorder(border lipgloss.Border) *Panel {
-	p.Container.WithBorder(border)
+	p.Container = p.Container.WithBorder(border)
 	return p
 }
 
