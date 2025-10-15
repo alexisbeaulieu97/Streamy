@@ -30,18 +30,22 @@ func NewPanel(children ...ui.Renderable) *Panel {
 
 // WithHeader adds a header to the panel.
 func (p *Panel) WithHeader(header ui.Renderable) *Panel {
+	// Store the prior header before overwriting it
+	priorHeader := p.header
 	p.header = header
 
-	// Get current children and strip any existing header/divider pattern
+	// Get current children and conditionally strip existing header/divider pattern
 	currentChildren := p.Children()
 	remainingChildren := currentChildren
 
-	// Check if children start with header + divider pattern
-	if len(currentChildren) >= 2 {
-		// Look for the pattern: any element followed by a divider
-		if _, ok := currentChildren[1].(*Divider); ok {
-			// Strip the first two elements (header + divider)
-			remainingChildren = currentChildren[2:]
+	// Only strip header+divider when the existing first child equals the panel's prior header
+	if len(currentChildren) >= 2 && priorHeader != nil {
+		if currentChildren[0] == priorHeader {
+			// Look for the pattern: our header followed by a divider
+			if _, ok := currentChildren[1].(*Divider); ok {
+				// Strip the first two elements (our header + divider)
+				remainingChildren = currentChildren[2:]
+			}
 		}
 	}
 
@@ -63,9 +67,14 @@ func (p *Panel) WithFooter(footer ui.Renderable) *Panel {
 	remainingChildren := currentChildren
 
 	// Strip existing footer pattern (divider + footer) if present at the end.
+	// Only strip when penultimate is a Divider AND last child is not a Divider.
 	if len(currentChildren) >= 2 {
-		if _, ok := currentChildren[len(currentChildren)-2].(*Divider); ok {
-			remainingChildren = currentChildren[:len(currentChildren)-2]
+		penultimate := currentChildren[len(currentChildren)-2]
+		last := currentChildren[len(currentChildren)-1]
+		if _, ok := penultimate.(*Divider); ok {
+			if _, lastIsDivider := last.(*Divider); !lastIsDivider {
+				remainingChildren = currentChildren[:len(currentChildren)-2]
+			}
 		}
 	}
 

@@ -328,6 +328,9 @@ func loadRepoConfig(step *config.Step) (*repoConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid STREAMY_REPO_DEPTH %q: %w", depth, err)
 		}
+		if parsedDepth < 0 {
+			return nil, fmt.Errorf("invalid STREAMY_REPO_DEPTH %q: must be >= 0", depth)
+		}
 		cfg.Depth = parsedDepth
 	}
 	if url != "" {

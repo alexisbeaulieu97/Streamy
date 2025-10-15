@@ -20,10 +20,12 @@ import (
 )
 
 type refreshOptions struct {
-	concurrency int
-	pipelineID  string
-	dryRun      bool
-	timeout     time.Duration
+	concurrency      int
+	pipelineID       string
+	dryRun           bool
+	timeout          time.Duration
+	configPath       string
+	perStepTimeout   time.Duration
 }
 
 type refreshResult struct {
@@ -53,6 +55,8 @@ func newRefreshCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 
 	cmd.Flags().IntVarP(&opts.concurrency, "concurrency", "c", 5, "Number of pipelines to verify concurrently")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", time.Minute, "Timeout per pipeline verification (e.g. 45s, 2m)")
+	cmd.Flags().StringVar(&opts.configPath, "config-path", "", "Path to configuration file")
+	cmd.Flags().DurationVar(&opts.perStepTimeout, "per-step-timeout", 30*time.Second, "Default timeout per step; accepts Go duration strings (e.g. 60s)")
 
 	return cmd
 }
@@ -111,7 +115,7 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions, app *AppContext) error
 
 	service := app.Pipeline
 
-	results := verifyPipelines(cmd, service, pipelines, opts.concurrency, opts.timeout)
+	results := verifyPipelines(cmd, service, pipelines, opts.concurrency, opts.timeout, opts.configPath, opts.perStepTimeout)
 
 	updateStatusCache(statusCache, results)
 
@@ -125,7 +129,7 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions, app *AppContext) error
 	return nil
 }
 
-func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []registry.Pipeline, concurrency int, timeout time.Duration) []refreshResult {
+func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []registry.Pipeline, concurrency int, timeout time.Duration, configPath string, perStepTimeout time.Duration) []refreshResult {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
@@ -146,7 +150,7 @@ func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []
 			sem <- struct{}{}
 			fmt.Fprintf(out, "[%d/%d] %s... ", i+1, len(pipelines), pipeline.ID)
 
-			result := refreshPipeline(service, pipeline, timeout)
+			result := refreshPipeline(service, pipeline, timeout, configPath, perStepTimeout)
 			result.PipelineID = pipeline.ID
 
 			fmt.Fprintf(out, "%s\n", formatRefreshResult(result))
@@ -160,7 +164,7 @@ func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []
 	return results
 }
 
-func refreshPipeline(service *pipeline.Service, p registry.Pipeline, timeout time.Duration) refreshResult {
+func refreshPipeline(service *pipeline.Service, p registry.Pipeline, timeout time.Duration, configPath string, perStepTimeout time.Duration) refreshResult {
 	ctx := context.Background()
 	var cancel context.CancelFunc
 	if timeout > 0 {
@@ -182,6 +186,8 @@ func refreshPipeline(service *pipeline.Service, p registry.Pipeline, timeout tim
 		Prepared:       prepared,
 		LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
 		DefaultTimeout: 30 * time.Second,
+		ConfigPath:     configPath,
+		PerStepTimeout: perStepTimeout,
 	})
 
 	result := refreshResult{
