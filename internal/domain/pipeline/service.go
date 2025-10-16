@@ -13,15 +13,26 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/validation"
 )
 
+// executor defines the interface for verifying steps, allowing for mocking.
+type executor interface {
+	VerifySteps(ctx *engine.ExecutionContext, steps []config.Step, defaultTimeout time.Duration) (*model.VerificationSummary, error)
+}
+
 // Service exposes pure pipeline operations without binding to registry or CLI concerns.
 type Service struct {
-	registry *plugin.PluginRegistry
+	registry    *plugin.PluginRegistry
+	newExecutor func(log *logger.Logger) executor
+	executePlan func(execCtx *engine.ExecutionContext, plan *engine.ExecutionPlan) ([]model.StepResult, error)
 }
 
 // NewService constructs a domain pipeline service.
 func NewService(reg *plugin.PluginRegistry) *Service {
 	return &Service{
 		registry: reg,
+		newExecutor: func(log *logger.Logger) executor {
+			return engine.NewExecutor(log)
+		},
+		executePlan: engine.Execute,
 	}
 }
 
@@ -105,7 +116,7 @@ func (s *Service) Verify(ctx context.Context, req VerifyRequest) (*VerifyOutcome
 		Registry: s.registry,
 	}
 
-	executor := engine.NewExecutor(req.Logger)
+	executor := s.newExecutor(req.Logger)
 	summary, verifyErr := executor.VerifySteps(execCtx, prepared.Config.Steps, perStepTimeout)
 
 	outcome := &VerifyOutcome{
@@ -173,7 +184,7 @@ func (s *Service) Apply(ctx context.Context, req ApplyRequest) (*ApplyOutcome, e
 		Registry:        s.registry,
 	}
 
-	results, execErr := engine.Execute(execCtx, prepared.Plan)
+	results, execErr := s.executePlan(execCtx, prepared.Plan)
 
 	for _, res := range results {
 		if req.OnStepResult != nil {
