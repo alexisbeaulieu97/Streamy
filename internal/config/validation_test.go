@@ -296,3 +296,40 @@ func toLower(s string) string {
 	}
 	return result
 }
+
+func TestValidateValidation_UnknownType(t *testing.T) {
+	val := Validation{
+		Type: "unknown_type",
+	}
+	err := validateValidation(val, 0)
+	require.Error(t, err)
+	var valErr *streamyerrors.ValidationError
+	require.ErrorAs(t, err, &valErr)
+}
+
+func TestValidateValidation_MissingCommandExistsField(t *testing.T) {
+	val := Validation{
+		Type:          "command_exists",
+		CommandExists: nil,
+	}
+	err := validateValidation(val, 0)
+	require.Error(t, err)
+}
+
+func TestValidateValidation_MissingFileExistsField(t *testing.T) {
+	val := Validation{
+		Type:       "file_exists",
+		FileExists: nil,
+	}
+	err := validateValidation(val, 0)
+	require.Error(t, err)
+}
+
+func TestValidateValidation_MissingPathContainsField(t *testing.T) {
+	val := Validation{
+		Type:         "path_contains",
+		PathContains: nil,
+	}
+	err := validateValidation(val, 0)
+	require.Error(t, err)
+}

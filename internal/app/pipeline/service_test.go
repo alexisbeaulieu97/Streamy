@@ -305,6 +305,7 @@ func TestFailedExecutionResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			before := time.Now().UTC()
 			result := failedExecutionResult(tt.operation, tt.configPath, tt.err)
+			after := time.Now().UTC()
 
 			require.NotNil(t, result)
 			assert.Equal(t, tt.operation, result.Operation)
@@ -315,7 +316,8 @@ func TestFailedExecutionResult(t *testing.T) {
 			assert.Equal(t, time.Duration(0), result.Duration)
 
 			// Verify timestamp is within expected range
-			assert.WithinDuration(t, before, result.CompletedAt, time.Since(before))
+			assert.True(t, !result.CompletedAt.Before(before), "CompletedAt should be >= before")
+			assert.True(t, !result.CompletedAt.After(after), "CompletedAt should be <= after")
 
 			if tt.err != nil {
 				require.NotNil(t, result.Error)

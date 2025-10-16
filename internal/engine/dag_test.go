@@ -115,3 +115,72 @@ func TestBuildDAG_ErrorsWhenDependencyMissing(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, graph)
 }
+
+func TestAddNode_NilStep(t *testing.T) {
+	graph := NewGraph()
+	_, err := graph.AddNode(nil)
+	require.Error(t, err)
+	var execErr *streamyerrors.ExecutionError
+	require.ErrorAs(t, err, &execErr)
+}
+
+func TestAddNode_DuplicateStep(t *testing.T) {
+	graph := NewGraph()
+	step1 := &config.Step{ID: "step1", Type: "command"}
+	step2 := &config.Step{ID: "step1", Type: "command"}
+
+	_, err := graph.AddNode(step1)
+	require.NoError(t, err)
+
+	_, err = graph.AddNode(step2)
+	require.Error(t, err)
+	var valErr *streamyerrors.ValidationError
+	require.ErrorAs(t, err, &valErr)
+}
+
+func TestAddNode_InitializesNodesMapIfNil(t *testing.T) {
+	graph := &Graph{}
+	require.Nil(t, graph.Nodes)
+
+	step := &config.Step{ID: "step1", Type: "command"}
+	node, err := graph.AddNode(step)
+	require.NoError(t, err)
+	require.NotNil(t, graph.Nodes)
+	require.Equal(t, "step1", node.ID)
+}
+
+func TestAddEdge_UnknownSource(t *testing.T) {
+	graph := NewGraph()
+	step := &config.Step{ID: "target", Type: "command"}
+	graph.AddNode(step)
+
+	err := graph.AddEdge("unknown", "target")
+	require.Error(t, err)
+	var valErr *streamyerrors.ValidationError
+	require.ErrorAs(t, err, &valErr)
+}
+
+func TestAddEdge_UnknownTarget(t *testing.T) {
+	graph := NewGraph()
+	step := &config.Step{ID: "source", Type: "command"}
+	graph.AddNode(step)
+
+	err := graph.AddEdge("source", "unknown")
+	require.Error(t, err)
+	var valErr *streamyerrors.ValidationError
+	require.ErrorAs(t, err, &valErr)
+}
+
+func TestAddEdge_Success(t *testing.T) {
+	graph := NewGraph()
+	step1 := &config.Step{ID: "step1", Type: "command"}
+	step2 := &config.Step{ID: "step2", Type: "command"}
+
+	node1, _ := graph.AddNode(step1)
+	node2, _ := graph.AddNode(step2)
+
+	err := graph.AddEdge("step1", "step2")
+	require.NoError(t, err)
+	require.Contains(t, node1.Dependents, node2)
+	require.Contains(t, node2.DependsOn, node1)
+}

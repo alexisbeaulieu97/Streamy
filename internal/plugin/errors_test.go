@@ -3,6 +3,7 @@ package plugin
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -125,6 +126,9 @@ func TestErrVersionConflict(t *testing.T) {
 	result := err.Error()
 	assert.Contains(t, result, "version conflict for plugin 'core-plugin' (actual 3.0.0)")
 	assert.Contains(t, result, "Hint: align plugin versions")
+	// Verify at least one dependent is mentioned (map iteration order is non-deterministic)
+	dependentMentioned := strings.Contains(result, "dependent-a") || strings.Contains(result, "dependent-b")
+	assert.True(t, dependentMentioned, "Expected at least one dependent to be mentioned in error message")
 }
 
 func TestErrUndeclaredDependency(t *testing.T) {
