@@ -9,8 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/alexisbeaulieu97/streamy/internal/config"
-	"github.com/alexisbeaulieu97/streamy/internal/engine"
+	"github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/tui"
@@ -24,7 +23,7 @@ type applyOptions struct {
 	NonInteractive bool
 }
 
-func newApplyCmd(root *rootFlags) *cobra.Command {
+func newApplyCmd(root *rootFlags, app *AppContext) *cobra.Command {
 	opts := applyOptions{}
 
 	cmd := &cobra.Command{
@@ -39,7 +38,7 @@ func newApplyCmd(root *rootFlags) *cobra.Command {
 				return err
 			}
 
-			return runApply(opts)
+			return runApply(app, opts)
 		},
 	}
 
@@ -49,62 +48,26 @@ func newApplyCmd(root *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func runApply(opts applyOptions) error {
-	cfg, err := config.ParseConfig(opts.ConfigPath)
-	if err != nil {
-		return err
-	}
-
+func runApply(app *AppContext, opts applyOptions) error {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	graph, err := engine.BuildDAG(cfg.Steps)
+	service := app.Pipeline
+
+	prepared, err := service.Prepare(opts.ConfigPath)
 	if err != nil {
 		return err
 	}
 
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
+	cfg := prepared.Config
+	plan := prepared.Plan
 
-	plan, err := engine.GeneratePlan(graph)
-	if err != nil {
-		return err
-	}
-
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	effectiveDryRun := opts.DryRun || cfg.Settings.DryRun
 	effectiveVerbose := opts.Verbose || cfg.Settings.Verbose
 
 	level := "info"
 	if effectiveVerbose {
 		level = "debug"
-	}
-
-	log, err := logger.New(logger.Options{Level: level, HumanReadable: true})
-	if err != nil {
-		return err
-	}
-
-	parallel := cfg.Settings.Parallel
-	if parallel <= 0 {
-		parallel = 4
-	}
-
-	execCtx := &engine.ExecutionContext{
-		Config:          cfg,
-		DryRun:          effectiveDryRun,
-		Verbose:         effectiveVerbose,
-		ContinueOnError: cfg.Settings.ContinueOnError,
-		WorkerPool:      make(chan struct{}, parallel),
-		Results:         make(map[string]*model.StepResult),
-		Logger:          log,
-		Context:         ctx,
-		Registry:        getAppRegistry(),
 	}
 
 	modelState := tui.NewModel(cfg, plan, opts.NonInteractive)
@@ -122,19 +85,19 @@ func runApply(opts applyOptions) error {
 		}()
 	}
 
-	results, execErr := engine.Execute(execCtx, plan)
-	for _, res := range results {
-		dispatchTuiMessage(interactive, program, &modelState, tui.StepCompleteMsg{Result: res})
-	}
-
-	var valErr error
-	if len(cfg.Validations) > 0 {
-		validationResults, err := validationpkg.RunValidations(ctx, cfg.Validations)
-		valErr = err
-		for _, vr := range validationResults {
-			dispatchTuiMessage(interactive, program, &modelState, tui.ValidationMsg{Passed: vr.Passed, Message: vr.Message})
-		}
-	}
+	_, execErr := service.Apply(ctx, pipeline.ApplyRequest{
+		Prepared:        prepared,
+		ConfigPath:      opts.ConfigPath,
+		LoggerOptions:   logger.Options{Level: level, HumanReadable: true},
+		DryRunOverride:  opts.DryRun,
+		VerboseOverride: opts.Verbose,
+		OnStepResult: func(res model.StepResult) {
+			dispatchTuiMessage(interactive, program, &modelState, tui.StepCompleteMsg{Result: res})
+		},
+		OnValidation: func(result validationpkg.ValidationResult) {
+			dispatchTuiMessage(interactive, program, &modelState, tui.ValidationMsg{Passed: result.Passed, Message: result.Message})
+		},
+	})
 
 	if interactive {
 		if program != nil {
@@ -145,17 +108,10 @@ func runApply(opts applyOptions) error {
 			return programErr
 		}
 	} else {
-		fmt.Fprintln(os.Stdout, modelState.View())
+		_, _ = fmt.Fprintln(os.Stdout, modelState.View())
 	}
 
-	if execErr != nil {
-		return execErr
-	}
-	if valErr != nil {
-		return valErr
-	}
-
-	return nil
+	return execErr
 }
 
 func dispatchTuiMessage(interactive bool, program *tea.Program, state *tui.Model, msg tea.Msg) {

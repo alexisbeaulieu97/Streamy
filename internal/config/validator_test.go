@@ -14,61 +14,65 @@ func TestValidateConfig(t *testing.T) {
 	validConfig := &Config{
 		Version: "1.0.0",
 		Name:    "Valid",
-		Steps: []Step{
-			{
-				ID:   "install_git",
-				Type: "package",
-				Package: &PackageStep{
-					Packages: []string{"git"},
-				},
-			},
-			{
-				ID:        "clone_repo",
-				Type:      "repo",
-				DependsOn: []string{"install_git"},
-				Repo: &RepoStep{
-					URL:         "https://example.com/repo.git",
-					Destination: "/tmp/repo",
-				},
-			},
-		},
+		Steps: func() []Step {
+			pkgStep := Step{ID: "install_git", Type: "package"}
+			require.NoError(t, pkgStep.SetConfig(PackageStep{Packages: []string{"git"}}))
+
+			repoStep := Step{ID: "clone_repo", Type: "repo", DependsOn: []string{"install_git"}}
+			require.NoError(t, repoStep.SetConfig(RepoStep{URL: "https://example.com/repo.git", Destination: "/tmp/repo"}))
+
+			return []Step{pkgStep, repoStep}
+		}(),
 	}
 
 	duplicateIDs := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Duplicate IDs",
-		Steps: []Step{
-			{ID: "dup", Type: "command", Command: &CommandStep{Command: "echo"}},
-			{ID: "dup", Type: "command", Command: &CommandStep{Command: "echo"}},
-		},
+		Steps: func() []Step {
+			stepA := Step{ID: "dup", Type: "command"}
+			require.NoError(t, stepA.SetConfig(CommandStep{Command: "echo"}))
+			stepB := Step{ID: "dup", Type: "command"}
+			require.NoError(t, stepB.SetConfig(CommandStep{Command: "echo"}))
+			return []Step{stepA, stepB}
+		}(),
 	}
 
 	missingDependency := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Missing Dependency",
-		Steps: []Step{
-			{ID: "first", Type: "command", Command: &CommandStep{Command: "echo"}},
-			{ID: "second", Type: "command", DependsOn: []string{"missing"}, Command: &CommandStep{Command: "echo"}},
-		},
+		Steps: func() []Step {
+			first := Step{ID: "first", Type: "command"}
+			require.NoError(t, first.SetConfig(CommandStep{Command: "echo"}))
+			second := Step{ID: "second", Type: "command", DependsOn: []string{"missing"}}
+			require.NoError(t, second.SetConfig(CommandStep{Command: "echo"}))
+			return []Step{first, second}
+		}(),
 	}
 
 	cycleConfig := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Cycle",
-		Steps: []Step{
-			{ID: "a", Type: "command", Enabled: true, DependsOn: []string{"c"}, Command: &CommandStep{Command: "echo a"}},
-			{ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}, Command: &CommandStep{Command: "echo b"}},
-			{ID: "c", Type: "command", Enabled: true, DependsOn: []string{"b"}, Command: &CommandStep{Command: "echo c"}},
-		},
+		Steps: func() []Step {
+			a := Step{ID: "a", Type: "command", Enabled: true, DependsOn: []string{"c"}}
+			require.NoError(t, a.SetConfig(CommandStep{Command: "echo a"}))
+			b := Step{ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}}
+			require.NoError(t, b.SetConfig(CommandStep{Command: "echo b"}))
+			c := Step{ID: "c", Type: "command", Enabled: true, DependsOn: []string{"b"}}
+			require.NoError(t, c.SetConfig(CommandStep{Command: "echo c"}))
+			return []Step{a, b, c}
+		}(),
 	}
 
 	disabledCycle := &Config{
-		Version: "1.0",
+		Version: "1.0.0",
 		Name:    "Disabled Cycle",
-		Steps: []Step{
-			{ID: "x", Type: "command", Enabled: false, DependsOn: []string{"y"}, Command: &CommandStep{Command: "echo x"}},
-			{ID: "y", Type: "command", Enabled: false, DependsOn: []string{"x"}, Command: &CommandStep{Command: "echo y"}},
-		},
+		Steps: func() []Step {
+			x := Step{ID: "x", Type: "command", Enabled: false, DependsOn: []string{"y"}}
+			require.NoError(t, x.SetConfig(CommandStep{Command: "echo x"}))
+			y := Step{ID: "y", Type: "command", Enabled: false, DependsOn: []string{"x"}}
+			require.NoError(t, y.SetConfig(CommandStep{Command: "echo y"}))
+			return []Step{x, y}
+		}(),
 	}
 
 	cases := []struct {

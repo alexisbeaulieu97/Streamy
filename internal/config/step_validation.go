@@ -15,60 +15,77 @@ func ValidateStep(step Step) error {
 
 	switch step.Type {
 	case "package":
-		if step.Package == nil {
-			return streamyerrors.NewValidationError(step.ID, "package configuration is required", nil)
+		var cfg PackageStep
+		if err := decodeStepConfig(step, "package", &cfg); err != nil {
+			return err
 		}
-		if err := v.Struct(step.Package); err != nil {
+		if err := v.Struct(cfg); err != nil {
 			return convertValidationError(err)
 		}
 	case "repo":
-		if step.Repo == nil {
-			return streamyerrors.NewValidationError(step.ID, "repo configuration is required", nil)
+		var cfg RepoStep
+		if err := decodeStepConfig(step, "repo", &cfg); err != nil {
+			return err
 		}
-		if err := v.Struct(step.Repo); err != nil {
+		if err := v.Struct(cfg); err != nil {
 			return convertValidationError(err)
 		}
 	case "symlink":
-		if step.Symlink == nil {
-			return streamyerrors.NewValidationError(step.ID, "symlink configuration is required", nil)
+		var cfg SymlinkStep
+		if err := decodeStepConfig(step, "symlink", &cfg); err != nil {
+			return err
 		}
-		if err := v.Struct(step.Symlink); err != nil {
+		if err := v.Struct(cfg); err != nil {
 			return convertValidationError(err)
 		}
 	case "copy":
-		if step.Copy == nil {
-			return streamyerrors.NewValidationError(step.ID, "copy configuration is required", nil)
+		var cfg CopyStep
+		if err := decodeStepConfig(step, "copy", &cfg); err != nil {
+			return err
 		}
-		if err := v.Struct(step.Copy); err != nil {
+		if err := v.Struct(cfg); err != nil {
 			return convertValidationError(err)
 		}
 	case "command":
-		if step.Command == nil {
-			return streamyerrors.NewValidationError(step.ID, "command configuration is required", nil)
+		var cfg CommandStep
+		if err := decodeStepConfig(step, "command", &cfg); err != nil {
+			return err
 		}
-		if err := v.Struct(step.Command); err != nil {
+		if err := v.Struct(cfg); err != nil {
 			return convertValidationError(err)
 		}
 	case "template":
-		if step.Template == nil {
-			return streamyerrors.NewValidationError(step.ID, "template configuration is required", nil)
+		var cfg TemplateStep
+		if err := decodeStepConfig(step, "template", &cfg); err != nil {
+			return err
 		}
-		if err := v.Struct(step.Template); err != nil {
+		if err := v.Struct(cfg); err != nil {
 			return convertValidationError(err)
 		}
-		if err := validateTemplateConfiguration(step); err != nil {
+		if err := validateTemplateConfiguration(step.ID, cfg); err != nil {
 			return err
 		}
 	case "line_in_file":
-		if step.LineInFile == nil {
-			return streamyerrors.NewValidationError(step.ID, "line_in_file configuration is required", nil)
+		var cfg LineInFileStep
+		if err := decodeStepConfig(step, "line_in_file", &cfg); err != nil {
+			return err
 		}
-		if err := v.Struct(step.LineInFile); err != nil {
+		if err := v.Struct(cfg); err != nil {
 			return convertValidationError(err)
 		}
 	default:
 		return streamyerrors.NewValidationError(step.ID, fmt.Sprintf("unknown step type %q", step.Type), nil)
 	}
 
+	return nil
+}
+
+func decodeStepConfig(step Step, typeName string, dst any) error {
+	if len(step.RawConfig()) == 0 {
+		return streamyerrors.NewValidationError(step.ID, fmt.Sprintf("%s configuration is required", typeName), nil)
+	}
+	if err := step.DecodeConfig(dst); err != nil {
+		return streamyerrors.NewValidationError(step.ID, fmt.Sprintf("%s configuration is invalid", typeName), err)
+	}
 	return nil
 }

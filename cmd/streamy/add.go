@@ -60,7 +60,7 @@ func runAdd(cmd *cobra.Command, configPath string, opts *addOptions) error {
 	}
 
 	if opts.verbose {
-		fmt.Fprintf(cmd.ErrOrStderr(), "→ Validating config file: %s\n", absPath)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "→ Validating config file: %s\n", absPath)
 	}
 
 	cfg, err := config.ParseConfig(absPath)
@@ -95,14 +95,14 @@ func runAdd(cmd *cobra.Command, configPath string, opts *addOptions) error {
 	}
 
 	if opts.verbose {
-		fmt.Fprintf(cmd.ErrOrStderr(), "✓ Added pipeline %q (%s)\n", newPipeline.ID, newPipeline.Name)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "✓ Added pipeline %q (%s)\n", newPipeline.ID, newPipeline.Name)
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "✓ Added pipeline '%s' (%s)\n", newPipeline.ID, newPipeline.Name)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Path: %s\n", newPipeline.Path)
-	fmt.Fprintf(cmd.OutOrStdout(), "  ID:   %s\n", newPipeline.ID)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ Added pipeline '%s' (%s)\n", newPipeline.ID, newPipeline.Name)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Path: %s\n", newPipeline.Path)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  ID:   %s\n", newPipeline.ID)
 
-	fmt.Fprintln(cmd.OutOrStdout(), "\nRun 'streamy registry refresh "+newPipeline.ID+"' to verify its current status.")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nRun 'streamy registry refresh "+newPipeline.ID+"' to verify its current status.")
 
 	_ = cfg // Ensures validation executed
 

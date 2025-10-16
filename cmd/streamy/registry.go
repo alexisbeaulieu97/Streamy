@@ -2,7 +2,7 @@ package main
 
 import "github.com/spf13/cobra"
 
-func newRegistryCmd(rootFlags *rootFlags) *cobra.Command {
+func newRegistryCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "registry",
 		Short: "Manage Streamy pipeline registry",
@@ -18,7 +18,7 @@ func newRegistryCmd(rootFlags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newAddCmd(rootFlags))
 	cmd.AddCommand(newListCmd(rootFlags))
 	cmd.AddCommand(newRemoveCmd(rootFlags))
-	cmd.AddCommand(newRefreshCmd(rootFlags))
+	cmd.AddCommand(newRefreshCmd(rootFlags, app))
 	cmd.AddCommand(newShowCmd(rootFlags))
 
 	return cmd

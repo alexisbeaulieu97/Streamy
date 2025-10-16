@@ -2,6 +2,7 @@ package symlinkplugin
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"gopkg.in/yaml.v3"
 )
 
 func TestSymlinkPlugin_Metadata(t *testing.T) {
@@ -41,14 +43,8 @@ func TestSymlinkPlugin_ApplyCreatesLink(t *testing.T) {
 	sourceFile := filepath.Join(sourceDir, "file.txt")
 	require.NoError(t, os.WriteFile(sourceFile, []byte("hello"), 0o644))
 
-	step := &config.Step{
-		ID:   "link_file",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-		},
-	}
+	step := &config.Step{ID: "link_file", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir}))
 
 	p := New()
 
@@ -82,14 +78,8 @@ func TestSymlinkPlugin_EvaluateCorrectLink(t *testing.T) {
 	// Create correct symlink
 	require.NoError(t, os.Symlink(sourceFile, targetDir))
 
-	step := &config.Step{
-		ID:   "check_correct_link",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-		},
-	}
+	step := &config.Step{ID: "check_correct_link", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir}))
 
 	p := New()
 
@@ -107,14 +97,8 @@ func TestSymlinkPlugin_EvaluateMissingLink(t *testing.T) {
 	sourceFile := filepath.Join(sourceDir, "file.txt")
 	require.NoError(t, os.WriteFile(sourceFile, []byte("hello"), 0o644))
 
-	step := &config.Step{
-		ID:   "check_missing_link",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-		},
-	}
+	step := &config.Step{ID: "check_missing_link", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir}))
 
 	p := New()
 
@@ -137,15 +121,8 @@ func TestSymlinkPlugin_ApplyOverwritesExisting(t *testing.T) {
 	// Create existing symlink pointing to wrong target
 	require.NoError(t, os.Symlink(otherFile, targetDir))
 
-	step := &config.Step{
-		ID:   "overwrite_link",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-			Force:  true,
-		},
-	}
+	step := &config.Step{ID: "overwrite_link", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir, Force: true}))
 
 	p := New()
 
@@ -172,14 +149,8 @@ func TestSymlinkPlugin_EvaluateForDryRun(t *testing.T) {
 	sourceFile := filepath.Join(sourceDir, "file.txt")
 	require.NoError(t, os.WriteFile(sourceFile, []byte("hello"), 0o644))
 
-	step := &config.Step{
-		ID:   "dry_run_link",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-		},
-	}
+	step := &config.Step{ID: "dry_run_link", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir}))
 
 	p := New()
 
@@ -203,14 +174,8 @@ func TestSymlinkPlugin_ApplyBrokenLink(t *testing.T) {
 
 	sourceFile := filepath.Join(sourceDir, "nonexistent.txt")
 
-	step := &config.Step{
-		ID:   "broken_link",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-		},
-	}
+	step := &config.Step{ID: "broken_link", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir}))
 
 	p := New()
 
@@ -231,6 +196,30 @@ func TestSymlinkPlugin_ApplyBrokenLink(t *testing.T) {
 	require.True(t, info.Mode()&os.ModeSymlink != 0)
 }
 
+func TestSymlinkPlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
+	sourceDir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "linked")
+	source := filepath.Join(sourceDir, "file.txt")
+	require.NoError(t, os.WriteFile(source, []byte("hello"), 0o644))
+
+	yamlStr := fmt.Sprintf(`
+id: raw_symlink
+type: symlink
+source: %s
+target: %s
+`, source, target)
+
+	var step config.Step
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
+	require.NoError(t, step.SetConfig(step.RawConfig()))
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), &step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+}
+
 func TestSymlinkPlugin_EvaluateLinkPointsToWrongTarget(t *testing.T) {
 	sourceDir := t.TempDir()
 	targetDir := filepath.Join(t.TempDir(), "linked")
@@ -243,14 +232,8 @@ func TestSymlinkPlugin_EvaluateLinkPointsToWrongTarget(t *testing.T) {
 	// Create symlink pointing to wrong target
 	require.NoError(t, os.Symlink(otherFile, targetDir))
 
-	step := &config.Step{
-		ID:   "wrong_target_link",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-		},
-	}
+	step := &config.Step{ID: "wrong_target_link", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir}))
 
 	p := New()
 
@@ -269,15 +252,8 @@ func TestSymlinkPlugin_EvaluateExistingFileWithoutForce(t *testing.T) {
 	require.NoError(t, os.WriteFile(sourceFile, []byte("hello"), 0o644))
 	require.NoError(t, os.WriteFile(targetDir, []byte("existing"), 0o644))
 
-	step := &config.Step{
-		ID:   "existing_file_no_force",
-		Type: "symlink",
-		Symlink: &config.SymlinkStep{
-			Source: sourceFile,
-			Target: targetDir,
-			Force:  false,
-		},
-	}
+	step := &config.Step{ID: "existing_file_no_force", Type: "symlink"}
+	require.NoError(t, step.SetConfig(config.SymlinkStep{Source: sourceFile, Target: targetDir, Force: false}))
 
 	p := New()
 

@@ -29,12 +29,9 @@ func TestCopyBasicFunctionality(t *testing.T) {
 	}
 
 	// Test basic evaluation with missing source
-	step := &config.Step{
-		ID: "test-copy",
-		Copy: &config.CopyStep{
-			Source:      "/nonexistent/source",
-			Destination: "/tmp/test-copy",
-		},
+	step := &config.Step{ID: "test-copy"}
+	if err := step.SetConfig(config.CopyStep{Source: "/nonexistent/source", Destination: "/tmp/test-copy"}); err != nil {
+		t.Fatalf("SetConfig failed: %v", err)
 	}
 
 	evalResult, err := p.Evaluate(context.TODO(), step)

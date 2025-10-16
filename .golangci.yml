@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
@@ -7,13 +9,8 @@ linters:
     - govet
     - staticcheck
     - errcheck
+
+formatters:
+  enable:
     - gofmt
     - goimports
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-
-# GitHub Actions workflow configured in .github/workflows/lint.yml (see T078)

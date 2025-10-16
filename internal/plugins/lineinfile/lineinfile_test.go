@@ -3,6 +3,7 @@ package lineinfileplugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"gopkg.in/yaml.v3"
 )
 
 func TestLineinfilePlugin_Metadata(t *testing.T) {
@@ -37,20 +39,19 @@ func TestLineinfilePlugin_Schema(t *testing.T) {
 	require.True(t, ok, "schema should be of type LineinfileStep")
 }
 
+func makeLineInFileStep(t *testing.T, id string, cfg config.LineInFileStep) *config.Step {
+	t.Helper()
+	step := &config.Step{ID: id, Type: "lineinfile"}
+	require.NoError(t, step.SetConfig(cfg))
+	return step
+}
+
 func TestLineinfilePlugin_EvaluateMissingFile(t *testing.T) {
 	t.Parallel()
 
 	filePath := filepath.Join(t.TempDir(), "test.txt")
 
-	step := &config.Step{
-		ID:   "missing_file",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  "test line",
-			State: "present",
-		},
-	}
+	step := makeLineInFileStep(t, "missing_file", config.LineInFileStep{File: filePath, Line: "test line", State: "present"})
 
 	p := New()
 
@@ -70,15 +71,7 @@ func TestLineinfilePlugin_EvaluateSatisfied(t *testing.T) {
 	// Create file with the line
 	require.NoError(t, os.WriteFile(filePath, []byte(line+"\n"), 0o644))
 
-	step := &config.Step{
-		ID:   "satisfied_line",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  line,
-			State: "present",
-		},
-	}
+	step := makeLineInFileStep(t, "satisfied_line", config.LineInFileStep{File: filePath, Line: line, State: "present"})
 
 	p := New()
 
@@ -97,15 +90,7 @@ func TestLineinfilePlugin_EvaluateDrifted(t *testing.T) {
 	// Create file without the line
 	require.NoError(t, os.WriteFile(filePath, []byte("different line\n"), 0o644))
 
-	step := &config.Step{
-		ID:   "drifted_line",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  line,
-			State: "present",
-		},
-	}
+	step := makeLineInFileStep(t, "drifted_line", config.LineInFileStep{File: filePath, Line: line, State: "present"})
 
 	p := New()
 
@@ -124,15 +109,7 @@ func TestLineinfilePlugin_ApplyAddLine(t *testing.T) {
 	// Create empty file
 	require.NoError(t, os.WriteFile(filePath, []byte(""), 0o644))
 
-	step := &config.Step{
-		ID:   "add_line",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  line,
-			State: "present",
-		},
-	}
+	step := makeLineInFileStep(t, "add_line", config.LineInFileStep{File: filePath, Line: line, State: "present"})
 
 	p := New()
 
@@ -162,16 +139,7 @@ func TestLineinfilePlugin_ApplyRemoveLine(t *testing.T) {
 	// Create file with the line
 	require.NoError(t, os.WriteFile(filePath, []byte("some line\n"+line+"\nanother line\n"), 0o644))
 
-	step := &config.Step{
-		ID:   "remove_line",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  line,
-			State: "absent",
-			Match: line,
-		},
-	}
+	step := makeLineInFileStep(t, "remove_line", config.LineInFileStep{File: filePath, Line: line, State: "absent", Match: line})
 
 	p := New()
 
@@ -201,22 +169,35 @@ func TestLineinfilePlugin_EvaluateAbsentWhenLineExists(t *testing.T) {
 	// Create file with the line
 	require.NoError(t, os.WriteFile(filePath, []byte(line+"\n"), 0o644))
 
-	step := &config.Step{
-		ID:   "line_exists_absent",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  line,
-			State: "absent",
-			Match: line,
-		},
-	}
+	step := makeLineInFileStep(t, "line_exists_absent", config.LineInFileStep{File: filePath, Line: line, State: "absent", Match: line})
 
 	p := New()
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
 	require.Equal(t, model.StatusDrifted, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
+}
+
+func TestLineinfilePlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "test.txt")
+	require.NoError(t, os.WriteFile(filePath, []byte("hello\n"), 0o644))
+
+	yamlStr := fmt.Sprintf(`
+id: raw_lineinfile
+type: lineinfile
+file: %s
+line: world
+state: present
+`, filePath)
+
+	var step config.Step
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), &step)
+	require.NoError(t, err)
 	require.True(t, evalResult.RequiresAction)
 }
 
@@ -229,16 +210,7 @@ func TestLineinfilePlugin_EvaluateAbsentWhenLineMissing(t *testing.T) {
 	// Create file without the line
 	require.NoError(t, os.WriteFile(filePath, []byte("different line\n"), 0o644))
 
-	step := &config.Step{
-		ID:   "line_missing_absent",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  line,
-			State: "absent",
-			Match: line,
-		},
-	}
+	step := makeLineInFileStep(t, "line_missing_absent", config.LineInFileStep{File: filePath, Line: line, State: "absent", Match: line})
 
 	p := New()
 
@@ -256,16 +228,7 @@ func TestLineinfilePlugin_EvaluateWithRegex(t *testing.T) {
 	// Create file with a line matching regex
 	require.NoError(t, os.WriteFile(filePath, []byte("version: 1.2.3\n"), 0o644))
 
-	step := &config.Step{
-		ID:   "regex_match",
-		Type: "lineinfile",
-		LineInFile: &config.LineInFileStep{
-			File:  filePath,
-			Line:  "version: .*",
-			State: "present",
-			Match: "version: 2.0.0",
-		},
-	}
+	step := makeLineInFileStep(t, "regex_match", config.LineInFileStep{File: filePath, Line: "version: .*", State: "present", Match: "version: 2.0.0"})
 
 	p := New()
 
@@ -279,11 +242,7 @@ func TestLineinfilePlugin_EvaluateErrors(t *testing.T) {
 	t.Run("returns error when lineinfile config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:         "test_lineinfile",
-			Type:       "lineinfile",
-			LineInFile: nil,
-		}
+		step := &config.Step{ID: "test_lineinfile", Type: "lineinfile"}
 
 		_, err := p.Evaluate(context.Background(), step)
 		require.Error(t, err)
@@ -293,14 +252,7 @@ func TestLineinfilePlugin_EvaluateErrors(t *testing.T) {
 	t.Run("returns error when line is empty and no regex", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:   "empty_line",
-			Type: "lineinfile",
-			LineInFile: &config.LineInFileStep{
-				File: "/tmp/test.txt",
-				Line: "",
-			},
-		}
+		step := makeLineInFileStep(t, "empty_line", config.LineInFileStep{File: "/tmp/test.txt", Line: "", State: "present"})
 
 		_, err := p.Evaluate(context.Background(), step)
 		require.Error(t, err)
@@ -311,11 +263,7 @@ func TestLineinfilePlugin_ApplyErrors(t *testing.T) {
 	t.Run("returns error when lineinfile config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:         "test_lineinfile",
-			Type:       "lineinfile",
-			LineInFile: nil,
-		}
+		step := &config.Step{ID: "test_lineinfile", Type: "lineinfile"}
 
 		evalResult := &model.EvaluationResult{
 			StepID:         step.ID,
@@ -332,15 +280,7 @@ func TestLineinfilePlugin_ApplyErrors(t *testing.T) {
 	t.Run("returns error when file cannot be created", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:   "invalid_path",
-			Type: "lineinfile",
-			LineInFile: &config.LineInFileStep{
-				File:  "/invalid/path/test.txt",
-				Line:  "test line",
-				State: "present",
-			},
-		}
+		step := makeLineInFileStep(t, "invalid_path", config.LineInFileStep{File: "/invalid/path/test.txt", Line: "test line", State: "present"})
 
 		evalResult, err := p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
@@ -402,20 +342,12 @@ func TestLineinfilePlugin_Contract(t *testing.T) {
 		})
 
 		t.Run("Evaluate is idempotent", func(t *testing.T) {
-			step := &config.Step{
-				ID:   "idempotent-test",
-				Type: "lineinfile",
-				LineInFile: &config.LineInFileStep{
-					File:  "/nonexistent/test.txt",
-					Line:  "test line",
-					State: "present",
-				},
-			}
+			lineStep := makeLineInFileStep(t, "idempotent-test", config.LineInFileStep{File: "/nonexistent/test.txt", Line: "test line", State: "present"})
 			ctx := context.Background()
 
 			// Call Evaluate twice
-			result1, err1 := plugin.Evaluate(ctx, step)
-			result2, err2 := plugin.Evaluate(ctx, step)
+			result1, err1 := plugin.Evaluate(ctx, lineStep)
+			result2, err2 := plugin.Evaluate(ctx, lineStep)
 
 			require.NoError(t, err1, "First Evaluate() should not return an error")
 			require.NoError(t, err2, "Second Evaluate() should not return an error")

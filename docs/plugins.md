@@ -129,7 +129,7 @@ Because the plugin is stateless it returns a singleton instance. If a plugin mai
 ## Implementation Checklist
 
 1. **Define the Plugin struct and `New()` constructor.** Keep construction free of side effects.
-2. **Implement the Evaluate/Apply interface methods.** Use the type-specific fields on `config.Step`.
+2. **Implement the Evaluate/Apply interface methods.** Call `step.DecodeConfig(&typedConfig)` to access plugin-specific configuration.
 3. **Design EvaluationResult with InternalData.** Store computation results in InternalData to avoid redundant work in Apply().
 4. **Ensure Evaluate() is strictly read-only.** This method MUST NOT mutate system state.
 5. **Make Apply() idempotent.** Use the evalResult parameter to avoid recomputation and ensure consistent results.

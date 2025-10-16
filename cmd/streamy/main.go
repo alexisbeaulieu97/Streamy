@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 )
@@ -23,9 +24,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	setAppRegistry(registry)
+	app := &AppContext{
+		Registry: registry,
+		Pipeline: pipelineapp.NewService(registry),
+	}
 
-	if err := newRootCmd().Execute(); err != nil {
+	if err := newRootCmd(app).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

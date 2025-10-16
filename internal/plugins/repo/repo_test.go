@@ -3,6 +3,7 @@ package repoplugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"gopkg.in/yaml.v3"
 )
 
 func TestRepoPlugin_Metadata(t *testing.T) {
@@ -46,14 +48,7 @@ func TestRepoPlugin_ApplyClonesRepository(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "clone_repo",
-		Type: "repo",
-		Repo: &config.RepoStep{
-			URL:         source,
-			Destination: dest,
-		},
-	}
+	step := newRepoStep(t, "clone_repo", config.RepoStep{URL: source, Destination: dest})
 
 	// First evaluate
 	evalResult, err := p.Evaluate(context.Background(), step)
@@ -77,14 +72,8 @@ func TestRepoPlugin_EvaluateDetectsExistingClone(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "clone_repo",
-		Type: "repo",
-		Repo: &config.RepoStep{
-			URL:         source,
-			Destination: dest,
-		},
-	}
+	step := &config.Step{ID: "clone_repo", Type: "repo"}
+	require.NoError(t, step.SetConfig(config.RepoStep{URL: source, Destination: dest}))
 
 	// Seed the destination using the plugin to ensure a valid clone for the second evaluation.
 	firstEval, err := p.Evaluate(context.Background(), step)
@@ -109,14 +98,8 @@ func TestRepoPlugin_EvaluateDetectsCorruptedRepo(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(dest, ".git", "HEAD")))
 
 	p := New()
-	step := &config.Step{
-		ID:   "clone_repo",
-		Type: "repo",
-		Repo: &config.RepoStep{
-			URL:         source,
-			Destination: dest,
-		},
-	}
+	step := &config.Step{ID: "clone_repo", Type: "repo"}
+	require.NoError(t, step.SetConfig(config.RepoStep{URL: source, Destination: dest}))
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
@@ -130,14 +113,8 @@ func TestRepoPlugin_EvaluateSkipsClone(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "clone_repo",
-		Type: "repo",
-		Repo: &config.RepoStep{
-			URL:         "/tmp/example.git",
-			Destination: dest,
-		},
-	}
+	step := &config.Step{ID: "clone_repo", Type: "repo"}
+	require.NoError(t, step.SetConfig(config.RepoStep{URL: "/tmp/example.git", Destination: dest}))
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
@@ -155,14 +132,8 @@ func TestRepoPlugin_EvaluateReturnsMissingWhenRepoNotCloned(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "clone_repo",
-		Type: "repo",
-		Repo: &config.RepoStep{
-			URL:         "/tmp/example.git",
-			Destination: dest,
-		},
-	}
+	step := &config.Step{ID: "clone_repo", Type: "repo"}
+	require.NoError(t, step.SetConfig(config.RepoStep{URL: "/tmp/example.git", Destination: dest}))
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
@@ -179,14 +150,8 @@ func TestRepoPlugin_EvaluateReturnsDriftedWhenGitDirMissing(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "clone_repo",
-		Type: "repo",
-		Repo: &config.RepoStep{
-			URL:         "/tmp/example.git",
-			Destination: dest,
-		},
-	}
+	step := &config.Step{ID: "clone_repo", Type: "repo"}
+	require.NoError(t, step.SetConfig(config.RepoStep{URL: "/tmp/example.git", Destination: dest}))
 
 	evalResult, err := p.Evaluate(context.Background(), step)
 	require.NoError(t, err)
@@ -200,16 +165,7 @@ func TestRepoPlugin_ApplyWithBranchAndDepth(t *testing.T) {
 
 	p := New()
 
-	step := &config.Step{
-		ID:   "clone_repo",
-		Type: "repo",
-		Repo: &config.RepoStep{
-			URL:         source,
-			Destination: dest,
-			Branch:      "master",
-			Depth:       1,
-		},
-	}
+	step := newRepoStep(t, "clone_repo", config.RepoStep{URL: source, Destination: dest, Branch: "master", Depth: 1})
 
 	// First evaluate
 	evalResult, err := p.Evaluate(context.Background(), step)
@@ -225,6 +181,26 @@ func TestRepoPlugin_ApplyWithBranchAndDepth(t *testing.T) {
 	contents, err := os.ReadFile(filepath.Join(dest, "README.md"))
 	require.NoError(t, err)
 	require.Contains(t, string(contents), "hello repo")
+}
+
+func TestRepoPlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "clone")
+	p := New()
+
+	yamlStr := fmt.Sprintf(`
+id: raw_repo
+type: repo
+url: https://example.com/repo.git
+destination: %s
+`, dest)
+
+	var step config.Step
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
+	require.NoError(t, step.SetConfig(step.RawConfig()))
+
+	evalResult, err := p.Evaluate(context.Background(), &step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
 }
 
 func initGitRepo(t *testing.T) string {
@@ -260,14 +236,7 @@ func TestRepoPlugin_Evaluate(t *testing.T) {
 
 		p := New()
 
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: &config.RepoStep{
-				URL:         source,
-				Destination: dest,
-			},
-		}
+		step := newRepoStep(t, "clone_repo", config.RepoStep{URL: source, Destination: dest})
 
 		// First clone the repo
 		evalResult, err := p.Evaluate(context.Background(), step)
@@ -290,14 +259,8 @@ func TestRepoPlugin_Evaluate(t *testing.T) {
 
 		p := New()
 
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: &config.RepoStep{
-				URL:         "/tmp/example.git",
-				Destination: dest,
-			},
-		}
+		step := &config.Step{ID: "clone_repo", Type: "repo"}
+		require.NoError(t, step.SetConfig(config.RepoStep{URL: "/tmp/example.git", Destination: dest}))
 
 		evalResult, err := p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
@@ -312,14 +275,8 @@ func TestRepoPlugin_Evaluate(t *testing.T) {
 
 		p := New()
 
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: &config.RepoStep{
-				URL:         "/tmp/example.git",
-				Destination: dest,
-			},
-		}
+		step := &config.Step{ID: "clone_repo", Type: "repo"}
+		require.NoError(t, step.SetConfig(config.RepoStep{URL: "/tmp/example.git", Destination: dest}))
 
 		evalResult, err := p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
@@ -333,11 +290,7 @@ func TestRepoPlugin_Evaluate_Errors(t *testing.T) {
 	t.Run("returns error when repo config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:   "check_repo",
-			Type: "repo",
-			Repo: nil,
-		}
+		step := &config.Step{ID: "check_repo", Type: "repo"}
 
 		_, err := p.Evaluate(context.Background(), step)
 		require.Error(t, err)
@@ -349,11 +302,7 @@ func TestRepoPlugin_Apply_Errors(t *testing.T) {
 	t.Run("returns error when repo config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:   "clone_repo",
-			Type: "repo",
-			Repo: nil,
-		}
+		step := &config.Step{ID: "clone_repo", Type: "repo"}
 
 		// Need to provide evalResult for Apply
 		evalResult := &model.EvaluationResult{
@@ -396,4 +345,11 @@ func TestRepoConvertError(t *testing.T) {
 		require.ErrorAs(t, converted, &pluginErr)
 		require.Equal(t, "step3", pluginErr.StepID())
 	})
+}
+
+func newRepoStep(t *testing.T, id string, cfg config.RepoStep) *config.Step {
+	t.Helper()
+	step := &config.Step{ID: id, Type: "repo"}
+	require.NoError(t, step.SetConfig(cfg))
+	return step
 }

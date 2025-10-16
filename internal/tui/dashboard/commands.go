@@ -2,11 +2,13 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/alexisbeaulieu97/streamy/internal/engine"
-	"github.com/alexisbeaulieu97/streamy/internal/plugin"
+	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
+	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -24,10 +26,13 @@ func loadInitialStatusCmd(pipelines []registry.Pipeline, cache *registry.StatusC
 }
 
 // verifyCmd runs verification for a pipeline asynchronously
-func verifyCmd(ctx context.Context, pipelineID string, configPath string, pluginReg *plugin.PluginRegistry) tea.Cmd {
+func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc *pipelineapp.Service) tea.Cmd {
 	return func() tea.Msg {
-		// Run verification
-		result, err := engine.VerifyPipeline(ctx, configPath, pluginReg)
+		outcome, err := svc.Verify(ctx, pipelineapp.VerifyRequest{
+			ConfigPath:     configPath,
+			LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
+			DefaultTimeout: 30 * time.Second,
+		})
 
 		if err != nil {
 			// Context cancellation
@@ -41,6 +46,15 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, plugin
 			}
 		}
 
+		if outcome == nil || outcome.ExecutionResult == nil {
+			return VerifyErrorMsg{
+				PipelineID: pipelineID,
+				Error:      fmt.Errorf("verification produced no result"),
+			}
+		}
+
+		result := outcome.ExecutionResult
+
 		return VerifyCompleteMsg{
 			PipelineID: pipelineID,
 			Result:     result,
@@ -49,10 +63,13 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, plugin
 }
 
 // applyCmd runs apply for a pipeline asynchronously
-func applyCmd(ctx context.Context, pipelineID string, configPath string, pluginReg *plugin.PluginRegistry) tea.Cmd {
+func applyCmd(ctx context.Context, pipelineID string, configPath string, svc *pipelineapp.Service) tea.Cmd {
 	return func() tea.Msg {
-		// Run apply
-		result, err := engine.ApplyPipeline(ctx, configPath, pluginReg)
+		outcome, err := svc.Apply(ctx, pipelineapp.ApplyRequest{
+			ConfigPath:      configPath,
+			LoggerOptions:   logger.Options{Level: "error", HumanReadable: false},
+			ContinueOnError: false,
+		})
 
 		if err != nil {
 			// Context cancellation
@@ -66,24 +83,35 @@ func applyCmd(ctx context.Context, pipelineID string, configPath string, pluginR
 			}
 		}
 
+		if outcome == nil || outcome.ExecutionResult == nil {
+			return ApplyErrorMsg{
+				PipelineID: pipelineID,
+				Error:      fmt.Errorf("apply produced no result"),
+			}
+		}
+
 		return ApplyCompleteMsg{
 			PipelineID: pipelineID,
-			Result:     result,
+			Result:     outcome.ExecutionResult,
 		}
 	}
 }
 
 // refreshAllCmd runs verification for all pipelines in parallel
-func refreshAllCmd(ctx context.Context, pipelines []registry.Pipeline, pluginReg *plugin.PluginRegistry) tea.Cmd {
+func refreshAllCmd(ctx context.Context, pipelines []registry.Pipeline, _ *pipelineapp.Service) tea.Cmd {
 	return func() tea.Msg {
 		return RefreshStartedMsg{Total: len(pipelines)}
 	}
 }
 
 // refreshSingleCmd runs verification for a single pipeline during refresh all
-func refreshSingleCmd(ctx context.Context, pipeline registry.Pipeline, pluginReg *plugin.PluginRegistry, index int, total int) tea.Cmd {
+func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc *pipelineapp.Service, index int, total int) tea.Cmd {
 	return func() tea.Msg {
-		result, err := engine.VerifyPipeline(ctx, pipeline.Path, pluginReg)
+		outcome, err := svc.Verify(ctx, pipelineapp.VerifyRequest{
+			ConfigPath:     pl.Path,
+			LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
+			DefaultTimeout: 30 * time.Second,
+		})
 
 		if err != nil {
 			if ctx.Err() != nil {
@@ -91,7 +119,7 @@ func refreshSingleCmd(ctx context.Context, pipeline registry.Pipeline, pluginReg
 			}
 
 			return RefreshPipelineCompleteMsg{
-				PipelineID: pipeline.ID,
+				PipelineID: pl.ID,
 				Index:      index,
 				Total:      total,
 				Result:     nil,
@@ -99,11 +127,21 @@ func refreshSingleCmd(ctx context.Context, pipeline registry.Pipeline, pluginReg
 			}
 		}
 
+		if outcome == nil || outcome.ExecutionResult == nil {
+			return RefreshPipelineCompleteMsg{
+				PipelineID: pl.ID,
+				Index:      index,
+				Total:      total,
+				Result:     nil,
+				Error:      fmt.Errorf("verification produced no result"),
+			}
+		}
+
 		return RefreshPipelineCompleteMsg{
-			PipelineID: pipeline.ID,
+			PipelineID: pl.ID,
 			Index:      index,
 			Total:      total,
-			Result:     result,
+			Result:     outcome.ExecutionResult,
 			Error:      nil,
 		}
 	}

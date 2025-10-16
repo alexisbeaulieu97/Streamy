@@ -44,9 +44,9 @@ func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 		}
 	}
 
-	cfg := step.Symlink
-	if cfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("symlink configuration missing"))
+	cfg, err := loadSymlinkConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	// Check if symlink exists and points to correct target (read-only)
@@ -109,9 +109,9 @@ func (p *symlinkPlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 }
 
 func (p *symlinkPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
-	cfg := step.Symlink
-	if cfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("symlink configuration missing"))
+	cfg, err := loadSymlinkConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	if err := os.MkdirAll(filepath.Dir(cfg.Target), 0o755); err != nil {
@@ -152,4 +152,20 @@ func (p *symlinkPlugin) Apply(ctx context.Context, evalResult *model.EvaluationR
 		Status:  model.StatusSuccess,
 		Message: fmt.Sprintf("created symlink %s -> %s", cfg.Target, cfg.Source),
 	}, nil
+}
+
+func loadSymlinkConfig(step *config.Step) (*config.SymlinkStep, error) {
+	if step == nil {
+		return nil, fmt.Errorf("step is nil")
+	}
+
+	if len(step.RawConfig()) == 0 {
+		return nil, fmt.Errorf("symlink configuration missing")
+	}
+
+	cfg := &config.SymlinkStep{}
+	if err := step.DecodeConfig(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }

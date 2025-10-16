@@ -11,6 +11,10 @@ Always format files with `gofmt` (or `go fmt ./...`); the project expects Go’s
 
 ## Testing Guidelines
 Co-locate tests beside the code by creating `*_test.go` files. Use table-driven tests and helper functions marked with `t.Helper()`. Mark slower suites with build tags such as `//go:build integration` and run them via `go test -tags=integration ./...`. Capture coverage reports with `go test ./... -coverprofile=coverage.out` before submitting larger changes.
+Tests placed under `cmd`, `internal/cmd`, and `internal/tui` do not count toward coverage targets, so prefer locating coverage-sensitive tests alongside the packages they exercise.
 
 ## Commit & Pull Request Guidelines
 The history is new, so use Conventional Commits (e.g., `feat: add stream session store`). Keep each commit scoped to a single concern and include any schema or config migrations. Pull requests must summarize the change set, link related issues, and note manual verification (`go test ./...`, local run, etc.). Add screenshots or API examples when touching user-facing flows.
+
+## Agent Workflow
+Whenever `.go` files are edited, finish the session by running `golangci-lint run` followed by `goimports -w .` so lint checks pass and imports stay organized.

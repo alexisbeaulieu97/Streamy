@@ -12,8 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alexisbeaulieu97/streamy/internal/config"
-	"github.com/alexisbeaulieu97/streamy/internal/engine"
+	"github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
@@ -26,15 +25,7 @@ type verifyOptions struct {
 	Timeout    time.Duration
 }
 
-type verificationExecutor interface {
-	VerifySteps(ctx *engine.ExecutionContext, steps []config.Step, defaultTimeout time.Duration) (*model.VerificationSummary, error)
-}
-
 var (
-	parseConfigFunc                  = config.ParseConfig
-	newLoggerFunc                    = func(opts logger.Options) (*logger.Logger, error) { return logger.New(opts) }
-	newExecutorFunc                  = func(log *logger.Logger) verificationExecutor { return engine.NewExecutor(log) }
-	getRegistryFunc                  = getAppRegistry
 	exitFunc                         = os.Exit
 	stderrWriter           io.Writer = os.Stderr
 	printTableOutputFunc             = printTableOutput
@@ -42,7 +33,7 @@ var (
 	printJSONOutputFunc              = printJSONOutput
 )
 
-func newVerifyCmd(root *rootFlags) *cobra.Command {
+func newVerifyCmd(root *rootFlags, app *AppContext) *cobra.Command {
 	opts := verifyOptions{}
 
 	cmd := &cobra.Command{
@@ -56,7 +47,7 @@ exit code 1 if any changes are needed.`,
 			opts.ConfigPath = args[0]
 			opts.Verbose = root.verbose
 
-			return runVerify(opts)
+			return runVerify(app, opts)
 		},
 	}
 
@@ -66,8 +57,8 @@ exit code 1 if any changes are needed.`,
 	return cmd
 }
 
-func runVerify(opts verifyOptions) error {
-	exitCode, err := runVerifyInternal(opts)
+func runVerify(app *AppContext, opts verifyOptions) error {
+	exitCode, err := runVerifyInternal(app, opts)
 	if err != nil {
 		return err
 	}
@@ -75,11 +66,22 @@ func runVerify(opts verifyOptions) error {
 	return nil
 }
 
-func runVerifyInternal(opts verifyOptions) (int, error) {
-	cfg, err := parseConfigFunc(opts.ConfigPath)
+func runVerifyInternal(app *AppContext, opts verifyOptions) (int, error) {
+	service := app.Pipeline
+
+	prepared, err := service.Prepare(opts.ConfigPath)
 	if err != nil {
-		fmt.Fprintf(stderrWriter, "Error parsing configuration: %v\n", err)
-		return 2, nil
+		var parseErr *streamyerrors.ParseError
+		var validationErr *streamyerrors.ValidationError
+		if errors.As(err, &parseErr) {
+			_, _ = fmt.Fprintf(stderrWriter, "Error parsing configuration: %v\n", err)
+			return 2, nil
+		}
+		if errors.As(err, &validationErr) {
+			_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
+			return 2, nil
+		}
+		return 3, err
 	}
 
 	level := "info"
@@ -87,51 +89,53 @@ func runVerifyInternal(opts verifyOptions) (int, error) {
 		level = "debug"
 	}
 
-	log, err := newLoggerFunc(logger.Options{Level: level, HumanReadable: !opts.JSON})
+	log, err := logger.New(logger.Options{Level: level, HumanReadable: !opts.JSON})
 	if err != nil {
-		fmt.Fprintf(stderrWriter, "Error creating logger: %v\n", err)
+		_, _ = fmt.Fprintf(stderrWriter, "Error creating logger: %v\n", err)
 		return 3, nil
 	}
-
-	executor := newExecutorFunc(log)
 
 	ctx := context.Background()
 	perStepTimeout := opts.Timeout
 	if perStepTimeout > 0 {
-		var cancel context.CancelFunc
-		totalTimeout := perStepTimeout * time.Duration(len(cfg.Steps))
-		if len(cfg.Steps) == 0 {
+		totalTimeout := perStepTimeout * time.Duration(len(prepared.Config.Steps))
+		if len(prepared.Config.Steps) == 0 {
 			totalTimeout = perStepTimeout
 		}
+		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, totalTimeout)
 		defer cancel()
 	}
 
 	log.WithFields(map[string]any{
 		"config": opts.ConfigPath,
-		"steps":  len(cfg.Steps),
+		"steps":  len(prepared.Config.Steps),
 	}).Info("Starting verification")
 
-	execCtx := &engine.ExecutionContext{
-		Config:   cfg,
-		DryRun:   true,
-		Verbose:  opts.Verbose,
-		Logger:   log,
-		Context:  ctx,
-		Registry: getRegistryFunc(),
-	}
+	outcome, verifyErr := service.Verify(ctx, pipeline.VerifyRequest{
+		Prepared:       prepared,
+		LoggerOptions:  logger.Options{Level: level, HumanReadable: !opts.JSON},
+		Verbose:        opts.Verbose,
+		PerStepTimeout: perStepTimeout,
+		DefaultTimeout: perStepTimeout,
+	})
 
-	summary, err := executor.VerifySteps(execCtx, cfg.Steps, perStepTimeout)
-	if err != nil {
+	if verifyErr != nil {
 		var validationErr *streamyerrors.ValidationError
-		if errors.As(err, &validationErr) {
-			fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
+		if errors.As(verifyErr, &validationErr) {
+			_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", verifyErr)
 			return 2, nil
 		}
-
-		fmt.Fprintf(stderrWriter, "Verification error: %v\n", err)
+		_, _ = fmt.Fprintf(stderrWriter, "Verification error: %v\n", verifyErr)
 		return 3, nil
 	}
+
+	if outcome == nil || outcome.Summary == nil {
+		_, _ = fmt.Fprintf(stderrWriter, "Verification error: no summary produced\n")
+		return 3, nil
+	}
+
+	summary := outcome.Summary
 
 	log.WithFields(map[string]any{
 		"total":     summary.TotalSteps,

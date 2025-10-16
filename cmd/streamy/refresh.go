@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -12,14 +13,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alexisbeaulieu97/streamy/internal/config"
+	"github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
+	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
+	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
 type refreshOptions struct {
-	concurrency int
-	pipelineID  string
-	dryRun      bool
+	concurrency    int
+	pipelineID     string
+	dryRun         bool
+	timeout        time.Duration
+	configPath     string
+	perStepTimeout time.Duration
 }
 
 type refreshResult struct {
@@ -28,9 +34,10 @@ type refreshResult struct {
 	Summary    string
 	StepCount  int
 	Err        error
+	Outcome    *registry.ExecutionResult
 }
 
-func newRefreshCmd(rootFlags *rootFlags) *cobra.Command {
+func newRefreshCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 	opts := &refreshOptions{}
 
 	cmd := &cobra.Command{
@@ -42,16 +49,19 @@ func newRefreshCmd(rootFlags *rootFlags) *cobra.Command {
 				opts.pipelineID = args[0]
 			}
 			opts.dryRun = rootFlags.dryRun
-			return runRefresh(cmd, opts)
+			return runRefresh(cmd, opts, app)
 		},
 	}
 
 	cmd.Flags().IntVarP(&opts.concurrency, "concurrency", "c", 5, "Number of pipelines to verify concurrently")
+	cmd.Flags().DurationVar(&opts.timeout, "timeout", time.Minute, "Timeout per pipeline verification (e.g. 45s, 2m)")
+	cmd.Flags().StringVar(&opts.configPath, "config-path", "", "Path to configuration file")
+	cmd.Flags().DurationVar(&opts.perStepTimeout, "per-step-timeout", 30*time.Second, "Default timeout per step; accepts Go duration strings (e.g. 60s)")
 
 	return cmd
 }
 
-func runRefresh(cmd *cobra.Command, opts *refreshOptions) error {
+func runRefresh(cmd *cobra.Command, opts *refreshOptions, app *AppContext) error {
 	registryPath, err := defaultRegistryPath()
 	if err != nil {
 		return newCommandError("refresh", "determining registry path", err, "Ensure your HOME directory is set correctly.")
@@ -69,7 +79,7 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions) error {
 
 	pipelines := reg.List()
 	if len(pipelines) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered. Run 'streamy registry add <config-path>' first.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered. Run 'streamy registry add <config-path>' first.")
 		return nil
 	}
 
@@ -91,9 +101,9 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions) error {
 	})
 
 	if opts.dryRun {
-		fmt.Fprintln(cmd.OutOrStdout(), "Dry-run: Would refresh the following pipelines:")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Dry-run: Would refresh the following pipelines:")
 		for _, p := range pipelines {
-			fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s)\n", p.ID, valueOrFallback(p.Name, "(no name)"))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s)\n", p.ID, valueOrFallback(p.Name, "(no name)"))
 		}
 		return nil
 	}
@@ -103,7 +113,9 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions) error {
 		return newCommandError("refresh", "loading status cache", err, "Check status cache file permissions and try again.")
 	}
 
-	results := verifyPipelines(cmd, pipelines, opts.concurrency)
+	service := app.Pipeline
+
+	results := verifyPipelines(cmd, service, pipelines, opts.concurrency, opts.timeout, opts.configPath, opts.perStepTimeout)
 
 	updateStatusCache(statusCache, results)
 
@@ -112,16 +124,17 @@ func runRefresh(cmd *cobra.Command, opts *refreshOptions) error {
 	}
 
 	summary := summarizeResults(results)
-	fmt.Fprintf(cmd.OutOrStdout(), "\nSummary:\n  ✓ Satisfied: %d\n  ✗ Failed:    %d\n  ⚠ Drifted:   %d\n", summary.satisfied, summary.failed, summary.drifted)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nSummary:\n  ✓ Satisfied: %d\n  ✗ Failed:    %d\n  ⚠ Drifted:   %d\n", summary.satisfied, summary.failed, summary.drifted)
 
 	return nil
 }
 
-func verifyPipelines(cmd *cobra.Command, pipelines []registry.Pipeline, concurrency int) []refreshResult {
+func verifyPipelines(cmd *cobra.Command, service *pipeline.Service, pipelines []registry.Pipeline, concurrency int, timeout time.Duration, configPath string, perStepTimeout time.Duration) []refreshResult {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
 
+	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
 	results := make([]refreshResult, len(pipelines))
@@ -136,12 +149,12 @@ func verifyPipelines(cmd *cobra.Command, pipelines []registry.Pipeline, concurre
 			defer wg.Done()
 
 			sem <- struct{}{}
-			fmt.Fprintf(out, "[%d/%d] %s... ", i+1, len(pipelines), pipeline.ID)
+			_, _ = fmt.Fprintf(out, "[%d/%d] %s... ", i+1, len(pipelines), pipeline.ID)
 
-			result := refreshPipeline(pipeline)
+			result := refreshPipeline(ctx, service, pipeline, timeout, configPath, perStepTimeout)
 			result.PipelineID = pipeline.ID
 
-			fmt.Fprintf(out, "%s\n", formatRefreshResult(result))
+			_, _ = fmt.Fprintf(out, "%s\n", formatRefreshResult(result))
 
 			results[i] = result
 			<-sem
@@ -152,60 +165,57 @@ func verifyPipelines(cmd *cobra.Command, pipelines []registry.Pipeline, concurre
 	return results
 }
 
-func refreshPipeline(p registry.Pipeline) refreshResult {
-	cfg, err := config.ParseConfig(p.Path)
+func refreshPipeline(ctx context.Context, service *pipeline.Service, p registry.Pipeline, timeout time.Duration, configPath string, perStepTimeout time.Duration) refreshResult {
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	prepared, err := service.Prepare(p.Path)
 	if err != nil {
-		return refreshResult{Err: err, Status: registry.StatusFailed, Summary: "Configuration load failed"}
+		status := registry.StatusFailed
+		var validationErr *streamyerrors.ValidationError
+		if errors.As(err, &validationErr) {
+			return refreshResult{Status: status, Summary: "Configuration validation failed", Err: err}
+		}
+		return refreshResult{Status: status, Summary: "Configuration load failed", Err: err}
 	}
 
-	outcome := invokeRefreshVerifier(p, cfg)
-	stepCount := outcome.StepCount
-	if stepCount == 0 {
-		stepCount = len(cfg.Steps)
+	outcome, verifyErr := service.Verify(ctx, pipeline.VerifyRequest{
+		Prepared:       prepared,
+		LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
+		DefaultTimeout: perStepTimeout,
+		ConfigPath:     configPath,
+		PerStepTimeout: perStepTimeout,
+	})
+
+	result := refreshResult{
+		Status:  registry.StatusFailed,
+		Summary: "Verification failed",
+		Err:     verifyErr,
+		Outcome: nil,
 	}
 
-	return refreshResult{Status: outcome.Status, Summary: outcome.Summary, StepCount: stepCount, Err: outcome.Err}
-}
-
-type verifyOutcome struct {
-	Status    registry.PipelineStatus
-	Summary   string
-	StepCount int
-	Err       error
-}
-
-var (
-	refreshVerifyMu sync.Mutex
-	refreshVerifyFn = defaultRefreshVerifier
-)
-
-func invokeRefreshVerifier(p registry.Pipeline, cfg *config.Config) verifyOutcome {
-	refreshVerifyMu.Lock()
-	fn := refreshVerifyFn
-	refreshVerifyMu.Unlock()
-
-	return fn(p, cfg)
-}
-
-func defaultRefreshVerifier(_ registry.Pipeline, cfg *config.Config) verifyOutcome {
-	return verifyOutcome{
-		Status:    registry.StatusSatisfied,
-		Summary:   "Verification succeeded",
-		StepCount: len(cfg.Steps),
+	if outcome != nil && outcome.ExecutionResult != nil {
+		result.Outcome = outcome.ExecutionResult
+		result.Status = outcome.ExecutionResult.Status
+		result.Summary = outcome.ExecutionResult.Summary
+		result.StepCount = outcome.ExecutionResult.StepCount
+		if result.StepCount == 0 {
+			result.StepCount = len(prepared.Config.Steps)
+		}
+		if result.Status == registry.StatusSatisfied || result.Status == registry.StatusDrifted {
+			result.Err = nil
+		}
 	}
-}
 
-func withRefreshVerifyFunc(fn func(registry.Pipeline, *config.Config) verifyOutcome) func() {
-	refreshVerifyMu.Lock()
-	original := refreshVerifyFn
-	refreshVerifyFn = fn
-	refreshVerifyMu.Unlock()
-
-	return func() {
-		refreshVerifyMu.Lock()
-		refreshVerifyFn = original
-		refreshVerifyMu.Unlock()
+	if verifyErr == nil && result.Outcome == nil {
+		result.Status = registry.StatusFailed
+		result.Summary = "Verification produced no result"
 	}
+
+	return result
 }
 
 func formatRefreshResult(result refreshResult) string {
@@ -255,7 +265,10 @@ func updateStatusCache(cache *registry.StatusCache, results []refreshResult) {
 			Summary:     r.Summary,
 			StepCount:   r.StepCount,
 			LastRun:     now,
-			FailedSteps: []string{},
+			FailedSteps: nil,
+		}
+		if r.Outcome != nil {
+			status.FailedSteps = append([]string(nil), r.Outcome.FailedSteps...)
 		}
 		if r.Status == registry.StatusFailed && r.Summary == "" {
 			status.Summary = "Verification failed"

@@ -1,6 +1,6 @@
 # Streamy
 
-Streamy is a declarative environment setup tool. Describe packages, repositories, symlinks, file copies, and shell commands in YAML, then run `streamy apply config.yaml` to reproduce the environment with dependency awareness, dry-run previews, and a Bubbletea-powered TUI.
+Streamy is a declarative environment setup tool. Describe packages, repositories, symlinks, file copies, and shell commands in YAML, then run `streamy apply config.yaml` to reproduce the environment with dependency awareness, dry-run previews, and a Bubbletea-powered TUI. Plugins read configuration exclusively through `step.DecodeConfig(&config.<Type>Step{})`, and helpers/tests populate step payloads with `step.SetConfig(config.<Type>Step{...})`.
 
 ## Features
 

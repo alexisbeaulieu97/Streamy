@@ -3,6 +3,7 @@ package templateplugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"gopkg.in/yaml.v3"
 )
 
 func TestTemplatePlugin_Metadata(t *testing.T) {
@@ -44,14 +46,8 @@ func TestTemplatePlugin_EvaluateMissingTemplate(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "output.txt")
 
 	// Don't create the source file
-	step := &config.Step{
-		ID:   "missing_template",
-		Type: "template",
-		Template: &config.TemplateStep{
-			Source:      src,
-			Destination: dst,
-		},
-	}
+	step := &config.Step{ID: "missing_template", Type: "template"}
+	require.NoError(t, step.SetConfig(config.TemplateStep{Source: src, Destination: dst}))
 
 	p := New()
 
@@ -75,14 +71,8 @@ func TestTemplatePlugin_EvaluateSatisfied(t *testing.T) {
 	// Create output with same content (assuming no variables)
 	require.NoError(t, os.WriteFile(dst, []byte(content), 0o644))
 
-	step := &config.Step{
-		ID:   "satisfied_template",
-		Type: "template",
-		Template: &config.TemplateStep{
-			Source:      src,
-			Destination: dst,
-		},
-	}
+	step := &config.Step{ID: "satisfied_template", Type: "template"}
+	require.NoError(t, step.SetConfig(config.TemplateStep{Source: src, Destination: dst}))
 
 	p := New()
 
@@ -104,14 +94,8 @@ func TestTemplatePlugin_EvaluateDrifted(t *testing.T) {
 	// Create output with different content
 	require.NoError(t, os.WriteFile(dst, []byte("Different content"), 0o644))
 
-	step := &config.Step{
-		ID:   "drifted_template",
-		Type: "template",
-		Template: &config.TemplateStep{
-			Source:      src,
-			Destination: dst,
-		},
-	}
+	step := &config.Step{ID: "drifted_template", Type: "template"}
+	require.NoError(t, step.SetConfig(config.TemplateStep{Source: src, Destination: dst}))
 
 	p := New()
 
@@ -130,14 +114,8 @@ func TestTemplatePlugin_ApplyCreatesFile(t *testing.T) {
 	// Create template
 	require.NoError(t, os.WriteFile(src, []byte("Hello World!"), 0o644))
 
-	step := &config.Step{
-		ID:   "create_template",
-		Type: "template",
-		Template: &config.TemplateStep{
-			Source:      src,
-			Destination: dst,
-		},
-	}
+	step := &config.Step{ID: "create_template", Type: "template"}
+	require.NoError(t, step.SetConfig(config.TemplateStep{Source: src, Destination: dst}))
 
 	p := New()
 
@@ -167,17 +145,8 @@ func TestTemplatePlugin_ApplyWithVariables(t *testing.T) {
 	// Create template with variables
 	require.NoError(t, os.WriteFile(src, []byte("Hello {{.Name}}!"), 0o644))
 
-	step := &config.Step{
-		ID:   "template_with_vars",
-		Type: "template",
-		Template: &config.TemplateStep{
-			Source:      src,
-			Destination: dst,
-			Vars: map[string]string{
-				"Name": "Streamy",
-			},
-		},
-	}
+	step := &config.Step{ID: "template_with_vars", Type: "template"}
+	require.NoError(t, step.SetConfig(config.TemplateStep{Source: src, Destination: dst, Vars: map[string]string{"Name": "Streamy"}}))
 
 	p := New()
 
@@ -198,6 +167,29 @@ func TestTemplatePlugin_ApplyWithVariables(t *testing.T) {
 	require.Equal(t, "Hello Streamy!", string(content))
 }
 
+func TestTemplatePlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "template.txt.tmpl")
+	dst := filepath.Join(t.TempDir(), "output.txt")
+
+	require.NoError(t, os.WriteFile(src, []byte("Hello"), 0o644))
+
+	yamlStr := fmt.Sprintf(`
+id: raw_template
+type: template
+source: %s
+destination: %s
+`, src, dst)
+
+	var step config.Step
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), &step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+}
+
 func TestTemplatePlugin_EvaluateWithVariables(t *testing.T) {
 	t.Parallel()
 
@@ -210,17 +202,8 @@ func TestTemplatePlugin_EvaluateWithVariables(t *testing.T) {
 	// Create output with different variable value
 	require.NoError(t, os.WriteFile(dst, []byte("Hello World!"), 0o644))
 
-	step := &config.Step{
-		ID:   "template_vars_eval",
-		Type: "template",
-		Template: &config.TemplateStep{
-			Source:      src,
-			Destination: dst,
-			Vars: map[string]string{
-				"Name": "Streamy",
-			},
-		},
-	}
+	step := &config.Step{ID: "template_vars_eval", Type: "template"}
+	require.NoError(t, step.SetConfig(config.TemplateStep{Source: src, Destination: dst, Vars: map[string]string{"Name": "Streamy"}}))
 
 	p := New()
 
@@ -234,11 +217,8 @@ func TestTemplatePlugin_EvaluateErrors(t *testing.T) {
 	t.Run("returns error when template config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:       "test_template",
-			Type:     "template",
-			Template: nil,
-		}
+		step := &config.Step{ID: "test_template", Type: "template"}
+		require.NoError(t, step.SetConfig(nil))
 
 		_, err := p.Evaluate(context.Background(), step)
 		require.Error(t, err)
@@ -252,14 +232,7 @@ func TestTemplatePlugin_EvaluateErrors(t *testing.T) {
 		// Create template with invalid syntax
 		require.NoError(t, os.WriteFile(src, []byte("Hello {{.invalid"), 0o644))
 
-		step := &config.Step{
-			ID:   "invalid_template",
-			Type: "template",
-			Template: &config.TemplateStep{
-				Source:      src,
-				Destination: dst,
-			},
-		}
+		step := makeTemplateStep(t, "invalid_template", config.TemplateStep{Source: src, Destination: dst})
 
 		p := New()
 
@@ -274,11 +247,8 @@ func TestTemplatePlugin_ApplyErrors(t *testing.T) {
 	t.Run("returns error when template config is nil", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:       "test_template",
-			Type:     "template",
-			Template: nil,
-		}
+		step := &config.Step{ID: "test_template", Type: "template"}
+		require.NoError(t, step.SetConfig(nil))
 
 		evalResult := &model.EvaluationResult{
 			StepID:         step.ID,
@@ -295,14 +265,7 @@ func TestTemplatePlugin_ApplyErrors(t *testing.T) {
 	t.Run("returns error when template is missing", func(t *testing.T) {
 		p := New()
 
-		step := &config.Step{
-			ID:   "missing_template_apply",
-			Type: "template",
-			Template: &config.TemplateStep{
-				Source:      "/nonexistent/template.txt.tmpl",
-				Destination: "/tmp/output.txt",
-			},
-		}
+		step := makeTemplateStep(t, "missing_template_apply", config.TemplateStep{Source: "/nonexistent/template.txt.tmpl", Destination: "/tmp/output.txt"})
 
 		evalResult, err := p.Evaluate(context.Background(), step)
 		require.NoError(t, err)
@@ -339,14 +302,7 @@ func TestTemplatePlugin_Contract(t *testing.T) {
 			dst := filepath.Join(t.TempDir(), "output.txt")
 
 			// Don't create files to keep it simple
-			step := &config.Step{
-				ID:   "idempotent-test",
-				Type: "template",
-				Template: &config.TemplateStep{
-					Source:      src,
-					Destination: dst,
-				},
-			}
+			step := makeTemplateStep(t, "idempotent-test", config.TemplateStep{Source: src, Destination: dst})
 			ctx := context.Background()
 
 			// Call Evaluate twice
@@ -390,4 +346,11 @@ func TestTemplateConvertError(t *testing.T) {
 		require.ErrorAs(t, converted, &pluginErr)
 		require.Equal(t, "tmpl3", pluginErr.StepID())
 	})
+}
+
+func makeTemplateStep(t *testing.T, id string, cfg config.TemplateStep) *config.Step {
+	t.Helper()
+	step := &config.Step{ID: id, Type: "template"}
+	require.NoError(t, step.SetConfig(cfg))
+	return step
 }

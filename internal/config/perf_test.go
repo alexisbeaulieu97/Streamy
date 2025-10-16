@@ -19,11 +19,9 @@ func generateConfig(count int) *Config {
 	steps := make([]Step, count)
 	for i := 0; i < count; i++ {
 		id := fmt.Sprintf("step_%d", i)
-		step := Step{
-			ID:      id,
-			Type:    "command",
-			Enabled: true,
-			Command: &CommandStep{Command: "noop"},
+		step := Step{ID: id, Type: "command", Enabled: true}
+		if err := step.SetConfig(CommandStep{Command: "noop"}); err != nil {
+			panic(err)
 		}
 		if i > 0 {
 			step.DependsOn = []string{fmt.Sprintf("step_%d", i-1)}

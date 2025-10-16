@@ -3,6 +3,7 @@ package plugin
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,6 +98,49 @@ func TestStateError(t *testing.T) {
 		assert.True(t, errors.Is(err, &StateError{}))
 		assert.False(t, errors.Is(err, &ValidationError{}))
 	})
+}
+
+func TestErrPluginNotFound(t *testing.T) {
+	err := ErrPluginNotFound{Name: "missing-plugin"}
+	assert.Equal(t, "plugin 'missing-plugin' not found in registry\nHint: ensure the plugin is registered before usage", err.Error())
+}
+
+func TestErrCircularDependencyEmpty(t *testing.T) {
+	err := ErrCircularDependency{Cycle: []string{}}
+	assert.Equal(t, "circular dependency detected\nHint: review plugin dependencies to remove cycles", err.Error())
+}
+
+func TestErrCircularDependencyWithCycle(t *testing.T) {
+	err := ErrCircularDependency{Cycle: []string{"plugin-a", "plugin-b", "plugin-c"}}
+	result := err.Error()
+	assert.Contains(t, result, "circular dependency detected: plugin-a -> plugin-b -> plugin-c -> plugin-a")
+	assert.Contains(t, result, "Hint: break the cycle")
+}
+
+func TestErrVersionConflict(t *testing.T) {
+	err := ErrVersionConflict{
+		Plugin:        "core-plugin",
+		RequiredBy:    map[string]string{"dependent-a": "1.0.0", "dependent-b": "2.0.0"},
+		ActualVersion: "3.0.0",
+	}
+	result := err.Error()
+	assert.Contains(t, result, "version conflict for plugin 'core-plugin' (actual 3.0.0)")
+	assert.Contains(t, result, "Hint: align plugin versions")
+	// Verify at least one dependent is mentioned (map iteration order is non-deterministic)
+	dependentMentioned := strings.Contains(result, "dependent-a") || strings.Contains(result, "dependent-b")
+	assert.True(t, dependentMentioned, "Expected at least one dependent to be mentioned in error message")
+}
+
+func TestErrUndeclaredDependency(t *testing.T) {
+	err := ErrUndeclaredDependency{Caller: "my-plugin", Dependency: "external-service"}
+	expected := "plugin 'my-plugin' attempted to access undeclared dependency 'external-service'\nHint: add 'external-service' to PluginMetadata.Dependencies"
+	assert.Equal(t, expected, err.Error())
+}
+
+func TestErrMissingDependency(t *testing.T) {
+	err := ErrMissingDependency{Plugin: "dependent-plugin", Dependency: "missing-dependency"}
+	expected := "plugin 'dependent-plugin' declares dependency 'missing-dependency' which is not registered\nHint: register the dependency before validating or initializing plugins"
+	assert.Equal(t, expected, err.Error())
 }
 
 func TestAsPluginError(t *testing.T) {

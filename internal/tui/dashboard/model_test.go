@@ -27,7 +27,7 @@ func TestSortPipelines(t *testing.T) {
 
 	// Pre-populate cache with statuses
 	for _, p := range pipelines {
-		cache.Set(p.ID, registry.CachedStatus{Status: p.Status})
+		_ = cache.Set(p.ID, registry.CachedStatus{Status: p.Status})
 	}
 
 	m := NewModel(pipelines, reg, cache, nil)
@@ -56,7 +56,7 @@ func TestCountByStatus(t *testing.T) {
 
 	// Pre-populate cache with statuses
 	for _, p := range pipelines {
-		cache.Set(p.ID, registry.CachedStatus{Status: p.Status})
+		_ = cache.Set(p.ID, registry.CachedStatus{Status: p.Status})
 	}
 
 	m := NewModel(pipelines, reg, cache, nil)

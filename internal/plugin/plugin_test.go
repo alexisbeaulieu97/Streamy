@@ -77,13 +77,8 @@ func TestPluginSchemaProvidesTypeInformation(t *testing.T) {
 
 func TestPluginEvaluateAndApply(t *testing.T) {
 	p := &testPlugin{}
-	step := &config.Step{
-		ID:   "run_command",
-		Type: "command",
-		Command: &config.CommandStep{
-			Command: "echo hello",
-		},
-	}
+	step := &config.Step{ID: "run_command", Type: "command"}
+	require.NoError(t, step.SetConfig(config.CommandStep{Command: "echo hello"}))
 
 	// Test evaluation
 	evalResult, err := p.Evaluate(context.Background(), step)

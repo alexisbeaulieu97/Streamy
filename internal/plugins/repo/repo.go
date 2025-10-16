@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -67,9 +69,9 @@ func (p *repoPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 		}
 	}
 
-	repoCfg := step.Repo
-	if repoCfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("repo configuration missing"))
+	repoCfg, err := loadRepoConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	// Check destination directory (read-only operation)
@@ -193,9 +195,9 @@ func (p *repoPlugin) Evaluate(ctx context.Context, step *config.Step) (*model.Ev
 }
 
 func (p *repoPlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
-	repoCfg := step.Repo
-	if repoCfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("repo configuration missing"))
+	repoCfg, err := loadRepoConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	// Use evaluation data to avoid recomputation
@@ -288,4 +290,60 @@ func convertError(stepID string, err error) error {
 
 	// Fallback to ExecutionError for unknown error types
 	return plugin.NewExecutionError(stepID, err)
+}
+
+type repoConfig struct {
+	*config.RepoStep
+	RawConfig map[string]any
+}
+
+func loadRepoConfig(step *config.Step) (*repoConfig, error) {
+	if step == nil {
+		return nil, fmt.Errorf("step is nil")
+	}
+
+	repoPath := strings.TrimSpace(os.Getenv("STREAMY_REPO_PATH"))
+	branch := strings.TrimSpace(os.Getenv("STREAMY_REPO_BRANCH"))
+	depth := strings.TrimSpace(os.Getenv("STREAMY_REPO_DEPTH"))
+	url := strings.TrimSpace(os.Getenv("STREAMY_REPO_URL"))
+
+	raw := step.RawConfig()
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("repo configuration missing")
+	}
+
+	cfg := &config.RepoStep{}
+	if err := step.DecodeConfig(cfg); err != nil {
+		return nil, fmt.Errorf("repo configuration decode failed: %w", err)
+	}
+
+	if repoPath != "" {
+		cfg.Destination = repoPath
+	}
+	if branch != "" {
+		cfg.Branch = branch
+	}
+	if depth != "" {
+		parsedDepth, err := strconv.Atoi(depth)
+		if err != nil {
+			return nil, fmt.Errorf("invalid STREAMY_REPO_DEPTH %q: %w", depth, err)
+		}
+		if parsedDepth < 0 {
+			return nil, fmt.Errorf("invalid STREAMY_REPO_DEPTH %q: must be >= 0", depth)
+		}
+		cfg.Depth = parsedDepth
+	}
+	if url != "" {
+		cfg.URL = url
+	}
+
+	// Validate the configuration after environment overrides
+	if err := config.GetValidator().Struct(cfg); err != nil {
+		return nil, fmt.Errorf("repo configuration validation failed: %w", err)
+	}
+
+	return &repoConfig{
+		RepoStep:  cfg,
+		RawConfig: raw,
+	}, nil
 }

@@ -52,9 +52,9 @@ type packageEvaluationData struct {
 }
 
 func (p *packagePlugin) Evaluate(ctx context.Context, step *config.Step) (*model.EvaluationResult, error) {
-	pkgCfg := step.Package
-	if pkgCfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("package configuration missing"))
+	pkgCfg, err := loadPackageConfig(step)
+	if err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -113,9 +113,8 @@ func (p *packagePlugin) Evaluate(ctx context.Context, step *config.Step) (*model
 }
 
 func (p *packagePlugin) Apply(ctx context.Context, evalResult *model.EvaluationResult, step *config.Step) (*model.StepResult, error) {
-	pkgCfg := step.Package
-	if pkgCfg == nil {
-		return nil, plugin.NewValidationError(step.ID, fmt.Errorf("package configuration missing"))
+	if _, err := loadPackageConfig(step); err != nil {
+		return nil, plugin.NewValidationError(step.ID, err)
 	}
 
 	// Use evaluation data to avoid recomputation
@@ -205,4 +204,20 @@ func runCommand(ctx context.Context, name string, args ...string) error {
 	}
 
 	return nil
+}
+
+func loadPackageConfig(step *config.Step) (*config.PackageStep, error) {
+	if step == nil {
+		return nil, fmt.Errorf("step is nil")
+	}
+
+	if len(step.RawConfig()) == 0 {
+		return nil, fmt.Errorf("package configuration missing")
+	}
+
+	cfg := &config.PackageStep{}
+	if err := step.DecodeConfig(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }

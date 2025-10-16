@@ -2,6 +2,7 @@ package copyplugin
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/model"
 	pluginpkg "github.com/alexisbeaulieu97/streamy/internal/plugin"
+	"gopkg.in/yaml.v3"
 )
 
 func TestCopyPlugin_Metadata(t *testing.T) {
@@ -45,15 +47,8 @@ func TestCopyPlugin_EvaluateUsesHashForIdempotency(t *testing.T) {
 	require.NoError(t, os.WriteFile(srcFile, []byte("same"), 0o644))
 	require.NoError(t, os.WriteFile(dstFile, []byte("same"), 0o644))
 
-	step := &config.Step{
-		ID:   "copy_file",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: dstFile,
-			Overwrite:   true,
-		},
-	}
+	step := &config.Step{ID: "copy_file", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcFile, Destination: dstFile, Overwrite: true}))
 
 	p := New()
 	require.Implements(t, (*pluginpkg.Plugin)(nil), p)
@@ -77,15 +72,8 @@ func TestCopyPlugin_ApplyCopiesFileAndPermissions(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o750))
 
-	step := &config.Step{
-		ID:   "copy_file",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: dstFile,
-			Overwrite:   true,
-		},
-	}
+	step := &config.Step{ID: "copy_file", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcFile, Destination: dstFile, Overwrite: true}))
 
 	p := New()
 
@@ -117,16 +105,8 @@ func TestCopyPlugin_ApplyRecursiveCopy(t *testing.T) {
 
 	dstDir := t.TempDir()
 
-	step := &config.Step{
-		ID:   "copy_recursive",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcDir,
-			Destination: dstDir,
-			Recursive:   true,
-			Overwrite:   true,
-		},
-	}
+	step := &config.Step{ID: "copy_recursive", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcDir, Destination: dstDir, Recursive: true, Overwrite: true}))
 
 	p := New()
 
@@ -154,14 +134,8 @@ func TestCopyPlugin_EvaluateMissingSource(t *testing.T) {
 	srcFile := filepath.Join(srcDir, "nonexistent.txt")
 	dstFile := filepath.Join(dstDir, "file.txt")
 
-	step := &config.Step{
-		ID:   "copy_missing_source",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: dstFile,
-		},
-	}
+	step := &config.Step{ID: "copy_missing_source", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcFile, Destination: dstFile}))
 
 	p := New()
 
@@ -182,14 +156,8 @@ func TestCopyPlugin_EvaluateDestinationExists(t *testing.T) {
 	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
 	require.NoError(t, os.WriteFile(dstFile, []byte("content"), 0o644))
 
-	step := &config.Step{
-		ID:   "copy_existing_dest",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: dstFile,
-		},
-	}
+	step := &config.Step{ID: "copy_existing_dest", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcFile, Destination: dstFile}))
 
 	p := New()
 
@@ -198,6 +166,34 @@ func TestCopyPlugin_EvaluateDestinationExists(t *testing.T) {
 	require.Equal(t, model.StatusSatisfied, evalResult.CurrentState)
 	require.False(t, evalResult.RequiresAction)
 	require.Contains(t, evalResult.Message, "files are identical")
+}
+
+func TestCopyPlugin_EvaluateUsesRawConfigWhenStructNil(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	srcFile := filepath.Join(srcDir, "file.txt")
+	dstFile := filepath.Join(dstDir, "file.txt")
+
+	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
+
+	yamlStr := fmt.Sprintf(`
+id: raw_copy
+type: copy
+source: %s
+destination: %s
+overwrite: true
+`, srcFile, dstFile)
+
+	var step config.Step
+	require.NoError(t, yaml.Unmarshal([]byte(yamlStr), &step))
+
+	p := New()
+
+	evalResult, err := p.Evaluate(context.Background(), &step)
+	require.NoError(t, err)
+	require.Equal(t, model.StatusMissing, evalResult.CurrentState)
+	require.True(t, evalResult.RequiresAction)
 }
 
 func TestCopyPlugin_EvaluateDestinationDifferent(t *testing.T) {
@@ -210,15 +206,8 @@ func TestCopyPlugin_EvaluateDestinationDifferent(t *testing.T) {
 	require.NoError(t, os.WriteFile(srcFile, []byte("source"), 0o644))
 	require.NoError(t, os.WriteFile(dstFile, []byte("destination"), 0o644))
 
-	step := &config.Step{
-		ID:   "copy_different_dest",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: dstFile,
-			Overwrite:   true,
-		},
-	}
+	step := &config.Step{ID: "copy_different_dest", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcFile, Destination: dstFile, Overwrite: true}))
 
 	p := New()
 
@@ -239,15 +228,8 @@ func TestCopyPlugin_EvaluateNoOverwrite(t *testing.T) {
 	require.NoError(t, os.WriteFile(srcFile, []byte("source"), 0o644))
 	require.NoError(t, os.WriteFile(dstFile, []byte("destination"), 0o644))
 
-	step := &config.Step{
-		ID:   "copy_no_overwrite",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: dstFile,
-			Overwrite:   false,
-		},
-	}
+	step := &config.Step{ID: "copy_no_overwrite", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcFile, Destination: dstFile, Overwrite: false}))
 
 	p := New()
 
@@ -267,14 +249,8 @@ func TestCopyPlugin_EvaluateForDryRun(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(srcFile, []byte("content"), 0o644))
 
-	step := &config.Step{
-		ID:   "copy_dry_run",
-		Type: "copy",
-		Copy: &config.CopyStep{
-			Source:      srcFile,
-			Destination: dstFile,
-		},
-	}
+	step := &config.Step{ID: "copy_dry_run", Type: "copy"}
+	require.NoError(t, step.SetConfig(config.CopyStep{Source: srcFile, Destination: dstFile}))
 
 	p := New()
 

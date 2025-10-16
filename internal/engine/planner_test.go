@@ -13,10 +13,10 @@ func TestGeneratePlan(t *testing.T) {
 	t.Parallel()
 
 	steps := []config.Step{
-		{ID: "install_git", Type: "package", Enabled: true, Package: &config.PackageStep{Packages: []string{"git"}}},
-		{ID: "install_curl", Type: "package", Enabled: true, Package: &config.PackageStep{Packages: []string{"curl"}}},
-		{ID: "clone_repo", Type: "repo", Enabled: true, DependsOn: []string{"install_git"}, Repo: &config.RepoStep{URL: "https://example.com/repo.git", Destination: "/tmp/repo"}},
-		{ID: "configure", Type: "command", Enabled: true, DependsOn: []string{"clone_repo", "install_curl"}, Command: &config.CommandStep{Command: "./configure"}},
+		stepWithConfig(t, config.Step{ID: "install_git", Type: "package", Enabled: true}, config.PackageStep{Packages: []string{"git"}}),
+		stepWithConfig(t, config.Step{ID: "install_curl", Type: "package", Enabled: true}, config.PackageStep{Packages: []string{"curl"}}),
+		stepWithConfig(t, config.Step{ID: "clone_repo", Type: "repo", Enabled: true, DependsOn: []string{"install_git"}}, config.RepoStep{URL: "https://example.com/repo.git", Destination: "/tmp/repo"}),
+		stepWithConfig(t, config.Step{ID: "configure", Type: "command", Enabled: true, DependsOn: []string{"clone_repo", "install_curl"}}, config.CommandStep{Command: "./configure"}),
 	}
 
 	graph, err := BuildDAG(steps)
@@ -40,8 +40,8 @@ func TestGeneratePlan_String(t *testing.T) {
 	t.Parallel()
 
 	steps := []config.Step{
-		{ID: "a", Type: "command", Enabled: true, Command: &config.CommandStep{Command: "echo a"}},
-		{ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}, Command: &config.CommandStep{Command: "echo b"}},
+		stepWithConfig(t, config.Step{ID: "a", Type: "command", Enabled: true}, config.CommandStep{Command: "echo a"}),
+		stepWithConfig(t, config.Step{ID: "b", Type: "command", Enabled: true, DependsOn: []string{"a"}}, config.CommandStep{Command: "echo b"}),
 	}
 
 	graph, err := BuildDAG(steps)

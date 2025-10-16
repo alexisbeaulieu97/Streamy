@@ -76,24 +76,24 @@ func runShow(cmd *cobra.Command, pipelineID string, opts *showOptions) error {
 }
 
 func renderShowTable(cmd *cobra.Command, pipeline registry.Pipeline, status registry.CachedStatus) error {
-	fmt.Fprintf(cmd.OutOrStdout(), "Pipeline: %s\n", pipeline.ID)
-	fmt.Fprintf(cmd.OutOrStdout(), "Name:     %s\n", valueOrFallback(pipeline.Name, "(no name)"))
-	fmt.Fprintf(cmd.OutOrStdout(), "Path:     %s\n", pipeline.Path)
-	fmt.Fprintf(cmd.OutOrStdout(), "\nDescription:\n  %s\n\n", valueOrFallback(pipeline.Description, "(none)"))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Pipeline: %s\n", pipeline.ID)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Name:     %s\n", valueOrFallback(pipeline.Name, "(no name)"))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Path:     %s\n", pipeline.Path)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nDescription:\n  %s\n\n", valueOrFallback(pipeline.Description, "(none)"))
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Status:   %s\n", formatStatus(status.Status, supportsUnicode(cmd.OutOrStdout())))
-	fmt.Fprintf(cmd.OutOrStdout(), "Last Run: %s\n", formatLastRun(status.LastRun))
-	fmt.Fprintf(cmd.OutOrStdout(), "Summary:  %s\n", valueOrFallback(status.Summary, "(none)"))
-	fmt.Fprintf(cmd.OutOrStdout(), "Steps:    %d\n", status.StepCount)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Status:   %s\n", formatStatus(status.Status, supportsUnicode(cmd.OutOrStdout())))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last Run: %s\n", formatLastRun(status.LastRun))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Summary:  %s\n", valueOrFallback(status.Summary, "(none)"))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Steps:    %d\n", status.StepCount)
 
 	if len(status.FailedSteps) > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "Failed Steps:\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Failed Steps:\n")
 		for _, step := range status.FailedSteps {
-			fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", step)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", step)
 		}
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "\nRegistered: %s\n", pipeline.RegisteredAt.Format(time.RFC3339))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nRegistered: %s\n", pipeline.RegisteredAt.Format(time.RFC3339))
 	return nil
 }
 

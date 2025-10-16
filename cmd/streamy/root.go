@@ -9,7 +9,7 @@ type rootFlags struct {
 	dryRun  bool
 }
 
-func newRootCmd() *cobra.Command {
+func newRootCmd(app *AppContext) *cobra.Command {
 	flags := &rootFlags{}
 
 	cmd := &cobra.Command{
@@ -20,7 +20,7 @@ func newRootCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If no subcommand is provided, launch the dashboard
 			if len(args) == 0 {
-				return runDashboard()
+				return runDashboard(app)
 			}
 			return cmd.Help()
 		},
@@ -29,11 +29,12 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&flags.verbose, "verbose", "v", false, "Enable verbose logging")
 	cmd.PersistentFlags().BoolVar(&flags.dryRun, "dry-run", false, "Preview execution without making changes")
 
-	cmd.AddCommand(newApplyCmd(flags))
-	cmd.AddCommand(newVerifyCmd(flags))
+	cmd.AddCommand(newApplyCmd(flags, app))
+	cmd.AddCommand(newVerifyCmd(flags, app))
 	cmd.AddCommand(newVersionCmd())
-	cmd.AddCommand(newDashboardCmd())
-	cmd.AddCommand(newRegistryCmd(flags))
+	cmd.AddCommand(newDashboardCmd(app))
+	cmd.AddCommand(newRegistryCmd(flags, app))
+	cmd.AddCommand(newRefreshCmd(flags, app))
 
 	return cmd
 }
