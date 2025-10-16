@@ -152,9 +152,10 @@ func TestAddNode_InitializesNodesMapIfNil(t *testing.T) {
 func TestAddEdge_UnknownSource(t *testing.T) {
 	graph := NewGraph()
 	step := &config.Step{ID: "target", Type: "command"}
-	graph.AddNode(step)
+	_, err := graph.AddNode(step)
+	require.NoError(t, err)
 
-	err := graph.AddEdge("unknown", "target")
+	err = graph.AddEdge("unknown", "target")
 	require.Error(t, err)
 	var valErr *streamyerrors.ValidationError
 	require.ErrorAs(t, err, &valErr)
@@ -163,9 +164,10 @@ func TestAddEdge_UnknownSource(t *testing.T) {
 func TestAddEdge_UnknownTarget(t *testing.T) {
 	graph := NewGraph()
 	step := &config.Step{ID: "source", Type: "command"}
-	graph.AddNode(step)
+	_, err := graph.AddNode(step)
+	require.NoError(t, err)
 
-	err := graph.AddEdge("source", "unknown")
+	err = graph.AddEdge("source", "unknown")
 	require.Error(t, err)
 	var valErr *streamyerrors.ValidationError
 	require.ErrorAs(t, err, &valErr)
@@ -176,8 +178,10 @@ func TestAddEdge_Success(t *testing.T) {
 	step1 := &config.Step{ID: "step1", Type: "command"}
 	step2 := &config.Step{ID: "step2", Type: "command"}
 
-	node1, _ := graph.AddNode(step1)
-	node2, _ := graph.AddNode(step2)
+	node1, err := graph.AddNode(step1)
+	require.NoError(t, err)
+	node2, err := graph.AddNode(step2)
+	require.NoError(t, err)
 
 	err := graph.AddEdge("step1", "step2")
 	require.NoError(t, err)
