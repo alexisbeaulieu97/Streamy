@@ -183,7 +183,7 @@ func TestAddEdge_Success(t *testing.T) {
 	node2, err := graph.AddNode(step2)
 	require.NoError(t, err)
 
-	err := graph.AddEdge("step1", "step2")
+	err = graph.AddEdge("step1", "step2")
 	require.NoError(t, err)
 	require.Contains(t, node1.Dependents, node2)
 	require.Contains(t, node2.DependsOn, node1)

@@ -296,4 +296,3 @@ func toLower(s string) string {
 	}
 	return result
 }
-
