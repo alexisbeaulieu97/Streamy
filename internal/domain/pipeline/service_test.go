@@ -93,7 +93,7 @@ steps:
 func TestService_Verify(t *testing.T) {
 	// Setup a valid prepared pipeline for reuse
 	cfg := &config.Config{
-		Steps: []config.Step{{ID: "step1"}},
+		Steps: []config.Step{{ID: "step1", Type: "command"}},
 	}
 	graph, _ := engine.BuildDAG(cfg.Steps)
 	plan, _ := engine.GeneratePlan(graph)
@@ -179,7 +179,7 @@ func TestService_Verify(t *testing.T) {
 func TestService_Apply(t *testing.T) {
 	// Setup a valid prepared pipeline for reuse
 	cfg := &config.Config{
-		Steps: []config.Step{{ID: "step1"}},
+		Steps: []config.Step{{ID: "step1", Type: "command"}},
 	}
 	graph, _ := engine.BuildDAG(cfg.Steps)
 	plan, _ := engine.GeneratePlan(graph)

@@ -210,13 +210,6 @@ func refreshPipeline(ctx context.Context, service *pipeline.Service, p registry.
 		}
 	}
 
-   }
- }
-
- if verifyErr == nil && result.Outcome == nil {
-   result.Status = registry.StatusFailed
-   result.Summary = "Verification produced no result"
-
 	if verifyErr == nil && result.Outcome == nil {
 		result.Status = registry.StatusFailed
 		result.Summary = "Verification produced no result"

@@ -98,7 +98,7 @@ func (s *Service) Verify(ctx context.Context, req VerifyRequest) (*VerifyOutcome
 
 	perStepTimeout := req.PerStepTimeout
 	if perStepTimeout <= 0 {
-		if prepared.Config.Settings.Timeout > 0 {
+		if prepared.Config != nil && prepared.Config.Settings.Timeout > 0 {
 			perStepTimeout = time.Duration(prepared.Config.Settings.Timeout) * time.Second
 		} else if req.DefaultTimeout > 0 {
 			perStepTimeout = req.DefaultTimeout
@@ -161,6 +161,10 @@ func (s *Service) Apply(ctx context.Context, req ApplyRequest) (*ApplyOutcome, e
 
 	if req.Logger == nil {
 		return nil, fmt.Errorf("logger is required")
+	}
+
+	if prepared.Config == nil {
+		return nil, fmt.Errorf("prepared config is required for apply")
 	}
 
 	effectiveDryRun := prepared.Config.Settings.DryRun || req.DryRunOverride
