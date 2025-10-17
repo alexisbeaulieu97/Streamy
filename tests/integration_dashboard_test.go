@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,26 +14,34 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/logger"
-	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/dashboard"
 )
 
-// setupTestPluginRegistry creates a minimal plugin registry for testing
-func setupTestPluginRegistry(t *testing.T) *plugin.PluginRegistry {
-	t.Helper()
-
-	log, err := logger.New(logger.Options{Level: "error", HumanReadable: false})
-	require.NoError(t, err)
-
-	cfg := &plugin.RegistryConfig{}
-	return plugin.NewPluginRegistry(cfg, log)
+// setupTestDashboard creates a temporary registry and cache with pipelines
+type stubDashboardService struct {
+	verifyResult *registry.ExecutionResult
+	verifyErr    error
+	applyResult  *registry.ExecutionResult
+	applyErr     error
 }
 
-// setupTestDashboard creates a temporary registry and cache with pipelines
-func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses map[string]registry.PipelineStatus) (string, *registry.Registry, *registry.StatusCache, *pipelineapp.Service) {
+func newStubService() *stubDashboardService {
+	return &stubDashboardService{
+		verifyResult: &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied, Success: true},
+		applyResult:  &registry.ExecutionResult{Operation: "apply", Status: registry.StatusSatisfied, Success: true},
+	}
+}
+
+func (s *stubDashboardService) Verify(ctx context.Context, opts dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
+	return s.verifyResult, s.verifyErr
+}
+
+func (s *stubDashboardService) Apply(ctx context.Context, opts dashboard.ApplyOptions) (*registry.ExecutionResult, error) {
+	return s.applyResult, s.applyErr
+}
+
+func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses map[string]registry.PipelineStatus) (string, *registry.Registry, *registry.StatusCache, *stubDashboardService) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -62,9 +71,10 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 	err = cache.Save()
 	require.NoError(t, err)
 
-	// Create plugin registry
-	pluginReg := setupTestPluginRegistry(t)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := &stubDashboardService{
+		verifyResult: &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied, Success: true},
+		applyResult:  &registry.ExecutionResult{Operation: "apply", Status: registry.StatusSatisfied, Success: true},
+	}
 
 	return tmpDir, reg, cache, svc
 }
@@ -172,9 +182,7 @@ func TestDashboardEmptyState(t *testing.T) {
 	err = cache.Save()
 	require.NoError(t, err)
 
-	// Plugin registry
-	pluginReg := setupTestPluginRegistry(t)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := newStubService()
 
 	// Load pipelines (should be empty)
 	loadedPipelines := reg.List()
@@ -312,9 +320,7 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 	err = cache.Save()
 	require.NoError(t, err)
 
-	// Plugin registry
-	pluginReg := setupTestPluginRegistry(t)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := newStubService()
 
 	// Load pipelines from registry
 	loadedPipelines := reg.List()

@@ -7,8 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -26,12 +24,11 @@ func loadInitialStatusCmd(pipelines []registry.Pipeline, cache *registry.StatusC
 }
 
 // verifyCmd runs verification for a pipeline asynchronously
-func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc *pipelineapp.Service) tea.Cmd {
+func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc PipelineService) tea.Cmd {
 	return func() tea.Msg {
-		outcome, err := svc.Verify(ctx, pipelineapp.VerifyRequest{
-			ConfigPath:     configPath,
-			LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
-			DefaultTimeout: 30 * time.Second,
+		result, err := svc.Verify(ctx, VerifyOptions{
+			ConfigPath: configPath,
+			Timeout:    30 * time.Second,
 		})
 
 		if err != nil {
@@ -46,14 +43,12 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc *p
 			}
 		}
 
-		if outcome == nil || outcome.ExecutionResult == nil {
+		if result == nil {
 			return VerifyErrorMsg{
 				PipelineID: pipelineID,
 				Error:      fmt.Errorf("verification produced no result"),
 			}
 		}
-
-		result := outcome.ExecutionResult
 
 		return VerifyCompleteMsg{
 			PipelineID: pipelineID,
@@ -63,11 +58,10 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc *p
 }
 
 // applyCmd runs apply for a pipeline asynchronously
-func applyCmd(ctx context.Context, pipelineID string, configPath string, svc *pipelineapp.Service) tea.Cmd {
+func applyCmd(ctx context.Context, pipelineID string, configPath string, svc PipelineService) tea.Cmd {
 	return func() tea.Msg {
-		outcome, err := svc.Apply(ctx, pipelineapp.ApplyRequest{
+		result, err := svc.Apply(ctx, ApplyOptions{
 			ConfigPath:      configPath,
-			LoggerOptions:   logger.Options{Level: "error", HumanReadable: false},
 			ContinueOnError: false,
 		})
 
@@ -83,7 +77,7 @@ func applyCmd(ctx context.Context, pipelineID string, configPath string, svc *pi
 			}
 		}
 
-		if outcome == nil || outcome.ExecutionResult == nil {
+		if result == nil {
 			return ApplyErrorMsg{
 				PipelineID: pipelineID,
 				Error:      fmt.Errorf("apply produced no result"),
@@ -92,25 +86,24 @@ func applyCmd(ctx context.Context, pipelineID string, configPath string, svc *pi
 
 		return ApplyCompleteMsg{
 			PipelineID: pipelineID,
-			Result:     outcome.ExecutionResult,
+			Result:     result,
 		}
 	}
 }
 
 // refreshAllCmd runs verification for all pipelines in parallel
-func refreshAllCmd(ctx context.Context, pipelines []registry.Pipeline, _ *pipelineapp.Service) tea.Cmd {
+func refreshAllCmd(ctx context.Context, pipelines []registry.Pipeline, _ PipelineService) tea.Cmd {
 	return func() tea.Msg {
 		return RefreshStartedMsg{Total: len(pipelines)}
 	}
 }
 
 // refreshSingleCmd runs verification for a single pipeline during refresh all
-func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc *pipelineapp.Service, index int, total int) tea.Cmd {
+func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc PipelineService, index int, total int) tea.Cmd {
 	return func() tea.Msg {
-		outcome, err := svc.Verify(ctx, pipelineapp.VerifyRequest{
-			ConfigPath:     pl.Path,
-			LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
-			DefaultTimeout: 30 * time.Second,
+		result, err := svc.Verify(ctx, VerifyOptions{
+			ConfigPath: pl.Path,
+			Timeout:    30 * time.Second,
 		})
 
 		if err != nil {
@@ -127,7 +120,7 @@ func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc *pipelineap
 			}
 		}
 
-		if outcome == nil || outcome.ExecutionResult == nil {
+		if result == nil {
 			return RefreshPipelineCompleteMsg{
 				PipelineID: pl.ID,
 				Index:      index,
@@ -141,7 +134,7 @@ func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc *pipelineap
 			PipelineID: pl.ID,
 			Index:      index,
 			Total:      total,
-			Result:     outcome.ExecutionResult,
+			Result:     result,
 			Error:      nil,
 		}
 	}

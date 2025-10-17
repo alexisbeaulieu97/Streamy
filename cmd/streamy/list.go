@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -19,7 +21,7 @@ type listOptions struct {
 	jsonOutput bool
 }
 
-func newListCmd(rootFlags *rootFlags) *cobra.Command {
+func newListCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 	opts := &listOptions{}
 
 	cmd := &cobra.Command{
@@ -27,7 +29,15 @@ func newListCmd(rootFlags *rootFlags) *cobra.Command {
 		Short: "List registered Streamy pipelines",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(cmd, opts)
+			ctx, logger := app.CommandContext(cmd, "command.registry.list")
+			if logger != nil {
+				logger.Info(ctx, "listing pipelines", "json", opts.jsonOutput)
+			}
+			err := runList(ctx, logger, cmd, opts)
+			if err != nil && logger != nil {
+				logger.Error(ctx, "list command failed", "error", err)
+			}
+			return err
 		},
 	}
 
@@ -36,7 +46,7 @@ func newListCmd(rootFlags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func runList(cmd *cobra.Command, opts *listOptions) error {
+func runList(ctx context.Context, logger ports.Logger, cmd *cobra.Command, opts *listOptions) error {
 	registryPath, err := defaultRegistryPath()
 	if err != nil {
 		return newCommandError("list", "determining registry path", err, "Ensure your HOME directory is set correctly.")
@@ -54,6 +64,9 @@ func runList(cmd *cobra.Command, opts *listOptions) error {
 
 	pipelines := reg.List()
 	if len(pipelines) == 0 {
+		if logger != nil {
+			logger.Info(ctx, "no pipelines registered")
+		}
 		return renderEmptyList(cmd)
 	}
 
@@ -65,7 +78,14 @@ func runList(cmd *cobra.Command, opts *listOptions) error {
 	enriched := enrichPipelinesWithStatus(pipelines, statusCache)
 
 	if opts.jsonOutput {
+		if logger != nil {
+			logger.Info(ctx, "rendering pipeline list", "format", "json", "pipeline_count", len(enriched))
+		}
 		return renderListJSON(cmd, enriched)
+	}
+
+	if logger != nil {
+		logger.Info(ctx, "rendering pipeline list", "format", "table", "pipeline_count", len(enriched))
 	}
 
 	return renderListTable(cmd, enriched)

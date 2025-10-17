@@ -3,14 +3,102 @@ version: "2"
 run:
   timeout: 5m
   tests: true
+  allow-parallel-runners: true
+  skip-dirs:
+    - specs
+    - internal/app/pipeline
+  skip-files:
+    - internal/app/pipeline/service.go
 
 linters:
   enable:
     - govet
     - staticcheck
     - errcheck
+    - importas
+    - forbidigo
+    - contextcheck
+    - gomodguard # module-level policy
+  disable:
+    - depguard # ❗ broken in v2.5.0 for $all/Main (keep config below ready to re-enable)
+
+linters-settings:
+  importas:
+    no-unaliased: true
+    aliases:
+      - pkg: github.com/alexisbeaulieu97/streamy/internal/domain/pipeline
+      - pkg: github.com/alexisbeaulieu97/streamy/internal/application/pipeline
+      - pkg: github.com/alexisbeaulieu97/streamy/internal/infrastructure
+
+  forbidigo:
+    forbid:
+      - fmt\.Print.*
+      - log\.Print.*
+
+  contextcheck:
+    allow-types:
+      - "*cobra.Command"
+      - "*testing.T"
+
+  # --- MODULE-LEVEL guard (works today) ---
+  gomodguard:
+    blocked:
+      modules:
+        - github.com/sirupsen/logrus:
+            recommendations:
+              - github.com/charmbracelet/log
+            reason: "Use charmbracelet/log for consistent logging"
+      local_replace_directives: false
+    allowed:
+      modules:
+        - github.com/charmbracelet
+        - github.com/alexisbeaulieu97
+
+  # --- PACKAGE-LEVEL depguard rules: KEEP READY, CURRENTLY DISABLED ABOVE ---
+  depguard:
+    rules:
+      Main:
+        files: [$all]
+        # keep minimal deny to avoid accidental regressions when bug is fixed
+        deny:
+          - pkg: "io/ioutil"
+            desc: "Deprecated; use io/os"
+        allow:
+          - $gostd
+          - $all
+      domain:
+        files: ["**/internal/domain/**"]
+        deny:
+          - pkg: github.com/alexisbeaulieu97/streamy/internal/application
+            desc: "domain cannot import application"
+          - pkg: github.com/alexisbeaulieu97/streamy/internal/infrastructure
+            desc: "domain cannot import infrastructure"
+          - pkg: github.com/alexisbeaulieu97/streamy/internal/ports
+            desc: "domain cannot import ports"
+        allow:
+          - $gostd
+          - github.com/alexisbeaulieu97/streamy/internal/domain
+      ports:
+        files: ["**/internal/ports/**"]
+        deny:
+          - pkg: github.com/alexisbeaulieu97/streamy/internal/domain
+            desc: "ports should not import domain entities directly"
+        allow:
+          - $gostd
+          - github.com/alexisbeaulieu97/streamy/internal/domain
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  format: colored-line-number
 
 formatters:
   enable:
     - gofmt
     - goimports
+  settings:
+    gofmt:
+      simplify: true

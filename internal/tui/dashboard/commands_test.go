@@ -2,17 +2,39 @@ package dashboard
 
 import (
 	"context"
-	"os"
+	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
+
+type stubPipelineService struct {
+	verifyResult *registry.ExecutionResult
+	verifyErr    error
+	applyResult  *registry.ExecutionResult
+	applyErr     error
+}
+
+func (s *stubPipelineService) Verify(ctx context.Context, opts VerifyOptions) (*registry.ExecutionResult, error) {
+	if opts.Timeout > 0 {
+		// simulate timeout handling by respecting context deadline
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Millisecond):
+		}
+	}
+	return s.verifyResult, s.verifyErr
+}
+
+func (s *stubPipelineService) Apply(ctx context.Context, opts ApplyOptions) (*registry.ExecutionResult, error) {
+	return s.applyResult, s.applyErr
+}
 
 func TestLoadInitialStatusCmd(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -38,25 +60,11 @@ func TestLoadInitialStatusCmd(t *testing.T) {
 }
 
 func TestVerifyCmd(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a test pipeline config
-	configPath := filepath.Join(tmpDir, "test.yaml")
-	testConfig := `version: 1
-steps:
-  - name: test-step
-    plugin: copy
-    config:
-      source: /tmp/src
-      dest: /tmp/dst
-`
-	require.NoError(t, os.WriteFile(configPath, []byte(testConfig), 0644))
-
-	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
-	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
+	result := &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied}
+	svc := &stubPipelineService{verifyResult: result}
 
-	cmd := verifyCmd(ctx, "test-1", configPath, svc)
+	cmd := verifyCmd(ctx, "test-1", "/tmp/config.yaml", svc)
 	assert.NotNil(t, cmd)
 
 	// Execute command
@@ -68,32 +76,18 @@ steps:
 	case VerifyCompleteMsg:
 		// Success case
 	case VerifyErrorMsg:
-		// Error case (expected since /tmp/src doesn't exist)
+		// Error case
 	default:
 		t.Fatalf("Unexpected message type: %T", msg)
 	}
 }
 
 func TestApplyCmd(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a test pipeline config
-	configPath := filepath.Join(tmpDir, "test.yaml")
-	testConfig := `version: 1
-steps:
-  - name: test-step
-    plugin: copy
-    config:
-      source: /tmp/src
-      dest: /tmp/dst
-`
-	require.NoError(t, os.WriteFile(configPath, []byte(testConfig), 0644))
-
-	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
-	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
+	result := &registry.ExecutionResult{Operation: "apply", Status: registry.StatusSatisfied}
+	svc := &stubPipelineService{applyResult: result}
 
-	cmd := applyCmd(ctx, "test-1", configPath, svc)
+	cmd := applyCmd(ctx, "test-1", "/tmp/config.yaml", svc)
 	assert.NotNil(t, cmd)
 
 	// Execute command
@@ -113,8 +107,7 @@ steps:
 
 func TestRefreshAllCmd(t *testing.T) {
 	ctx := context.Background()
-	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := &stubPipelineService{}
 
 	pipelines := []registry.Pipeline{
 		{ID: "test-1", Name: "Test 1", Path: "/tmp/test1.yaml"},
@@ -135,28 +128,14 @@ func TestRefreshAllCmd(t *testing.T) {
 }
 
 func TestRefreshSingleCmd(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a test pipeline config
-	configPath := filepath.Join(tmpDir, "test.yaml")
-	testConfig := `version: 1
-steps:
-  - name: test-step
-    plugin: copy
-    config:
-      source: /tmp/src
-      dest: /tmp/dst
-`
-	require.NoError(t, os.WriteFile(configPath, []byte(testConfig), 0644))
-
-	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
-	svc := pipelineapp.NewService(pluginReg)
 	ctx := context.Background()
+	result := &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied}
+	svc := &stubPipelineService{verifyResult: result}
 
 	pipeline := registry.Pipeline{
 		ID:   "test-1",
 		Name: "Test 1",
-		Path: configPath,
+		Path: "/tmp/config.yaml",
 	}
 
 	cmd := refreshSingleCmd(ctx, pipeline, svc, 0, 1)
@@ -175,8 +154,7 @@ steps:
 }
 
 func TestVerifyCmd_InvalidPipeline(t *testing.T) {
-	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := &stubPipelineService{verifyErr: errors.New("boom")}
 	ctx := context.Background()
 
 	cmd := verifyCmd(ctx, "test-1", "/nonexistent/path.yaml", svc)
@@ -193,8 +171,7 @@ func TestVerifyCmd_InvalidPipeline(t *testing.T) {
 }
 
 func TestApplyCmd_InvalidPipeline(t *testing.T) {
-	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := &stubPipelineService{applyErr: errors.New("boom")}
 	ctx := context.Background()
 
 	cmd := applyCmd(ctx, "test-1", "/nonexistent/path.yaml", svc)
@@ -212,8 +189,7 @@ func TestApplyCmd_InvalidPipeline(t *testing.T) {
 
 func TestRefreshAllCmd_EmptyPipelines(t *testing.T) {
 	ctx := context.Background()
-	pluginReg := plugin.NewPluginRegistry(&plugin.RegistryConfig{}, nil)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := &stubPipelineService{}
 
 	pipelines := []registry.Pipeline{}
 

@@ -55,14 +55,40 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
           cache: true
 
-      - uses: golangci/golangci-lint-action@v8
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
+
+      - name: Run golangci-lint with module cache
+        run: golangci-lint run ./...
+
+      - name: Verify gofmt alignment
+        run: |
+          fmt_output=$(gofmt -l .)
+          if [ -n "${fmt_output}" ]; then
+            echo "gofmt requires files to be formatted:";
+            echo "${fmt_output}";
+            exit 1;
+          fi
+
+      - name: Verify goimports alignment
+        run: |
+          goimports_output=$(goimports -l .)
+          if [ -n "${goimports_output}" ]; then
+            echo "goimports requires files to be formatted:";
+            echo "${goimports_output}";
+            exit 1;
+          fi
+
+      - name: Check Go import cycles
+        run: |
+          scripts/check-import-cycles.sh
 
   build:
     runs-on: ubuntu-latest

@@ -9,18 +9,16 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/logger"
-	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/pipelineconv"
 	"github.com/alexisbeaulieu97/streamy/internal/tui"
-	validationpkg "github.com/alexisbeaulieu97/streamy/internal/validation"
 )
 
 type applyOptions struct {
-	ConfigPath     string
-	DryRun         bool
-	Verbose        bool
-	NonInteractive bool
+	ConfigPath          string
+	DryRun              bool
+	Verbose             bool
+	NonInteractive      bool
+	ForceNonInteractive bool
 }
 
 func newApplyCmd(root *rootFlags, app *AppContext) *cobra.Command {
@@ -32,43 +30,37 @@ func newApplyCmd(root *rootFlags, app *AppContext) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.DryRun = root.dryRun
 			opts.Verbose = root.verbose
-			opts.NonInteractive = !term.IsTerminal(int(os.Stdout.Fd()))
+			opts.NonInteractive = opts.ForceNonInteractive || !term.IsTerminal(int(os.Stdout.Fd()))
 
 			if err := validateApplyOptions(opts); err != nil {
 				return err
 			}
 
-			return runApply(app, opts)
+			return runApply(cmd.Context(), app, opts)
 		},
 	}
 
 	cmd.Flags().StringVarP(&opts.ConfigPath, "config", "c", "", "Path to configuration file")
+	cmd.Flags().BoolVar(&opts.ForceNonInteractive, "non-interactive", false, "Disable the interactive TUI and print results to stdout")
 	cmd.MarkFlagRequired("config") //nolint:errcheck
 
 	return cmd
 }
 
-func runApply(app *AppContext, opts applyOptions) error {
-	ctx := context.Background()
+func runApply(ctx context.Context, app *AppContext, opts applyOptions) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	service := app.Pipeline
-
-	prepared, err := service.Prepare(opts.ConfigPath)
+	pipelineDomain, planDomain, err := app.PrepareUseCase.Prepare(ctx, opts.ConfigPath)
 	if err != nil {
 		return err
 	}
 
-	cfg := prepared.Config
-	plan := prepared.Plan
-
-	effectiveVerbose := opts.Verbose || cfg.Settings.Verbose
-
-	level := "info"
-	if effectiveVerbose {
-		level = "debug"
-	}
+	cfg := pipelineconv.ConvertPipelineToConfig(pipelineDomain)
+	plan := pipelineconv.ConvertPlanToEngine(planDomain)
 
 	modelState := tui.NewModel(cfg, plan, opts.NonInteractive)
 	interactive := !opts.NonInteractive
@@ -85,19 +77,21 @@ func runApply(app *AppContext, opts applyOptions) error {
 		}()
 	}
 
-	_, execErr := service.Apply(ctx, pipeline.ApplyRequest{
-		Prepared:        prepared,
-		ConfigPath:      opts.ConfigPath,
-		LoggerOptions:   logger.Options{Level: level, HumanReadable: true},
-		DryRunOverride:  opts.DryRun,
-		VerboseOverride: opts.Verbose,
-		OnStepResult: func(res model.StepResult) {
-			dispatchTuiMessage(interactive, program, &modelState, tui.StepCompleteMsg{Result: res})
-		},
-		OnValidation: func(result validationpkg.ValidationResult) {
-			dispatchTuiMessage(interactive, program, &modelState, tui.ValidationMsg{Passed: result.Passed, Message: result.Message})
-		},
-	})
+	_, domainResults, summary, execErr := app.ApplyUseCase.Apply(ctx, opts.ConfigPath, opts.DryRun)
+
+	for _, res := range domainResults {
+		modelRes := pipelineconv.ConvertStepResult(res, opts.DryRun)
+		dispatchTuiMessage(interactive, program, &modelState, tui.StepCompleteMsg{Result: modelRes})
+	}
+
+	if summary != nil {
+		for _, validation := range summary.Results {
+			dispatchTuiMessage(interactive, program, &modelState, tui.ValidationMsg{
+				Passed:  validation.IsSatisfied(),
+				Message: validation.FormatMessage(),
+			})
+		}
+	}
 
 	if interactive {
 		if program != nil {

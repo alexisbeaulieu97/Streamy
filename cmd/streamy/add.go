@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/alexisbeaulieu97/streamy/internal/config"
+	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -21,7 +23,7 @@ type addOptions struct {
 	verbose     bool
 }
 
-func newAddCmd(rootFlags *rootFlags) *cobra.Command {
+func newAddCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 	opts := &addOptions{}
 
 	cmd := &cobra.Command{
@@ -30,7 +32,15 @@ func newAddCmd(rootFlags *rootFlags) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.verbose = rootFlags.verbose
-			return runAdd(cmd, args[0], opts)
+			ctx, logger := app.CommandContext(cmd, "command.registry.add")
+			if logger != nil {
+				logger.Info(ctx, "adding pipeline", "config_path", args[0])
+			}
+			err := runAdd(ctx, logger, cmd, args[0], opts)
+			if err != nil && logger != nil {
+				logger.Error(ctx, "add command failed", "config_path", args[0], "error", err)
+			}
+			return err
 		},
 	}
 
@@ -41,9 +51,12 @@ func newAddCmd(rootFlags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func runAdd(cmd *cobra.Command, configPath string, opts *addOptions) error {
+func runAdd(ctx context.Context, logger ports.Logger, cmd *cobra.Command, configPath string, opts *addOptions) error {
 	absPath, err := validateAndNormalizePath(configPath)
 	if err != nil {
+		if logger != nil {
+			logger.Error(ctx, "invalid config path", "config_path", configPath, "error", err)
+		}
 		return newCommandError("add", fmt.Sprintf("resolving config path %q", configPath), err, "Check that the file exists and you have permission to read it.")
 	}
 
@@ -56,6 +69,9 @@ func runAdd(cmd *cobra.Command, configPath string, opts *addOptions) error {
 	}
 
 	if err := registry.ValidatePipelineID(opts.id); err != nil {
+		if logger != nil {
+			logger.Error(ctx, "invalid pipeline id", "pipeline_id", opts.id, "error", err)
+		}
 		return newCommandError("add", "validating pipeline ID", err, "Provide an ID using lowercase letters, numbers, and hyphens. IDs must start and end with alphanumeric characters.")
 	}
 
@@ -65,16 +81,25 @@ func runAdd(cmd *cobra.Command, configPath string, opts *addOptions) error {
 
 	cfg, err := config.ParseConfig(absPath)
 	if err != nil {
+		if logger != nil {
+			logger.Error(ctx, "configuration validation failed", "config_path", absPath, "error", err)
+		}
 		return newCommandError("add", "validating configuration", err, "Fix the configuration errors shown above and try again.")
 	}
 
 	registryPath, err := defaultRegistryPath()
 	if err != nil {
+		if logger != nil {
+			logger.Error(ctx, "registry path resolution failed", "error", err)
+		}
 		return newCommandError("add", "determining registry path", err, "Ensure your HOME directory is set correctly.")
 	}
 
 	reg, err := registry.NewRegistry(registryPath)
 	if err != nil {
+		if logger != nil {
+			logger.Error(ctx, "registry load failed", "path", registryPath, "error", err)
+		}
 		return newCommandError("add", "loading registry", err, "Check that you have write access to the registry directory.")
 	}
 
@@ -87,10 +112,16 @@ func runAdd(cmd *cobra.Command, configPath string, opts *addOptions) error {
 	}
 
 	if err := reg.Add(newPipeline); err != nil {
+		if logger != nil {
+			logger.Error(ctx, "registry add failed", "pipeline_id", opts.id, "error", err)
+		}
 		return newCommandError("add", fmt.Sprintf("adding pipeline %q", opts.id), err, "Use a different ID or remove the existing pipeline first.")
 	}
 
 	if err := reg.Save(); err != nil {
+		if logger != nil {
+			logger.Error(ctx, "registry save failed", "pipeline_id", opts.id, "error", err)
+		}
 		return newCommandError("add", "saving registry", err, "Check disk space and file permissions, then retry.")
 	}
 
@@ -103,6 +134,10 @@ func runAdd(cmd *cobra.Command, configPath string, opts *addOptions) error {
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  ID:   %s\n", newPipeline.ID)
 
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nRun 'streamy registry refresh "+newPipeline.ID+"' to verify its current status.")
+
+	if logger != nil {
+		logger.Info(ctx, "pipeline registered", "pipeline_id", newPipeline.ID, "config_path", absPath)
+	}
 
 	_ = cfg // Ensures validation executed
 

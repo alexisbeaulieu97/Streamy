@@ -20,7 +20,11 @@ func newRootCmd(app *AppContext) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If no subcommand is provided, launch the dashboard
 			if len(args) == 0 {
-				return runDashboard(app)
+				ctx, logger := app.CommandContext(cmd, "command.dashboard")
+				if logger != nil {
+					logger.Info(ctx, "launching dashboard from root command")
+				}
+				return runDashboard(ctx, app, logger)
 			}
 			return cmd.Help()
 		},

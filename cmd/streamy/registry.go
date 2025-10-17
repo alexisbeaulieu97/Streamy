@@ -15,11 +15,11 @@ func newRegistryCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(newAddCmd(rootFlags))
-	cmd.AddCommand(newListCmd(rootFlags))
-	cmd.AddCommand(newRemoveCmd(rootFlags))
+	cmd.AddCommand(newAddCmd(rootFlags, app))
+	cmd.AddCommand(newListCmd(rootFlags, app))
+	cmd.AddCommand(newRemoveCmd(rootFlags, app))
 	cmd.AddCommand(newRefreshCmd(rootFlags, app))
-	cmd.AddCommand(newShowCmd(rootFlags))
+	cmd.AddCommand(newShowCmd(rootFlags, app))
 
 	return cmd
 }

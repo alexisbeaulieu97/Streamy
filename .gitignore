@@ -16,6 +16,17 @@
 coverage.*
 *.coverprofile
 profile.cov
+# Temporary directories and files
+tmp/
+*.tmp
+.cache/
+*.swp
+# Local build outputs
+bin/
+dist/
+build/
+*.log
+*.pid
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

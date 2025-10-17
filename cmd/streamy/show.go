@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -16,7 +18,7 @@ type showOptions struct {
 	jsonOutput bool
 }
 
-func newShowCmd(rootFlags *rootFlags) *cobra.Command {
+func newShowCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 	opts := &showOptions{}
 
 	cmd := &cobra.Command{
@@ -24,7 +26,15 @@ func newShowCmd(rootFlags *rootFlags) *cobra.Command {
 		Short: "Show detailed information about a pipeline",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runShow(cmd, args[0], opts)
+			ctx, logger := app.CommandContext(cmd, "command.registry.show")
+			if logger != nil {
+				logger.Info(ctx, "showing pipeline", "pipeline_id", args[0], "json", opts.jsonOutput)
+			}
+			err := runShow(ctx, logger, cmd, args[0], opts)
+			if err != nil && logger != nil {
+				logger.Error(ctx, "show command failed", "pipeline_id", args[0], "error", err)
+			}
+			return err
 		},
 	}
 
@@ -33,7 +43,7 @@ func newShowCmd(rootFlags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func runShow(cmd *cobra.Command, pipelineID string, opts *showOptions) error {
+func runShow(ctx context.Context, logger ports.Logger, cmd *cobra.Command, pipelineID string, opts *showOptions) error {
 	if strings.TrimSpace(pipelineID) == "" {
 		return newCommandError("show", "validating pipeline ID", errors.New("pipeline ID cannot be empty"), "Provide the pipeline ID you wish to inspect.")
 	}
@@ -69,7 +79,14 @@ func runShow(cmd *cobra.Command, pipelineID string, opts *showOptions) error {
 	}
 
 	if opts.jsonOutput {
+		if logger != nil {
+			logger.Info(ctx, "rendering pipeline details", "format", "json", "pipeline_id", pipelineID)
+		}
 		return renderShowJSON(cmd, pipeline, status)
+	}
+
+	if logger != nil {
+		logger.Info(ctx, "rendering pipeline details", "format", "table", "pipeline_id", pipelineID)
 	}
 
 	return renderShowTable(cmd, pipeline, status)

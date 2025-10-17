@@ -1,0 +1,29 @@
+	github.com/alexisbeaulieu97/streamy/cmd/streamy		coverage: 0.0% of statements
+	github.com/alexisbeaulieu97/streamy/examples/components		coverage: 0.0% of statements
+	github.com/alexisbeaulieu97/streamy/examples/dashboard-demo		coverage: 0.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/app/pipeline	0.010s	coverage: 69.2% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/config	(cached)	coverage: 89.3% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/domain/pipeline	0.010s	coverage: 79.1% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/engine	(cached)	coverage: 80.9% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/logger	(cached)	coverage: 85.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/model	(cached)	coverage: 100.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugin	(cached)	coverage: 77.3% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins	0.204s	coverage: [no statements]
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/command	0.361s	coverage: 85.2% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/copy	(cached)	coverage: 74.8% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/internalexec	0.192s	coverage: 100.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/lineinfile	(cached)	coverage: 76.8% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/package	0.302s	coverage: 88.6% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/repo	0.277s	coverage: 72.6% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/symlink	(cached)	coverage: 75.6% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/plugins/template	(cached)	coverage: 82.5% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/registry	(cached)	coverage: 86.9% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/tui	(cached)	coverage: 90.8% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/tui/components	(cached)	coverage: 100.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/tui/dashboard	0.088s	coverage: 63.6% of statements
+?   	github.com/alexisbeaulieu97/streamy/internal/ui	[no test files]
+	github.com/alexisbeaulieu97/streamy/internal/ui/components		coverage: 0.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/internal/validation	0.070s	coverage: 81.1% of statements
+ok  	github.com/alexisbeaulieu97/streamy/pkg/diff	(cached)	coverage: 100.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/pkg/errors	(cached)	coverage: 100.0% of statements
+ok  	github.com/alexisbeaulieu97/streamy/tests	10.733s	coverage: [no statements]

@@ -24,7 +24,7 @@ func TestLoggerInfoWithFields(t *testing.T) {
 
 	var entry logEntry
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
-	require.Equal(t, "starting execution", entry["message"])
+    require.Equal(t, "starting execution", entry["msg"])
 	require.Equal(t, "install_git", entry["step"])
 	require.Equal(t, "setup", entry["phase"])
 	require.Equal(t, "info", entry["level"])
@@ -56,7 +56,7 @@ func TestLoggerErrorIncludesContext(t *testing.T) {
 
 	var entry logEntry
 	require.NoError(t, json.Unmarshal([]byte(lines[0]), &entry))
-	require.Equal(t, "failed", entry["message"])
+    require.Equal(t, "failed", entry["msg"])
 	require.Equal(t, "clone_repo", entry["step"])
 	require.Equal(t, "boom", entry["error"])
 }
@@ -74,7 +74,7 @@ func TestLoggerWarn(t *testing.T) {
 
 		var entry logEntry
 		require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
-		require.Equal(t, "something suspicious", entry["message"])
+        require.Equal(t, "something suspicious", entry["msg"])
 		require.Equal(t, "warn", entry["level"])
 	})
 
@@ -143,6 +143,6 @@ func TestLoggerErrorWithNilError(t *testing.T) {
 
 	var entry logEntry
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
-	require.Equal(t, "error without underlying cause", entry["message"])
+    require.Equal(t, "error without underlying cause", entry["msg"])
 	require.Equal(t, "error", entry["level"])
 }

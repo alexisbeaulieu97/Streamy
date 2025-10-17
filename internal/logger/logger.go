@@ -1,12 +1,15 @@
 package logger
 
 import (
+	"context"
 	"io"
-	"os"
+	"sort"
 	"strings"
-	"time"
 
-	"github.com/rs/zerolog"
+	cblog "github.com/charmbracelet/log"
+
+	logginginfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/logging"
+	"github.com/alexisbeaulieu97/streamy/internal/ports"
 )
 
 // Options describes logger configuration supplied at creation time.
@@ -14,90 +17,103 @@ type Options struct {
 	Level         string
 	HumanReadable bool
 	Writer        io.Writer
+	Layer         string
+	Component     string
 }
 
-// Logger wraps zerolog to provide a simplified API for the application.
+// Logger retains the legacy API while delegating to the new charmbracelet/log adapter.
 type Logger struct {
-	base zerolog.Logger
+	base ports.Logger
 }
 
 // New creates a configured Logger instance based on Options.
 func New(opts Options) (*Logger, error) {
-	writer := opts.Writer
-	if writer == nil {
-		writer = os.Stdout
+	layer := opts.Layer
+	if layer == "" {
+		layer = "legacy"
+	}
+	component := opts.Component
+	if component == "" {
+		component = "legacy"
 	}
 
-	level := zerolog.InfoLevel
-	if opts.Level != "" {
-		parsed, err := zerolog.ParseLevel(strings.ToLower(opts.Level))
-		if err != nil {
-			return nil, err
-		}
-		level = parsed
+	infraOpts := logginginfra.Options{
+		Writer:    opts.Writer,
+		Level:     opts.Level,
+		Layer:     layer,
+		Component: component,
 	}
 
-	var output io.Writer
-	if opts.HumanReadable {
-		console := zerolog.NewConsoleWriter()
-		console.Out = writer
-		console.TimeFormat = time.RFC3339
-		output = console
-	} else {
-		output = writer
+	// When the legacy logger was configured without human readable output it produced JSON.
+	// Mirror that behaviour by selecting the JSON formatter explicitly.
+	if !opts.HumanReadable {
+		infraOpts.Formatter = cblog.JSONFormatter
 	}
 
-	logger := zerolog.New(output).Level(level).With().Timestamp().Logger()
+	logger, err := logginginfra.New(infraOpts)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Logger{base: logger}, nil
 }
 
 // WithFields returns a derived logger that always writes the supplied fields.
 func (l *Logger) WithFields(fields map[string]any) *Logger {
-	if l == nil {
-		return nil
+	if l == nil || l.base == nil || len(fields) == 0 {
+		return l
 	}
 
-	builder := l.base.With()
-	for key, value := range fields {
-		builder = builder.Interface(key, value)
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	args := make([]interface{}, 0, len(fields)*2)
+	for _, key := range keys {
+		args = append(args, key, fields[key])
 	}
 
-	derived := Logger{base: builder.Logger()}
-	return &derived
+	return &Logger{base: l.base.With(args...)}
 }
 
 // Info writes an informational log entry.
 func (l *Logger) Info(msg string) {
-	if l == nil {
-		return
-	}
-	l.base.Info().Msg(msg)
+	l.log(func(ctx context.Context, message string) {
+		l.base.Info(ctx, message)
+	}, msg)
 }
 
 // Debug writes a debug-level log entry if enabled.
 func (l *Logger) Debug(msg string) {
-	if l == nil {
-		return
-	}
-	l.base.Debug().Msg(msg)
+	l.log(func(ctx context.Context, message string) {
+		l.base.Debug(ctx, message)
+	}, msg)
 }
 
 // Warn writes a warning level log entry.
 func (l *Logger) Warn(msg string) {
-	if l == nil {
-		return
-	}
-	l.base.Warn().Msg(msg)
+	l.log(func(ctx context.Context, message string) {
+		l.base.Warn(ctx, message)
+	}, msg)
 }
 
 // Error writes an error log entry including the supplied error context.
 func (l *Logger) Error(err error, msg string) {
-	if l == nil {
+	if l == nil || l.base == nil {
 		return
 	}
-	event := l.base.Error()
+	fields := []interface{}{}
 	if err != nil {
-		event = event.Err(err)
+		fields = append(fields, "error", err)
 	}
-	event.Msg(msg)
+	l.base.Error(context.Background(), msg, fields...)
+}
+
+func (l *Logger) log(fn func(context.Context, string), msg string) {
+	if l == nil || l.base == nil || fn == nil {
+		return
+	}
+	fn(context.Background(), strings.TrimSpace(msg))
 }
