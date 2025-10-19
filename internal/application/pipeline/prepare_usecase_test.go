@@ -108,7 +108,9 @@ func TestPrepareUseCase_DagBuildFailure(t *testing.T) {
 	require.Contains(t, err.Error(), dagBuildHint)
 	require.Equal(t, pipelineDefinition, pip)
 	require.Nil(t, plan)
-	require.Len(t, events.Published, 1)
+	require.Len(t, events.Published, 2)
+	require.Equal(t, ports.EventPipelineStarted, events.Published[0].Type)
+	require.Equal(t, ports.EventPipelineFailed, events.Published[1].Type)
 }
 
 func TestPrepareUseCase_DagValidationFailure(t *testing.T) {

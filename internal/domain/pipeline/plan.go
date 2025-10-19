@@ -1,7 +1,5 @@
 package pipeline
 
-import "fmt"
-
 // ExecutionLevel groups steps that can execute in parallel.
 type ExecutionLevel struct {
 	Level   int
@@ -29,7 +27,7 @@ func (p ExecutionPlan) Validate(pipeline Pipeline) error {
 		}
 		for _, id := range level.StepIDs {
 			if _, ok := seen[id]; ok {
-				return NewDependencyError("step appears in multiple execution levels", map[string]interface{}{"step_id": id})
+				return NewValidationError("step appears in multiple execution levels", map[string]interface{}{"step_id": id})
 			}
 			seen[id] = struct{}{}
 		}
@@ -97,5 +95,5 @@ func (p ExecutionPlan) LevelForStep(stepID string) (int, error) {
 			}
 		}
 	}
-	return 0, fmt.Errorf("step %s not present in execution plan", stepID)
+	return 0, NewDependencyError("step not present in execution plan", map[string]interface{}{"step_id": stepID})
 }

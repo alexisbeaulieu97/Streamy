@@ -36,7 +36,9 @@ func (u *PrepareUseCase) Prepare(ctx context.Context, configPath string) (*pipel
 		if spanCtx != nil {
 			ctx = spanCtx
 		}
-		defer span.End()
+		if span != nil {
+			defer span.End()
+		}
 	}
 
 	if u.logger != nil {
@@ -78,6 +80,11 @@ func (u *PrepareUseCase) Prepare(ctx context.Context, configPath string) (*pipel
 		if span != nil {
 			span.SetStatus(ports.SpanStatusError, "execution plan build failed")
 		}
+		publishEvent(ctx, u.events, u.logger, ports.EventPipelineFailed, map[string]interface{}{
+			"config_path": configPath,
+			"phase":       "prepare",
+			"error":       err,
+		})
 		return pip, nil, wrapDagBuildError(err)
 	}
 

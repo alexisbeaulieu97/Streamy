@@ -14,11 +14,12 @@ import (
 // Model is the main dashboard model
 type Model struct {
 	// Core data
-	pipelines    []registry.Pipeline
-	registry     *registry.Registry
-	statusCache  *registry.StatusCache
-	service      PipelineService
-	stepProgress map[string]StepProgress
+	pipelines       []registry.Pipeline
+	registry        *registry.Registry
+	statusCache     *registry.StatusCache
+	service         PipelineService
+	stepProgress    map[string]StepProgress
+	progressRetries map[string]int
 
 	// UI state
 	viewMode     ViewMode
@@ -76,6 +77,7 @@ func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *regi
 		statusCache:     cache,
 		service:         svc,
 		stepProgress:    make(map[string]StepProgress),
+		progressRetries: make(map[string]int),
 		viewMode:        ViewList,
 		cursor:          0,
 		loading:         make(map[string]bool),
@@ -125,13 +127,28 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, loadInitialStatusCmd(m.pipelines, m.statusCache))
 	}
 
-	if m.service != nil {
-		if progressCmd := m.service.StepProgressCmd(); progressCmd != nil {
-			cmds = append(cmds, progressCmd)
-		}
+	if progressCmd := m.nextProgressCmd(""); progressCmd != nil {
+		cmds = append(cmds, progressCmd)
 	}
 
 	return tea.Batch(cmds...)
+}
+
+func (m Model) nextProgressCmd(pipelineID string) tea.Cmd {
+	if m.service == nil {
+		return nil
+	}
+	base := m.service.StepProgressCmd()
+	if base == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		msg := base()
+		if _, ok := msg.(StepProgressTimeoutMsg); ok {
+			return StepProgressTimeoutMsg{PipelineID: pipelineID}
+		}
+		return msg
+	}
 }
 
 // Helper Methods

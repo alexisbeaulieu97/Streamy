@@ -24,6 +24,7 @@ func main() {
 
 func run() int {
 	appLogger, err := logginginfra.New(logginginfra.Options{
+		Writer:    os.Stderr,
 		Level:     "info",
 		Component: "cli",
 		Layer:     "infrastructure",

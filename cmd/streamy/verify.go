@@ -95,13 +95,8 @@ func runVerifyInternal(ctx context.Context, app *AppContext, opts verifyOptions)
 
 	execCtx := ctx
 	if opts.Timeout > 0 {
-		stepCount := len(preparedPipeline.Steps)
-		totalTimeout := opts.Timeout * time.Duration(stepCount)
-		if stepCount == 0 {
-			totalTimeout = opts.Timeout
-		}
 		var cancel context.CancelFunc
-		execCtx, cancel = context.WithTimeout(ctx, totalTimeout)
+		execCtx, cancel = context.WithTimeout(ctx, opts.Timeout)
 		defer cancel()
 	}
 

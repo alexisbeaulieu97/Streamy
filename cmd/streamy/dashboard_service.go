@@ -49,11 +49,9 @@ func (a *dashboardPipelineAdapter) Verify(ctx context.Context, opts dashboard.Ve
 
 	summary := pipelineconv.BuildVerificationSummary(pipeline, results)
 	result := pipelineconv.SummaryToExecutionResult(summary, opts.ConfigPath)
-	if pipeline != nil {
+	result.PipelineID = opts.ConfigPath
+	if pipeline != nil && strings.TrimSpace(pipeline.Name) != "" {
 		result.PipelineID = pipeline.Name
-		if result.PipelineID == "" {
-			result.PipelineID = opts.ConfigPath
-		}
 	}
 	return result, nil
 }
@@ -65,11 +63,9 @@ func (a *dashboardPipelineAdapter) Apply(ctx context.Context, opts dashboard.App
 	}
 
 	execResult := pipelineconv.ConvertApplyResults(stepResults, opts.ConfigPath, opts.DryRun, nil, nil)
-	if pipeline != nil {
+	execResult.PipelineID = opts.ConfigPath
+	if pipeline != nil && strings.TrimSpace(pipeline.Name) != "" {
 		execResult.PipelineID = pipeline.Name
-		if execResult.PipelineID == "" {
-			execResult.PipelineID = opts.ConfigPath
-		}
 	}
 	return execResult, nil
 }

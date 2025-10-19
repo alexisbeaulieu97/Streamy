@@ -60,13 +60,11 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
-      - name: Install golangci-lint
+      - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
           version: latest
-
-      - name: Run golangci-lint with module cache
-        run: golangci-lint run ./...
+          args: ./...
 
       - name: Verify gofmt alignment
         run: |
@@ -76,6 +74,11 @@ jobs:
             echo "${fmt_output}";
             exit 1;
           fi
+
+      - name: Install goimports
+        run: |
+          go install golang.org/x/tools/cmd/goimports@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Verify goimports alignment
         run: |

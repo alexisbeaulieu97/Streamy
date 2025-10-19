@@ -5,22 +5,21 @@ set -e
 JSON_MODE=false
 SHORT_NAME=""
 ARGS=()
-i=0
-while [ $i -lt $# ]; do
-    arg="${!i}"
-    case "$arg" in
-        --json) 
-            JSON_MODE=true 
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --json)
+            JSON_MODE=true
+            shift
             ;;
         --short-name)
-            if [ $((i + 1)) -ge $# ]; then
+            if [ "$#" -lt 2 ]; then
                 echo 'Error: --short-name requires a value' >&2
                 exit 1
             fi
-            i=$((i + 1))
-            SHORT_NAME="${!i}"
+            SHORT_NAME="$2"
+            shift 2
             ;;
-        --help|-h) 
+        --help|-h)
             echo "Usage: $0 [--json] [--short-name <name>] <feature_description>"
             echo ""
             echo "Options:"
@@ -33,12 +32,17 @@ while [ $i -lt $# ]; do
             echo "  $0 'Implement OAuth2 integration for API'"
             exit 0
             ;;
-        *) 
-            ARGS+=("$arg") 
+        --*)
+            echo "Error: Unknown option '$1'" >&2
+            exit 1
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
             ;;
     esac
-    i=$((i + 1))
 done
+
 
 FEATURE_DESCRIPTION="${ARGS[*]}"
 if [ -z "$FEATURE_DESCRIPTION" ]; then
@@ -115,7 +119,7 @@ generate_branch_name() {
         if ! echo "$word" | grep -qiE "$stop_words"; then
             if [ ${#word} -ge 3 ]; then
                 meaningful_words+=("$word")
-            elif echo "$description" | grep -q "\b${word^^}\b"; then
+            elif echo "$description" | grep -Pq "\\b${word^^}\\b"; then
                 # Keep short words if they appear as uppercase in original (likely acronyms)
                 meaningful_words+=("$word")
             fi

@@ -53,7 +53,7 @@ Key characteristics of this decision:
 ### Negative
 
 - **Extra Package**: Developers must familiarize themselves with an additional package alongside the domain and application layers.
-- **Duplicated Types**: Some domain types need forward declarations in the ports package to avoid introducing dependencies. For example, `type Pipeline struct{}` placeholders exist until the actual domain implementation is imported by adapters.
+- **Duplicated Types**: Some domain types need placeholder type definitions in the ports package to avoid introducing dependencies. For example, `type Pipeline struct{}` stubs exist so ports can define interfaces without pulling in concrete domain implementations; adapters supply the real types when wiring the system together.
 
 ## Status & Next Steps
 
@@ -72,4 +72,3 @@ Key characteristics of this decision:
 - [ADR-001: Domain-Driven Refactor](001-domain-driven-refactor.md)
 - [Architecture Overview](../architecture-overview.md)
 - [Quickstart Guide](../../specs/009-domain-driven-refactor/quickstart.md)
-

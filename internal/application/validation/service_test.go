@@ -53,18 +53,16 @@ func TestService_RunValidations_Failures(t *testing.T) {
 
 	summary, err := svc.RunValidations(context.Background(), validations)
 	require.Error(t, err)
-	require.Equal(t, 2, summary.TotalChecks)
-	require.Equal(t, 2, summary.FailedChecks)
+	require.Equal(t, 1, summary.TotalChecks)
+	require.Equal(t, 1, summary.FailedChecks)
 	require.Zero(t, summary.PassedChecks)
-	require.Len(t, summary.FailureDetails, 2)
+	require.Len(t, summary.FailureDetails, 1)
 
 	var derr *domainpipeline.DomainError
 	require.ErrorAs(t, err, &derr)
 	require.Equal(t, domainpipeline.ErrCodeValidation, derr.Code)
-	require.Equal(t, 2, derr.Context["failed_checks"])
-	failures, ok := derr.Context["failures"].([]map[string]interface{})
-	require.True(t, ok)
-	require.Len(t, failures, 2)
+	require.Contains(t, derr.Context, "validation_type")
+	require.Equal(t, domainpipeline.ValidationFileExists, derr.Context["validation_type"])
 
 	entries := logger.Entries()
 	require.NotEmpty(t, entries)

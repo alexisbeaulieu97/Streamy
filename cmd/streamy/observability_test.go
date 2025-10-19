@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	cblog "github.com/charmbracelet/log"
@@ -20,10 +21,22 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
 )
 
+type syncBufferWriter struct {
+	mu  sync.Mutex
+	buf *bytes.Buffer
+}
+
+func (w *syncBufferWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
 func TestVerifyCommandStructuredLogging(t *testing.T) {
 	var logBuf bytes.Buffer
+	writer := &syncBufferWriter{buf: &logBuf}
 	logger, err := logginginfra.New(logginginfra.Options{
-		Writer:    &logBuf,
+		Writer:    writer,
 		Formatter: cblog.JSONFormatter,
 		Level:     "info",
 		Layer:     "infrastructure",
@@ -254,6 +267,7 @@ func filterLines(output string) []string {
 type eventsRecordingPublisher struct {
 	logger ports.Logger
 	events []eventRecord
+	mu     sync.RWMutex
 }
 
 type eventRecord struct {
@@ -275,18 +289,22 @@ func (e *eventsRecordingPublisher) Publish(ctx context.Context, event ports.Doma
 		payload:       payload,
 		correlationID: ports.GetCorrelationID(ctx),
 	}
+	e.mu.Lock()
 	e.events = append(e.events, record)
+	e.mu.Unlock()
 	if e.logger != nil {
 		e.logger.Info(ctx, "test event", "event_type", record.eventType)
 	}
 	return nil
 }
 
-func (eventsRecordingPublisher) Subscribe(string, ports.EventHandler) (ports.Subscription, error) {
+func (*eventsRecordingPublisher) Subscribe(string, ports.EventHandler) (ports.Subscription, error) {
 	return noopSubscription{}, nil
 }
 
 func (e *eventsRecordingPublisher) contains(eventType string) bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	for _, evt := range e.events {
 		if evt.eventType == eventType {
 			return true

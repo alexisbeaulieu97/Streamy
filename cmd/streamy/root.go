@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,6 +25,11 @@ func newRootCmd(app *AppContext) *cobra.Command {
 			// If no subcommand is provided, launch the dashboard
 			if len(args) == 0 {
 				ctx, logger := app.CommandContext(cmd, "command.dashboard")
+				var cancel context.CancelFunc
+				if flags.timeout > 0 {
+					ctx, cancel = context.WithTimeout(ctx, flags.timeout)
+					defer cancel()
+				}
 				if logger != nil {
 					logger.Info(ctx, "launching dashboard from root command", "command", "dashboard", "source", "root")
 				}

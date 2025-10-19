@@ -62,7 +62,7 @@ func (e *DomainError) Is(target error) bool {
 	if !errors.As(target, &domainErr) {
 		return false
 	}
-	return e.Code == domainErr.Code && e.Message == domainErr.Message
+	return e.Code == domainErr.Code && (domainErr.Message == "" || e.Message == domainErr.Message)
 }
 
 // WithContext clones the error with additional contextual metadata.

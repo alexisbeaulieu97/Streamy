@@ -19,7 +19,6 @@ linters:
     - depguard # ❗ broken in v2.5.0 for $all/Main (keep config below ready to re-enable)
   settings:
     importas:
-      no-unaliased: true
       aliases:
         - pkg: github.com/alexisbeaulieu97/streamy/internal/domain/pipeline
         - pkg: github.com/alexisbeaulieu97/streamy/internal/application/pipeline

@@ -63,6 +63,22 @@ func formatError(builder *strings.Builder, err error, depth int) {
 		return
 	}
 
+	if cerr, ok := err.(*commandError); ok {
+		fmt.Fprintf(builder, "%sFailed to %s: %s\n", indent, cerr.operation, cerr.context)
+		if strings.TrimSpace(cerr.suggestion) != "" {
+			builder.WriteString(indent)
+			builder.WriteString("  Suggestion: ")
+			builder.WriteString(cerr.suggestion)
+			builder.WriteString("\n")
+		}
+		if cerr.cause != nil {
+			builder.WriteString(indent)
+			builder.WriteString("  Cause:\n")
+			formatError(builder, cerr.cause, depth+2)
+		}
+		return
+	}
+
 	builder.WriteString(indent)
 	builder.WriteString(err.Error())
 	builder.WriteString("\n")

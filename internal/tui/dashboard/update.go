@@ -21,10 +21,18 @@ type StepProgressMsg struct {
 }
 
 // StepProgressTimeoutMsg indicates the dashboard did not receive a progress update before the timeout elapsed.
-type StepProgressTimeoutMsg struct{}
+type StepProgressTimeoutMsg struct {
+	PipelineID string
+}
 
 // StepProgressChannelClosedMsg is emitted when the progress channel closes.
 type StepProgressChannelClosedMsg struct{}
+
+const (
+	progressRetryBaseDelay = 250 * time.Millisecond
+	maxProgressRetries     = 5
+	progressGlobalKey      = "__global__"
+)
 
 // Update handles incoming messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -202,15 +210,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Message:  msg.Message,
 			Recorded: time.Now(),
 		}
-		return m, m.service.StepProgressCmd()
-
-	case StepProgressTimeoutMsg:
-		if m.service != nil {
-			return m, m.service.StepProgressCmd()
+		if m.progressRetries != nil {
+			delete(m.progressRetries, msg.PipelineID)
+			delete(m.progressRetries, progressGlobalKey)
+		}
+		if next := m.nextProgressCmd(msg.PipelineID); next != nil {
+			return m, next
 		}
 		return m, nil
 
+	case StepProgressTimeoutMsg:
+		retryKey := m.resolveProgressKey(msg.PipelineID)
+		targetPipelineID := msg.PipelineID
+		if targetPipelineID == "" && retryKey != progressGlobalKey {
+			targetPipelineID = retryKey
+		}
+		if m.progressRetries == nil {
+			m.progressRetries = make(map[string]int)
+		}
+		m.progressRetries[retryKey]++
+		retries := m.progressRetries[retryKey]
+		if retries > maxProgressRetries {
+			m.showError = true
+			if targetPipelineID != "" && targetPipelineID != progressGlobalKey {
+				m.errors[targetPipelineID] = "No progress updates received; stopping dashboard listener."
+				m.errorMsg = fmt.Sprintf("Pipeline %s stopped emitting progress updates.", targetPipelineID)
+			} else if _, exists := m.errors[progressGlobalKey]; !exists {
+				m.errors[progressGlobalKey] = "No progress updates received; stopping dashboard listener."
+				m.errorMsg = "Progress updates timed out."
+			}
+			delete(m.progressRetries, retryKey)
+			return m, nil
+		}
+
+		delay := progressRetryBaseDelay << (retries - 1)
+		maxDelay := progressRetryBaseDelay << (maxProgressRetries - 1)
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+
+		return m, tea.Tick(delay, func(time.Time) tea.Msg {
+			if next := m.nextProgressCmd(targetPipelineID); next != nil {
+				return next()
+			}
+			return nil
+		})
+
 	case StepProgressChannelClosedMsg:
+		for key := range m.progressRetries {
+			delete(m.progressRetries, key)
+		}
 		return m, nil
 
 	// Navigation messages (will be fully implemented in US2)
@@ -237,6 +286,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) resolveProgressKey(pipelineID string) string {
+	if strings.TrimSpace(pipelineID) != "" {
+		return pipelineID
+	}
+	if len(m.operations) == 1 {
+		for id := range m.operations {
+			if strings.TrimSpace(id) != "" {
+				return id
+			}
+		}
+	}
+	if len(m.loading) == 1 {
+		for id := range m.loading {
+			if strings.TrimSpace(id) != "" {
+				return id
+			}
+		}
+	}
+	return progressGlobalKey
 }
 
 // handleKeyPress handles keyboard input based on current view mode

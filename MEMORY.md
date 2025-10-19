@@ -8,8 +8,8 @@
 - Added cancellation-aware helpers across command, package, and copy plugins; executor tests adapted to new error semantics.
 - Phase 9 checklist advanced to 30/56: all documentation, performance, and validation items through SC-010/SC-263 confirmed (structured logging, graceful shutdown, plugin extensibility, error context, architecture clarity, strangler parity). Remaining work: prep release summary and any follow-up docs.
 
-**Pending Ideas**
+## Pending Ideas
 - None (update as new concerns emerge).
 
-**Last Commit**
+## Last Commit
 - b63ff5a1c199750cc4bdd6724ea858fc95a4c2f7

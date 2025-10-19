@@ -4,7 +4,7 @@ Streamy follows a four-layer domain-driven architecture, with the CLI sitting ab
 clear responsibility and directional dependency rules. Mermaid sources for the
 diagrams below live under `docs/diagrams/`.
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │                   CLI (cmd)                 │
 │  - Cobra commands wire the composition root │

@@ -34,6 +34,11 @@ func (s *Service) RunValidations(ctx context.Context, validations []domain.Valid
 			Type: string(val.Type),
 		}
 
+		if validateErr := val.Validate(); validateErr != nil {
+			domainErr := domain.NewDomainError(domain.ErrCodeValidation, "validation descriptor invalid", validateErr, map[string]interface{}{"validation_type": val.Type})
+			return summary, domainErr
+		}
+
 		var err error
 		switch val.Type {
 		case domain.ValidationCommandExists:
