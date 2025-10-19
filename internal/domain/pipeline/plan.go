@@ -38,6 +38,16 @@ func (p ExecutionPlan) Validate(pipeline Pipeline) error {
 		stepByID[step.ID] = step
 	}
 
+	for id := range seen {
+		step, ok := stepByID[id]
+		if !ok {
+			return NewDependencyError("execution plan references unknown step", map[string]interface{}{"step_id": id, "reason": "unknown"})
+		}
+		if !step.Enabled {
+			return NewDependencyError("execution plan references disabled step", map[string]interface{}{"step_id": id, "reason": "disabled"})
+		}
+	}
+
 	for _, step := range pipeline.Steps {
 		if !step.Enabled {
 			continue

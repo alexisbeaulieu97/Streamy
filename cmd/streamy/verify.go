@@ -93,14 +93,7 @@ func runVerifyInternal(ctx context.Context, app *AppContext, opts verifyOptions)
 		return handleVerifyPrepareError(err)
 	}
 
-	execCtx := ctx
-	if opts.Timeout > 0 {
-		var cancel context.CancelFunc
-		execCtx, cancel = context.WithTimeout(ctx, opts.Timeout)
-		defer cancel()
-	}
-
-	verifiedPipeline, results, verifyErr := app.VerifyUseCase.Verify(execCtx, opts.ConfigPath)
+	verifiedPipeline, results, verifyErr := app.VerifyUseCase.Verify(ctx, opts.ConfigPath)
 	if verifyErr != nil {
 		return handleVerifyExecutionError(verifyErr)
 	}

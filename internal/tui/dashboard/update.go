@@ -230,7 +230,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.progressRetries[retryKey]++
 		retries := m.progressRetries[retryKey]
-		if retries > maxProgressRetries {
+		if retries >= maxProgressRetries {
 			m.showError = true
 			if targetPipelineID != "" && targetPipelineID != progressGlobalKey {
 				m.errors[targetPipelineID] = "No progress updates received; stopping dashboard listener."
