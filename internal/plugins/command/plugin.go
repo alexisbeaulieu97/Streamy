@@ -279,9 +279,10 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 
 	if rawEnv, ok := step.Config["env"].(map[string]interface{}); ok {
 		for k, v := range rawEnv {
-			if str, ok := v.(string); ok {
-				cfg.Env[k] = str
+			if v == nil {
+				continue
 			}
+			cfg.Env[k] = fmt.Sprint(v)
 		}
 	} else if env, ok := step.Config["env"].(map[string]string); ok {
 		for k, v := range env {

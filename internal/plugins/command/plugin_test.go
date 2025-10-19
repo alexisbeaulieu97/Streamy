@@ -106,6 +106,31 @@ func TestApplyMissingConfig(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDecodeConfigEnvCastsNonStringValues(t *testing.T) {
+	step := domainpipeline.Step{
+		ID:   "env",
+		Type: domainpipeline.StepTypeCommand,
+		Config: map[string]interface{}{
+			"command": "echo hello",
+			"env": map[string]interface{}{
+				"STRING": "value",
+				"NUMBER": 42,
+				"BOOL":   true,
+				"NIL":    nil,
+			},
+		},
+	}
+
+	cfg, err := decodeConfig(step)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{
+		"STRING": "value",
+		"NUMBER": "42",
+		"BOOL":   "true",
+	}, cfg.Env)
+	require.NotContains(t, cfg.Env, "NIL")
+}
+
 func writeScript(t *testing.T, dir, name, content string) {
 	t.Helper()
 	scriptPath := filepath.Join(dir, name)

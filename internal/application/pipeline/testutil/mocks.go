@@ -171,10 +171,19 @@ func (l *MockLogger) Error(ctx context.Context, msg string, fields ...interface{
 }
 
 func (l *MockLogger) With(fields ...interface{}) ports.Logger {
-	clone := &MockLogger{entries: l.entries}
-	clone.fields = append(clone.fields, l.fields...)
-	clone.fields = append(clone.fields, fields...)
-	return clone
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	clonedEntries := make([]LogEntry, len(l.entries))
+	copy(clonedEntries, l.entries)
+
+	clonedFields := append([]interface{}{}, l.fields...)
+	clonedFields = append(clonedFields, fields...)
+
+	return &MockLogger{
+		entries: clonedEntries,
+		fields:  clonedFields,
+	}
 }
 
 func (l *MockLogger) Entries() []LogEntry {

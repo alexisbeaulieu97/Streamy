@@ -17,8 +17,8 @@ func TestExecutionPlanValidate(t *testing.T) {
 	pipe := Pipeline{
 		Name: "plan",
 		Steps: []Step{
-			{ID: "setup", Type: StepTypeCommand},
-			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}},
+			{ID: "setup", Type: StepTypeCommand, Enabled: true},
+			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}, Enabled: true},
 		},
 	}
 
@@ -31,7 +31,7 @@ func TestExecutionPlanValidateMissingStep(t *testing.T) {
 	pl := ExecutionPlan{
 		Levels: []ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}},
 	}
-	pipe := Pipeline{Name: "plan", Steps: []Step{{ID: "setup"}, {ID: "install"}}}
+	pipe := Pipeline{Name: "plan", Steps: []Step{{ID: "setup", Enabled: true}, {ID: "install", Enabled: true}}}
 
 	err := pl.Validate(pipe)
 	if err == nil {
@@ -50,7 +50,13 @@ func TestExecutionPlanValidateDependencyOrder(t *testing.T) {
 			{Level: 1, StepIDs: []string{"setup"}},
 		},
 	}
-	pipe := Pipeline{Name: "plan", Steps: []Step{{ID: "setup", Type: StepTypeCommand}, {ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}}}}
+	pipe := Pipeline{
+		Name: "plan",
+		Steps: []Step{
+			{ID: "setup", Type: StepTypeCommand, Enabled: true},
+			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}, Enabled: true},
+		},
+	}
 
 	err := pl.Validate(pipe)
 	if err == nil {
@@ -59,5 +65,24 @@ func TestExecutionPlanValidateDependencyOrder(t *testing.T) {
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDependency {
 		t.Fatalf("expected dependency domain error, got %v", err)
+	}
+}
+
+func TestExecutionPlanValidateSkipsDisabledSteps(t *testing.T) {
+	pl := ExecutionPlan{
+		Levels: []ExecutionLevel{
+			{Level: 0, StepIDs: []string{"install"}},
+		},
+	}
+	pipe := Pipeline{
+		Name: "plan",
+		Steps: []Step{
+			{ID: "setup", Type: StepTypeCommand, Enabled: false},
+			{ID: "install", Type: StepTypePackage, Enabled: true, DependsOn: []string{"setup"}},
+		},
+	}
+
+	if err := pl.Validate(pipe); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

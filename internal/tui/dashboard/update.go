@@ -20,6 +20,12 @@ type StepProgressMsg struct {
 	Message    string
 }
 
+// StepProgressTimeoutMsg indicates the dashboard did not receive a progress update before the timeout elapsed.
+type StepProgressTimeoutMsg struct{}
+
+// StepProgressChannelClosedMsg is emitted when the progress channel closes.
+type StepProgressChannelClosedMsg struct{}
+
 // Update handles incoming messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -197,6 +203,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Recorded: time.Now(),
 		}
 		return m, m.service.StepProgressCmd()
+
+	case StepProgressTimeoutMsg:
+		if m.service != nil {
+			return m, m.service.StepProgressCmd()
+		}
+		return m, nil
+
+	case StepProgressChannelClosedMsg:
+		return m, nil
 
 	// Navigation messages (will be fully implemented in US2)
 	case PipelineSelectedMsg:

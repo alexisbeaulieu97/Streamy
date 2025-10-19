@@ -216,7 +216,9 @@ func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 				rawChain, ok := payload["error_chain"].([]interface{})
 				require.True(t, ok, "expected error_chain field in payload")
 				for _, entry := range rawChain {
-					observedChain = append(observedChain, entry.(string))
+					str, ok := entry.(string)
+					require.True(t, ok, "expected string in error_chain")
+					observedChain = append(observedChain, str)
 				}
 				if cause, ok := payload["error_cause"].(string); ok {
 					observedCause = cause

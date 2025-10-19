@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Streamy follows a three-layer domain-driven architecture. Each layer has a
+Streamy follows a four-layer domain-driven architecture, with the CLI sitting above the core infrastructure, application, and domain layers. Each layer has a
 clear responsibility and directional dependency rules. Mermaid sources for the
 diagrams below live under `docs/diagrams/`.
 

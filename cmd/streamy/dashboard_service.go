@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -24,7 +25,7 @@ type dashboardPipelineAdapter struct {
 	progressCh    chan dashboard.StepProgressMsg
 }
 
-func newDashboardPipelineService(apply *applicationpipeline.ApplyUseCase, verify *applicationpipeline.VerifyUseCase, publisher ports.EventPublisher) dashboard.PipelineService {
+func newDashboardPipelineService(apply *applicationpipeline.ApplyUseCase, verify *applicationpipeline.VerifyUseCase, publisher ports.EventPublisher) (dashboard.PipelineService, error) {
 	adapter := &dashboardPipelineAdapter{
 		applyUseCase:  apply,
 		verifyUseCase: verify,
@@ -33,9 +34,11 @@ func newDashboardPipelineService(apply *applicationpipeline.ApplyUseCase, verify
 	}
 	if adapter.events != nil {
 		adapter.progressCh = make(chan dashboard.StepProgressMsg, 32)
-		adapter.subscribeToEvents()
+		if err := adapter.subscribeToEvents(); err != nil {
+			return nil, err
+		}
 	}
-	return adapter
+	return adapter, nil
 }
 
 func (a *dashboardPipelineAdapter) Verify(ctx context.Context, opts dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
@@ -76,14 +79,22 @@ func (a *dashboardPipelineAdapter) StepProgressCmd() tea.Cmd {
 		return nil
 	}
 	return func() tea.Msg {
-		msg := <-a.progressCh
-		return msg
+		select {
+		case msg, ok := <-a.progressCh:
+			if !ok {
+				a.progressCh = nil
+				return dashboard.StepProgressChannelClosedMsg{}
+			}
+			return msg
+		case <-time.After(250 * time.Millisecond):
+			return dashboard.StepProgressTimeoutMsg{}
+		}
 	}
 }
 
-func (a *dashboardPipelineAdapter) subscribeToEvents() {
+func (a *dashboardPipelineAdapter) subscribeToEvents() error {
 	if a.events == nil {
-		return
+		return nil
 	}
 	handler := func(ctx context.Context, event ports.DomainEvent) error {
 		payload, ok := event.Payload().(map[string]interface{})
@@ -121,14 +132,22 @@ func (a *dashboardPipelineAdapter) subscribeToEvents() {
 		return nil
 	}
 
+	var errs []error
+
 	for _, eventType := range []string{
 		ports.EventStepStarted,
 		ports.EventStepCompleted,
 		ports.EventStepFailed,
 		ports.EventStepSkipped,
 	} {
-		_, _ = a.events.Subscribe(eventType, handler)
+		if _, err := a.events.Subscribe(eventType, handler); err != nil {
+			errs = append(errs, fmt.Errorf("subscribe to %s: %w", eventType, err))
+		}
 	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 type stepProgress struct {

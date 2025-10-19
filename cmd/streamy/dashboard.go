@@ -66,7 +66,13 @@ func runDashboard(ctx context.Context, app *AppContext, logger ports.Logger) err
 		return fmt.Errorf("failed to load status cache: %w", err)
 	}
 
-	svc := newDashboardPipelineService(app.ApplyUseCase, app.VerifyUseCase, app.EventPublisher())
+	svc, err := newDashboardPipelineService(app.ApplyUseCase, app.VerifyUseCase, app.EventPublisher())
+	if err != nil {
+		if logger != nil {
+			logger.Error(ctx, "failed to subscribe dashboard events", "error", err)
+		}
+		return fmt.Errorf("failed to prepare dashboard service: %w", err)
+	}
 
 	pipelines := reg.List()
 	if logger != nil {
