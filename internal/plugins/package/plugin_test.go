@@ -161,6 +161,128 @@ func TestApplyHandlesExecutionError(t *testing.T) {
 	require.Equal(t, domainpipeline.ErrCodeExecution, domainErr.Code)
 }
 
+func TestApplyRespectsAlreadySatisfiedEvaluation(t *testing.T) {
+	original := runCommand
+	defer func() { runCommand = original }()
+
+	step := domainpipeline.Step{
+		ID:   "pkg_satisfied",
+		Type: domainpipeline.StepTypePackage,
+		Config: map[string]interface{}{
+			"packages": []interface{}{"curl"},
+		},
+	}
+
+	result, err := New().Apply(context.Background(), &domainpipeline.EvaluationResult{RequiresAction: false}, step)
+	require.NoError(t, err)
+	require.Equal(t, domainpipeline.StatusAlreadySatisfied, result.Status)
+	require.Contains(t, result.Message, "no changes")
+}
+
+func TestEnsureEvaluationDataFallback(t *testing.T) {
+	original := runCommand
+	defer func() { runCommand = original }()
+
+	var dpkgQueries int
+
+	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+		if name == "dpkg-query" {
+			dpkgQueries++
+			return internalexec.Result{}, errPackageMissing
+		}
+		return internalexec.Result{}, nil
+	}
+
+	step := domainpipeline.Step{
+		ID:   "pkg_missing",
+		Type: domainpipeline.StepTypePackage,
+		Config: map[string]interface{}{
+			"packages": []interface{}{"curl"},
+		},
+	}
+
+	plugin := New()
+
+	result, err := plugin.Apply(context.Background(), nil, step)
+	require.NoError(t, err)
+	require.Equal(t, domainpipeline.StatusSuccess, result.Status)
+	require.GreaterOrEqual(t, dpkgQueries, 1)
+}
+
+func TestApplyRunsUpdateWhenRequested(t *testing.T) {
+	original := runCommand
+	defer func() { runCommand = original }()
+
+	var updateCalls int
+	var installCalls int
+
+	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+		switch name {
+		case "dpkg-query":
+			return internalexec.Result{}, errPackageMissing
+		case "apt-get":
+			require.NotEmpty(t, args)
+			if args[0] == "update" {
+				updateCalls++
+				return internalexec.Result{}, nil
+			}
+			if args[0] == "install" {
+				installCalls++
+				return internalexec.Result{}, nil
+			}
+		}
+		return internalexec.Result{}, nil
+	}
+
+	step := domainpipeline.Step{
+		ID:   "pkg_update",
+		Type: domainpipeline.StepTypePackage,
+		Config: map[string]interface{}{
+			"packages": []interface{}{"curl"},
+			"update":   true,
+		},
+	}
+
+	plugin := New()
+
+	result, err := plugin.Apply(context.Background(), nil, step)
+	require.NoError(t, err)
+	require.Equal(t, domainpipeline.StatusSuccess, result.Status)
+	require.Equal(t, 1, updateCalls)
+	require.Equal(t, 1, installCalls)
+}
+
+func TestApplyHandlesUpdateTimeout(t *testing.T) {
+	original := runCommand
+	defer func() { runCommand = original }()
+
+	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+		if name == "dpkg-query" {
+			return internalexec.Result{}, errPackageMissing
+		}
+		if name == "apt-get" && len(args) > 0 && args[0] == "update" {
+			return internalexec.Result{}, context.DeadlineExceeded
+		}
+		return internalexec.Result{}, nil
+	}
+
+	step := domainpipeline.Step{
+		ID:   "pkg_update_timeout",
+		Type: domainpipeline.StepTypePackage,
+		Config: map[string]interface{}{
+			"packages": []interface{}{"curl"},
+			"update":   true,
+		},
+	}
+
+	result, err := New().Apply(context.Background(), nil, step)
+	require.Nil(t, result)
+	require.Error(t, err)
+	var domainErr *domainpipeline.DomainError
+	require.ErrorAs(t, err, &domainErr)
+	require.Equal(t, domainpipeline.ErrCodeTimeout, domainErr.Code)
+}
+
 func TestDecodeConfigValidation(t *testing.T) {
 	t.Parallel()
 

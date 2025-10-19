@@ -68,6 +68,33 @@ func TestExecutionPlanValidateDependencyOrder(t *testing.T) {
 	}
 }
 
+func TestExecutionPlanValidateDependencySameLevel(t *testing.T) {
+	pl := ExecutionPlan{
+		Levels: []ExecutionLevel{
+			{Level: 0, StepIDs: []string{"setup", "install"}},
+		},
+	}
+	pipe := Pipeline{
+		Name: "plan",
+		Steps: []Step{
+			{ID: "setup", Type: StepTypeCommand, Enabled: true},
+			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}, Enabled: true},
+		},
+	}
+
+	err := pl.Validate(pipe)
+	if err == nil {
+		t.Fatal("expected dependency order error for same-level dependency")
+	}
+	var domainErr *DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDependency {
+		t.Fatalf("expected dependency domain error, got %v", err)
+	}
+	if domainErr.Context["step_level"] != 0 || domainErr.Context["dependency_level"] != 0 {
+		t.Fatalf("expected level context, got %v", domainErr.Context)
+	}
+}
+
 func TestExecutionPlanValidateSkipsDisabledSteps(t *testing.T) {
 	pl := ExecutionPlan{
 		Levels: []ExecutionLevel{

@@ -74,7 +74,8 @@ func (p ExecutionPlan) Validate(pipeline Pipeline) error {
 			return NewDependencyError("plan missing step", map[string]interface{}{"step_id": step.ID})
 		}
 		for _, dep := range step.DependsOn {
-			if depStep, ok := stepByID[dep]; ok && !depStep.Enabled {
+			dStep, depExists := stepByID[dep]
+			if depExists && !dStep.Enabled {
 				continue
 			}
 			depLevel, ok := levelIndex[dep]
@@ -84,10 +85,12 @@ func (p ExecutionPlan) Validate(pipeline Pipeline) error {
 					"dependency_id": dep,
 				})
 			}
-			if depLevel > stepLevel {
+			if depLevel >= stepLevel {
 				return NewDependencyError("dependency scheduled after dependent", map[string]interface{}{
 					"step_id":       step.ID,
 					"dependency_id": dep,
+					"step_level":    stepLevel,
+					"dependency_level": depLevel,
 				})
 			}
 		}

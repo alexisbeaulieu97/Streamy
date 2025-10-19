@@ -13,35 +13,60 @@ linters:
     - importas
     - forbidigo
     - contextcheck
-    - gomodguard # module-level policy
+    - gomodguard
+    - bodyclose
+    - gocritic
+    - goconst
+    - gocyclo
+    - gosec
+    - makezero
+    - revive
+    - unconvert
+    - wrapcheck
+    - wsl_v5
   disable:
     - depguard # ❗ broken in v2.5.0 for $all/Main (keep config below ready to re-enable)
+  settings:
+    gocyclo:
+      min-complexity: 15
+    importas:
+      no-unaliased: true
+      alias:
+        - pkg: github.com/stretchr/testify/assert
+          alias: assert
+        - pkg: github.com/stretchr/testify/require
+          alias: require
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    forbidigo:
+      forbid:
+        - pattern: "fmt.Print.*"
+          msg: "Use the structured logger instead of fmt.Print"
+        - pattern: "log.Print.*"
+          msg: "Use the structured logger instead of log.Print"
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - goconst
+          - gosec
+          - gocritic
 
-linters-settings:
-  importas:
-    alias:
-      - alias: domainpipeline
-        pkg: github.com/alexisbeaulieu97/streamy/internal/domain/pipeline
-      - alias: applicationpipeline
-        pkg: github.com/alexisbeaulieu97/streamy/internal/application/pipeline
-      - alias: infrastructure
-        pkg: github.com/alexisbeaulieu97/streamy/internal/infrastructure
-  forbidigo:
-    forbid:
-      - fmt\.Print.*
-      - log\.Print.*
-  contextcheck:
-    allow-types:
-      - "*cobra.Command"
-      - "*testing.T"
-  gomodguard:
-    blocked:
-      modules:
-        - github.com/sirupsen/logrus:
-            recommendations:
-              - github.com/charmbracelet/log
-            reason: "Use charmbracelet/log for consistent logging"
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+    - gofmt
+  settings:
+    gofumpt:
+      extra-rules: true
 
-issues:
-  exclude-dirs:
-    - specs
+output:
+  formats:
+    text:
+      colors: true
+      print-issued-lines: true
+      print-linter-name: true
