@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/pipelineconv"
 )
 
@@ -22,12 +22,18 @@ type verifyOptions struct {
 	Timeout    time.Duration
 }
 
+type outputWriter interface {
+	Printf(format string, args ...interface{})
+	Println(args ...interface{})
+}
+
 var (
-	exitFunc                         = os.Exit
-	stderrWriter           io.Writer = os.Stderr
-	printTableOutputFunc             = printTableOutput
-	printVerboseOutputFunc           = printVerboseOutput
-	printJSONOutputFunc              = printJSONOutput
+	exitFunc                            = os.Exit
+	stderrWriter           io.Writer    = os.Stderr
+	stdoutWriter           outputWriter = &stdoutPrinter{w: os.Stdout}
+	printTableOutputFunc                = printTableOutput
+	printVerboseOutputFunc              = printVerboseOutput
+	printJSONOutputFunc                 = printJSONOutput
 )
 
 func newVerifyCmd(root *rootFlags, app *AppContext) *cobra.Command {
@@ -37,25 +43,39 @@ func newVerifyCmd(root *rootFlags, app *AppContext) *cobra.Command {
 		Use:   "verify <config-file>",
 		Short: "Verify system state matches configuration without making changes",
 		Long: `Verify performs read-only checks to determine if the system state matches
-the declared configuration. Returns exit code 0 if all steps are satisfied,
-exit code 1 if any changes are needed.`,
+		the declared configuration. Returns exit code 0 if all steps are satisfied,
+		exit code 1 if any changes are needed.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ConfigPath = args[0]
 			opts.Verbose = root.verbose
+			if opts.Timeout <= 0 {
+				opts.Timeout = root.timeout
+			}
 
 			return runVerify(cmd.Context(), app, opts)
 		},
 	}
 
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output results in JSON format")
-	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 30*time.Second, "Default timeout per step; accepts Go duration strings (e.g. 60s)")
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 0, "Maximum duration for the verify command; defaults to root timeout")
 
 	return cmd
 }
 
 func runVerify(ctx context.Context, app *AppContext, opts verifyOptions) error {
-	exitCode, err := runVerifyInternal(ctx, app, opts)
+	var (
+		execCtx context.Context
+		cancel  context.CancelFunc
+	)
+	if opts.Timeout > 0 {
+		execCtx, cancel = context.WithTimeout(ctx, opts.Timeout)
+	} else {
+		execCtx, cancel = context.WithCancel(ctx)
+	}
+	defer cancel()
+
+	exitCode, err := runVerifyInternal(execCtx, app, opts)
 	if err != nil {
 		return err
 	}
@@ -65,7 +85,7 @@ func runVerify(ctx context.Context, app *AppContext, opts verifyOptions) error {
 
 func runVerifyInternal(ctx context.Context, app *AppContext, opts verifyOptions) (int, error) {
 	if ctx == nil {
-		ctx = context.Background()
+		return 3, fmt.Errorf("context is required")
 	}
 
 	preparedPipeline, _, err := app.PrepareUseCase.Prepare(ctx, opts.ConfigPath)
@@ -132,20 +152,18 @@ func handleVerifyExecutionError(err error) (int, error) {
 	return 3, nil
 }
 
-func printTableOutput(summary *model.VerificationSummary) {
-	// Print header
-	fmt.Println("\nVerification Results:")
-	fmt.Println(strings.Repeat("=", 80))
-	fmt.Printf("%-40s %-12s %-8s %s\n", "Step ID", "Status", "Duration", "Message")
-	fmt.Println(strings.Repeat("-", 80))
+func printTableOutput(summary *pipelineconv.VerificationSummary) {
+	stdoutWriter.Println("\nVerification Results:")
+	stdoutWriter.Println(strings.Repeat("=", 80))
+	stdoutWriter.Printf("%-40s %-12s %-8s %s\n", "Step ID", "Status", "Duration", "Message")
+	stdoutWriter.Println(strings.Repeat("-", 80))
 
-	// Print each result
 	for _, result := range summary.Results {
 		symbol := getStatusSymbol(result.Status)
 		duration := fmt.Sprintf("%.2fs", result.Duration.Seconds())
 		message := truncateString(result.Message, 40)
 
-		fmt.Printf("%-40s %-12s %-8s %s\n",
+		stdoutWriter.Printf("%-40s %-12s %-8s %s\n",
 			truncateString(result.StepID, 40),
 			fmt.Sprintf("%s %s", symbol, result.Status),
 			duration,
@@ -153,52 +171,50 @@ func printTableOutput(summary *model.VerificationSummary) {
 		)
 	}
 
-	// Print summary
-	fmt.Println(strings.Repeat("=", 80))
-	fmt.Printf("\nSummary:\n")
-	fmt.Printf("  Total:     %d\n", summary.TotalSteps)
-	fmt.Printf("  ✔ Satisfied: %d\n", summary.Satisfied)
-	fmt.Printf("  ✖ Missing:   %d\n", summary.Missing)
-	fmt.Printf("  ⚠ Drifted:   %d\n", summary.Drifted)
-	fmt.Printf("  🚫 Blocked:  %d\n", summary.Blocked)
-	fmt.Printf("  ? Unknown:  %d\n", summary.Unknown)
-	fmt.Printf("  Duration:  %s\n", summary.Duration.String())
+	stdoutWriter.Println(strings.Repeat("=", 80))
+	stdoutWriter.Println("\nSummary:")
+	stdoutWriter.Printf("  Total:     %d\n", summary.TotalSteps)
+	stdoutWriter.Printf("  ✔ Satisfied: %d\n", summary.Satisfied)
+	stdoutWriter.Printf("  ✖ Missing:   %d\n", summary.Missing)
+	stdoutWriter.Printf("  ⚠ Drifted:   %d\n", summary.Drifted)
+	stdoutWriter.Printf("  🚫 Blocked:  %d\n", summary.Blocked)
+	stdoutWriter.Printf("  ? Unknown:  %d\n", summary.Unknown)
+	stdoutWriter.Printf("  Duration:  %s\n", summary.Duration.String())
 
 	if summary.AllSatisfied() {
-		fmt.Println("\n✅ All steps satisfied - no changes needed")
+		stdoutWriter.Println("\n✅ All steps satisfied - no changes needed")
 	} else {
-		fmt.Println("\n❌ Changes needed - run 'streamy apply' to fix")
+		stdoutWriter.Println("\n❌ Changes needed - run 'streamy apply' to fix")
 	}
 }
 
-func printVerboseOutput(summary *model.VerificationSummary) {
+func printVerboseOutput(summary *pipelineconv.VerificationSummary) {
 	printTableOutput(summary)
 
-	// Print detailed information for drifted/blocked steps
 	hasDetails := false
 	for _, result := range summary.Results {
-		if result.Status == model.StatusDrifted && result.Details != "" {
+		if result.Status == pipelineconv.VerificationDrifted && result.Details != "" {
 			if !hasDetails {
-				fmt.Println("\nDetailed Diff Output:")
-				fmt.Println(strings.Repeat("=", 80))
+				stdoutWriter.Println("\nDetailed Diff Output:")
+				stdoutWriter.Println(strings.Repeat("=", 80))
 				hasDetails = true
 			}
-			fmt.Printf("\n--- Step: %s ---\n", result.StepID)
-			fmt.Println(result.Details)
+			stdoutWriter.Printf("\n--- Step: %s ---\n", result.StepID)
+			stdoutWriter.Println(result.Details)
 		}
-		if result.Status == model.StatusBlocked && result.Error != nil {
+		if result.Status == pipelineconv.VerificationBlocked && result.Error != nil {
 			if !hasDetails {
-				fmt.Println("\nError Details:")
-				fmt.Println(strings.Repeat("=", 80))
+				stdoutWriter.Println("\nError Details:")
+				stdoutWriter.Println(strings.Repeat("=", 80))
 				hasDetails = true
 			}
-			fmt.Printf("\n--- Step: %s ---\n", result.StepID)
-			fmt.Printf("Error: %v\n", result.Error)
+			stdoutWriter.Printf("\n--- Step: %s ---\n", result.StepID)
+			stdoutWriter.Printf("Error: %v\n", result.Error)
 		}
 	}
 }
 
-func printJSONOutput(summary *model.VerificationSummary, configPath string) error {
+func printJSONOutput(summary *pipelineconv.VerificationSummary, configPath string) error {
 	// Convert to JSON-friendly format
 	type JSONResult struct {
 		StepID    string  `json:"step_id"`
@@ -264,17 +280,17 @@ func printJSONOutput(summary *model.VerificationSummary, configPath string) erro
 	return nil
 }
 
-func getStatusSymbol(status model.VerificationStatus) string {
+func getStatusSymbol(status pipelineconv.VerificationStatus) string {
 	switch status {
-	case model.StatusSatisfied:
+	case pipelineconv.VerificationSatisfied:
 		return "✔"
-	case model.StatusMissing:
+	case pipelineconv.VerificationMissing:
 		return "✖"
-	case model.StatusDrifted:
+	case pipelineconv.VerificationDrifted:
 		return "⚠"
-	case model.StatusBlocked:
+	case pipelineconv.VerificationBlocked:
 		return "🚫"
-	case model.StatusUnknown:
+	case pipelineconv.VerificationUnknown:
 		return "?"
 	default:
 		return "?"
@@ -286,4 +302,20 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+type stdoutPrinter struct {
+	w io.Writer
+}
+
+func (p *stdoutPrinter) Printf(format string, args ...interface{}) {
+	bw := bufio.NewWriter(p.w)
+	_, _ = fmt.Fprintf(bw, format, args...)
+	_ = bw.Flush()
+}
+
+func (p *stdoutPrinter) Println(args ...interface{}) {
+	bw := bufio.NewWriter(p.w)
+	_, _ = fmt.Fprintln(bw, args...)
+	_ = bw.Flush()
 }

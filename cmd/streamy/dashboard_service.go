@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	applicationpipeline "github.com/alexisbeaulieu97/streamy/internal/application/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/pipelineconv"
+	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/dashboard"
 )
@@ -13,13 +19,23 @@ import (
 type dashboardPipelineAdapter struct {
 	applyUseCase  *applicationpipeline.ApplyUseCase
 	verifyUseCase *applicationpipeline.VerifyUseCase
+	events        ports.EventPublisher
+	progress      *stepProgress
+	progressCh    chan dashboard.StepProgressMsg
 }
 
-func newDashboardPipelineAdapter(app *AppContext) dashboard.PipelineService {
-	return &dashboardPipelineAdapter{
-		applyUseCase:  app.ApplyUseCase,
-		verifyUseCase: app.VerifyUseCase,
+func newDashboardPipelineService(apply *applicationpipeline.ApplyUseCase, verify *applicationpipeline.VerifyUseCase, publisher ports.EventPublisher) dashboard.PipelineService {
+	adapter := &dashboardPipelineAdapter{
+		applyUseCase:  apply,
+		verifyUseCase: verify,
+		events:        publisher,
+		progress:      newStepProgress(),
 	}
+	if adapter.events != nil {
+		adapter.progressCh = make(chan dashboard.StepProgressMsg, 32)
+		adapter.subscribeToEvents()
+	}
+	return adapter
 }
 
 func (a *dashboardPipelineAdapter) Verify(ctx context.Context, opts dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
@@ -45,12 +61,7 @@ func (a *dashboardPipelineAdapter) Apply(ctx context.Context, opts dashboard.App
 		return nil, err
 	}
 
-	modelResults := make([]model.StepResult, len(stepResults))
-	for i, res := range stepResults {
-		modelResults[i] = pipelineconv.ConvertStepResult(res, opts.DryRun)
-	}
-
-	execResult := pipelineconv.ConvertApplyResults(modelResults, opts.ConfigPath, nil, nil)
+	execResult := pipelineconv.ConvertApplyResults(stepResults, opts.ConfigPath, opts.DryRun, nil, nil)
 	if pipeline != nil {
 		execResult.PipelineID = pipeline.Name
 		if execResult.PipelineID == "" {
@@ -58,4 +69,86 @@ func (a *dashboardPipelineAdapter) Apply(ctx context.Context, opts dashboard.App
 		}
 	}
 	return execResult, nil
+}
+
+func (a *dashboardPipelineAdapter) StepProgressCmd() tea.Cmd {
+	if a.progressCh == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		msg := <-a.progressCh
+		return msg
+	}
+}
+
+func (a *dashboardPipelineAdapter) subscribeToEvents() {
+	if a.events == nil {
+		return
+	}
+	handler := func(ctx context.Context, event ports.DomainEvent) error {
+		payload, ok := event.Payload().(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		pipelineID, _ := payload["pipeline"].(string)
+		if pipelineID == "" {
+			pipelineID, _ = payload["pipeline_id"].(string)
+		}
+		stepID, _ := payload["step_id"].(string)
+		message := ""
+		if errVal, ok := payload["error"]; ok {
+			message = fmt.Sprint(errVal)
+		}
+		status := strings.TrimPrefix(event.EventType(), "step.")
+
+		a.progress.Set(pipelineID, dashboard.StepProgress{
+			StepID:   stepID,
+			Status:   status,
+			Message:  message,
+			Recorded: time.Now(),
+		})
+
+		msg := dashboard.StepProgressMsg{
+			PipelineID: pipelineID,
+			StepID:     stepID,
+			Status:     status,
+			Message:    message,
+		}
+		select {
+		case a.progressCh <- msg:
+		default:
+		}
+		return nil
+	}
+
+	for _, eventType := range []string{
+		ports.EventStepStarted,
+		ports.EventStepCompleted,
+		ports.EventStepFailed,
+		ports.EventStepSkipped,
+	} {
+		_, _ = a.events.Subscribe(eventType, handler)
+	}
+}
+
+type stepProgress struct {
+	mu   sync.RWMutex
+	data map[string]dashboard.StepProgress
+}
+
+func newStepProgress() *stepProgress {
+	return &stepProgress{data: make(map[string]dashboard.StepProgress)}
+}
+
+func (s *stepProgress) Set(pipelineID string, progress dashboard.StepProgress) {
+	s.mu.Lock()
+	s.data[pipelineID] = progress
+	s.mu.Unlock()
+}
+
+func (s *stepProgress) Get(pipelineID string) (dashboard.StepProgress, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	progress, ok := s.data[pipelineID]
+	return progress, ok
 }

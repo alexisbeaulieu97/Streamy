@@ -1,6 +1,10 @@
 package pipeline
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+	"slices"
+)
 
 // Pipeline represents a complete pipeline configuration.
 type Pipeline struct {
@@ -15,10 +19,10 @@ type Pipeline struct {
 // Validate ensures the pipeline satisfies all invariants.
 func (p Pipeline) Validate() error {
 	if p.Name == "" {
-		return newMissingFieldError("name")
+		return NewMissingFieldError("name")
 	}
 	if len(p.Steps) == 0 {
-		return newValidationError("pipeline requires at least one step", nil)
+		return NewValidationError("pipeline requires at least one step", nil)
 	}
 
 	seen := make(map[string]struct{}, len(p.Steps))
@@ -27,7 +31,7 @@ func (p Pipeline) Validate() error {
 			return err
 		}
 		if _, ok := seen[step.ID]; ok {
-			return newDuplicateError(step.ID)
+			return NewDuplicateError(step.ID)
 		}
 		seen[step.ID] = struct{}{}
 	}
@@ -49,10 +53,10 @@ func (p Pipeline) ValidateDependencies() error {
 	for _, step := range p.Steps {
 		for _, dep := range step.DependsOn {
 			if dep == step.ID {
-				return newDependencyError("step cannot depend on itself", map[string]interface{}{"step_id": step.ID})
+				return NewDependencyError("step cannot depend on itself", map[string]interface{}{"step_id": step.ID})
 			}
 			if _, ok := lookup[dep]; !ok {
-				return newDependencyError("dependency not found", map[string]interface{}{"step_id": step.ID, "missing_dependency": dep})
+				return NewDependencyError("dependency not found", map[string]interface{}{"step_id": step.ID, "missing_dependency": dep})
 			}
 		}
 	}
@@ -72,9 +76,9 @@ func (p Pipeline) ValidateDependencies() error {
 					return err
 				}
 			} else if stack[dep] {
-				cycle := append([]string(nil), path...)
+				cycle := slices.Clone(path)
 				cycle = append(cycle, dep)
-				return newCycleError(cycle)
+				return NewCycleError(cycle)
 			}
 		}
 
@@ -102,7 +106,7 @@ func (p Pipeline) GetStep(id string) (*Step, error) {
 			return &copy, nil
 		}
 	}
-	return nil, newDomainError(ErrCodeNotFound, "step not found", nil, map[string]interface{}{"step_id": id})
+	return nil, NewNotFoundError("step", map[string]interface{}{"step_id": id})
 }
 
 // ExecutionPlan is defined in plan.go; this method satisfies the data-model
@@ -115,15 +119,18 @@ func (p Pipeline) EffectiveSettings() Settings {
 func (p Pipeline) Clone() Pipeline {
 	steps := make([]Step, len(p.Steps))
 	for i, step := range p.Steps {
-		steps[i] = step
+		cloned := step
+		if len(step.DependsOn) > 0 {
+			cloned.DependsOn = slices.Clone(step.DependsOn)
+		}
+		if len(step.Config) > 0 {
+			cloned.Config = maps.Clone(step.Config)
+		}
+		steps[i] = cloned
 	}
 	validations := make([]Validation, len(p.Validations))
 	for i, val := range p.Validations {
-		cfg := make(map[string]interface{}, len(val.Config))
-		for k, v := range val.Config {
-			cfg[k] = v
-		}
-		validations[i] = Validation{Type: val.Type, Config: cfg}
+		validations[i] = Validation{Type: val.Type, Config: maps.Clone(val.Config)}
 	}
 	return Pipeline{
 		Version:     p.Version,

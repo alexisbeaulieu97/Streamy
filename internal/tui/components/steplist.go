@@ -1,13 +1,9 @@
 package components
 
-import (
-	"github.com/alexisbeaulieu97/streamy/internal/model"
-)
-
 // StepEntry represents a single step for rendering.
 type StepEntry struct {
 	ID     string
-	Result model.StepResult
+	Result StepState
 }
 
 // StepList renders a list of steps with their current status.
@@ -16,7 +12,7 @@ type StepList struct {
 }
 
 // NewStepList constructs a step list component.
-func NewStepList(order []string, steps map[string]model.StepResult) StepList {
+func NewStepList(order []string, steps map[string]StepState) StepList {
 	entries := make([]StepEntry, 0, len(order))
 	for _, id := range order {
 		entries = append(entries, StepEntry{ID: id, Result: steps[id]})

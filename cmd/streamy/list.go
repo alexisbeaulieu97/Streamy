@@ -65,7 +65,7 @@ func runList(ctx context.Context, logger ports.Logger, cmd *cobra.Command, opts 
 	pipelines := reg.List()
 	if len(pipelines) == 0 {
 		if logger != nil {
-			logger.Info(ctx, "no pipelines registered")
+			logger.Info(ctx, "no pipelines registered", "pipeline_count", 0)
 		}
 		return renderEmptyList(cmd)
 	}

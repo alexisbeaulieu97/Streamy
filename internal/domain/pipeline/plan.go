@@ -18,18 +18,18 @@ type ExecutionPlan struct {
 // Validate ensures the plan is coherent with the pipeline definition.
 func (p ExecutionPlan) Validate(pipeline Pipeline) error {
 	if len(p.Levels) == 0 {
-		return newValidationError("execution plan must contain at least one level", nil)
+		return NewValidationError("execution plan must contain at least one level", nil)
 	}
 
 	seen := make(map[string]struct{})
 
 	for _, level := range p.Levels {
 		if len(level.StepIDs) == 0 {
-			return newValidationError("execution level must contain steps", map[string]interface{}{"level": level.Level})
+			return NewValidationError("execution level must contain steps", map[string]interface{}{"level": level.Level})
 		}
 		for _, id := range level.StepIDs {
 			if _, ok := seen[id]; ok {
-				return newDependencyError("step appears in multiple execution levels", map[string]interface{}{"step_id": id})
+				return NewDependencyError("step appears in multiple execution levels", map[string]interface{}{"step_id": id})
 			}
 			seen[id] = struct{}{}
 		}
@@ -37,7 +37,7 @@ func (p ExecutionPlan) Validate(pipeline Pipeline) error {
 
 	for _, step := range pipeline.Steps {
 		if _, ok := seen[step.ID]; !ok {
-			return newDependencyError("plan missing step", map[string]interface{}{"step_id": step.ID})
+			return NewDependencyError("plan missing step", map[string]interface{}{"step_id": step.ID})
 		}
 	}
 
@@ -51,7 +51,7 @@ func (p ExecutionPlan) Validate(pipeline Pipeline) error {
 	for _, step := range pipeline.Steps {
 		for _, dep := range step.DependsOn {
 			if levelIndex[dep] > levelIndex[step.ID] {
-				return newDependencyError("dependency scheduled after dependent", map[string]interface{}{
+				return NewDependencyError("dependency scheduled after dependent", map[string]interface{}{
 					"step_id":       step.ID,
 					"dependency_id": dep,
 				})

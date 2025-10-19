@@ -12,6 +12,14 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
+// StepProgressMsg is emitted when a pipeline step updates its status.
+type StepProgressMsg struct {
+	PipelineID string
+	StepID     string
+	Status     string
+	Message    string
+}
+
 // Update handles incoming messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -180,6 +188,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshProgress = 0
 		m.refreshTotal = 0
 		return m, nil
+
+	case StepProgressMsg:
+		m.stepProgress[msg.PipelineID] = StepProgress{
+			StepID:   msg.StepID,
+			Status:   msg.Status,
+			Message:  msg.Message,
+			Recorded: time.Now(),
+		}
+		return m, m.service.StepProgressCmd()
 
 	// Navigation messages (will be fully implemented in US2)
 	case PipelineSelectedMsg:

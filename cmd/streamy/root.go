@@ -1,12 +1,15 @@
 package main
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 )
 
 type rootFlags struct {
 	verbose bool
 	dryRun  bool
+	timeout time.Duration
 }
 
 func newRootCmd(app *AppContext) *cobra.Command {
@@ -22,7 +25,7 @@ func newRootCmd(app *AppContext) *cobra.Command {
 			if len(args) == 0 {
 				ctx, logger := app.CommandContext(cmd, "command.dashboard")
 				if logger != nil {
-					logger.Info(ctx, "launching dashboard from root command")
+					logger.Info(ctx, "launching dashboard from root command", "command", "dashboard", "source", "root")
 				}
 				return runDashboard(ctx, app, logger)
 			}
@@ -32,6 +35,7 @@ func newRootCmd(app *AppContext) *cobra.Command {
 
 	cmd.PersistentFlags().BoolVarP(&flags.verbose, "verbose", "v", false, "Enable verbose logging")
 	cmd.PersistentFlags().BoolVar(&flags.dryRun, "dry-run", false, "Preview execution without making changes")
+	cmd.PersistentFlags().DurationVar(&flags.timeout, "timeout", 30*time.Minute, "Maximum duration for a command before it is cancelled")
 
 	cmd.AddCommand(newApplyCmd(flags, app))
 	cmd.AddCommand(newVerifyCmd(flags, app))

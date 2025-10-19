@@ -86,7 +86,7 @@ func runRefresh(ctx context.Context, logger ports.Logger, cmd *cobra.Command, op
 	pipelines := reg.List()
 	if len(pipelines) == 0 {
 		if logger != nil {
-			logger.Info(ctx, "no pipelines registered for refresh")
+			logger.Info(ctx, "no pipelines registered for refresh", "pipeline_count", 0, "target_pipeline", opts.pipelineID)
 		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered. Run 'streamy registry add <config-path>' first.")
 		return nil
@@ -174,7 +174,7 @@ func verifyPipelines(ctx context.Context, logger ports.Logger, cmd *cobra.Comman
 			var pipelineLogger ports.Logger
 			if logger != nil {
 				pipelineLogger = logger.With("pipeline_id", pipeline.ID)
-				pipelineLogger.Info(ctx, "pipeline verification started")
+				pipelineLogger.Info(ctx, "pipeline verification started", "pipeline_id", pipeline.ID)
 			}
 
 			result := refreshPipeline(ctx, pipelineLogger, app, pipeline, timeout, perStepTimeout)
@@ -246,7 +246,7 @@ func refreshPipeline(ctx context.Context, logger ports.Logger, app *AppContext, 
 	}
 
 	if logger != nil {
-		logger.Debug(ctx, "verifying pipeline state")
+		logger.Debug(ctx, "verifying pipeline state", "pipeline_id", p.ID)
 	}
 
 	pipelineDomain, verificationResults, err := app.VerifyUseCase.Verify(ctx, p.Path)

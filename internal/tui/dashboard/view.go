@@ -381,6 +381,14 @@ func (m Model) renderDetailView() string {
 			content.WriteString("\n")
 			opMsg := fmt.Sprintf("%s %s in progress...", m.spinner.View(), op.Type)
 			content.WriteString(progressStyle.Render(opMsg))
+			if progress, ok := m.stepProgress[selected.ID]; ok && progress.StepID != "" {
+				progressLine := fmt.Sprintf("   → %s (%s)", progress.StepID, progress.Status)
+				if progress.Message != "" {
+					progressLine = fmt.Sprintf("%s – %s", progressLine, progress.Message)
+				}
+				content.WriteString("\n")
+				content.WriteString(progressStyle.Render(progressLine))
+			}
 			content.WriteString("\n")
 		}
 	}

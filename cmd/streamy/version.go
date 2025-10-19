@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"bufio"
+	"os"
 
 	"github.com/alexisbeaulieu97/streamy/internal/ui/components"
 	"github.com/spf13/cobra"
@@ -25,9 +26,12 @@ func newVersionCmd() *cobra.Command {
 			dateText := components.NewText("Built: " + date).WithAppliers(components.Typography(components.TypographyVariantTextSm))
 
 			card := components.NewCard(header, divider, info, commitText, dateText)
-			fmt.Println(card.View())
 
-			return nil
+			writer := bufio.NewWriter(os.Stdout)
+			if _, err := writer.WriteString(card.View() + "\n"); err != nil {
+				return err
+			}
+			return writer.Flush()
 		},
 	}
 

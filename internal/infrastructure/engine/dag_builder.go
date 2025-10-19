@@ -21,7 +21,7 @@ func (b *DAGBuilder) Build(ctx context.Context, steps []pipeline.Step) (*pipelin
 	active := make(map[string]pipeline.Step)
 	for _, step := range steps {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, &pipeline.DomainError{Code: pipeline.ErrCodeCancelled, Message: "build cancelled", Cause: ctxErr}
+			return nil, pipeline.NewDomainError(pipeline.ErrCodeCancelled, "build cancelled", ctxErr, map[string]interface{}{"phase": "collect_steps"})
 		}
 		if !step.Enabled {
 			continue
@@ -33,27 +33,22 @@ func (b *DAGBuilder) Build(ctx context.Context, steps []pipeline.Step) (*pipelin
 	adjacency := make(map[string][]string, len(active))
 
 	for id := range active {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, pipeline.NewDomainError(pipeline.ErrCodeCancelled, "build cancelled", ctxErr, map[string]interface{}{"phase": "init_graph"})
+		}
 		indegree[id] = 0
 	}
 
 	for id, step := range active {
 		for _, dep := range step.DependsOn {
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, &pipeline.DomainError{Code: pipeline.ErrCodeCancelled, Message: "build cancelled", Cause: ctxErr}
+				return nil, pipeline.NewDomainError(pipeline.ErrCodeCancelled, "build cancelled", ctxErr, map[string]interface{}{"phase": "build_graph"})
 			}
 			if dep == id {
-				return nil, &pipeline.DomainError{
-					Code:    pipeline.ErrCodeDependency,
-					Message: "step cannot depend on itself",
-					Context: map[string]interface{}{"step_id": id},
-				}
+				return nil, pipeline.NewDependencyError("step cannot depend on itself", map[string]interface{}{"step_id": id})
 			}
 			if _, ok := active[dep]; !ok {
-				return nil, &pipeline.DomainError{
-					Code:    pipeline.ErrCodeDependency,
-					Message: "dependency not found",
-					Context: map[string]interface{}{"step_id": id, "missing_dependency": dep},
-				}
+				return nil, pipeline.NewDependencyError("dependency not found", map[string]interface{}{"step_id": id, "missing_dependency": dep})
 			}
 			indegree[id]++
 			adjacency[dep] = append(adjacency[dep], id)
@@ -73,7 +68,7 @@ func (b *DAGBuilder) Build(ctx context.Context, steps []pipeline.Step) (*pipelin
 
 	for len(queue) > 0 {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, &pipeline.DomainError{Code: pipeline.ErrCodeCancelled, Message: "build cancelled", Cause: ctxErr}
+			return nil, pipeline.NewDomainError(pipeline.ErrCodeCancelled, "build cancelled", ctxErr, map[string]interface{}{"phase": "topological_sort"})
 		}
 		current := append([]string(nil), queue...)
 		sort.Strings(current)
@@ -82,8 +77,14 @@ func (b *DAGBuilder) Build(ctx context.Context, steps []pipeline.Step) (*pipelin
 
 		next := make([]string, 0)
 		for _, id := range current {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, pipeline.NewDomainError(pipeline.ErrCodeCancelled, "build cancelled", ctxErr, map[string]interface{}{"phase": "topological_sort"})
+			}
 			processed++
 			for _, dep := range adjacency[id] {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, pipeline.NewDomainError(pipeline.ErrCodeCancelled, "build cancelled", ctxErr, map[string]interface{}{"phase": "topological_sort"})
+				}
 				indegree[dep]--
 				if indegree[dep] == 0 {
 					next = append(next, dep)
@@ -91,11 +92,21 @@ func (b *DAGBuilder) Build(ctx context.Context, steps []pipeline.Step) (*pipelin
 			}
 		}
 		sort.Strings(next)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, pipeline.NewDomainError(pipeline.ErrCodeCancelled, "build cancelled", ctxErr, map[string]interface{}{"phase": "topological_sort"})
+		}
 		queue = next
 	}
 
 	if processed != len(active) {
-		return nil, &pipeline.DomainError{Code: pipeline.ErrCodeCycle, Message: "circular dependency detected"}
+		cycle := make([]string, 0, len(active)-processed)
+		for id, step := range active {
+			if indegree[id] > 0 {
+				cycle = append(cycle, step.ID)
+			}
+		}
+		sort.Strings(cycle)
+		return nil, pipeline.NewCycleError(cycle)
 	}
 
 	plan := &pipeline.ExecutionPlan{

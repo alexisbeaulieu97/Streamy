@@ -76,18 +76,22 @@ func NewExecutor(registry ports.PluginRegistry, opts ...ExecutorOption) *Executo
 // Execute runs the supplied plan using registered plugins.
 func (e *Executor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 	if plan == nil {
-		return nil, &domainpipeline.DomainError{Code: domainpipeline.ErrCodeInternal, Message: "execution plan is nil"}
+		return nil, domainpipeline.NewInternalError("execution plan is nil", nil, nil)
 	}
 	if pipeline == nil {
-		return nil, &domainpipeline.DomainError{Code: domainpipeline.ErrCodeInternal, Message: "pipeline is nil"}
+		return nil, domainpipeline.NewInternalError("pipeline is nil", nil, nil)
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return nil, domainpipeline.NewInternalError("execution context is required", nil, nil)
 	}
 
 	settings := pipeline.EffectiveSettings()
 	continueOnError := settings.ContinueOnError
 	dryRun := settings.DryRun
+	stepTimeout := time.Duration(settings.Timeout) * time.Second
+	if stepTimeout <= 0 {
+		stepTimeout = 0
+	}
 
 	results := make([]domainpipeline.StepResult, 0, len(plan.Levels))
 	var firstErr error
@@ -97,7 +101,6 @@ func (e *Executor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPl
 		var levelErr error
 		var levelErrOnce sync.Once
 		var wg sync.WaitGroup
-
 		parallelism := settings.Parallel
 		if e.parallelism > 0 {
 			parallelism = e.parallelism
@@ -109,10 +112,24 @@ func (e *Executor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPl
 		sem := make(chan struct{}, parallelism)
 
 		for idx, stepID := range level.StepIDs {
+			if err := ctx.Err(); err != nil {
+				cancelErr := domainpipeline.NewDomainError(
+					domainpipeline.ErrCodeCancelled,
+					"execution cancelled",
+					err,
+					map[string]interface{}{"pipeline": pipeline.Name},
+				)
+				levelErrOnce.Do(func() {
+					levelErr = cancelErr
+				})
+				break
+			}
+
 			step, err := pipeline.GetStep(stepID)
 			if err != nil {
 				return results, err
 			}
+
 			wg.Add(1)
 			go func(index int, st domainpipeline.Step) {
 				defer wg.Done()
@@ -120,16 +137,22 @@ func (e *Executor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPl
 				case sem <- struct{}{}:
 					defer func() { <-sem }()
 				case <-ctx.Done():
+					cancelErr := domainpipeline.NewDomainError(
+						domainpipeline.ErrCodeCancelled,
+						"execution cancelled",
+						ctx.Err(),
+						map[string]interface{}{
+							"pipeline": pipeline.Name,
+							"step_id":  st.ID,
+						},
+					)
 					levelErrOnce.Do(func() {
-						levelErr = &domainpipeline.DomainError{
-							Code:    domainpipeline.ErrCodeCancelled,
-							Message: "execution cancelled",
-							Cause:   ctx.Err(),
-						}
+						levelErr = cancelErr
 					})
 					return
 				}
-				result, err := e.executeStep(ctx, pipeline.Name, st, dryRun)
+
+				result, err := e.executeStep(ctx, pipeline.Name, st, dryRun, stepTimeout)
 				levelResults[index] = result
 				if err != nil {
 					levelErrOnce.Do(func() {
@@ -140,15 +163,35 @@ func (e *Executor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPl
 		}
 
 		wg.Wait()
+
 		results = append(results, levelResults...)
 
 		if levelErr != nil {
 			if firstErr == nil {
 				firstErr = levelErr
 			}
+			if err := ctx.Err(); err != nil {
+				cancelErr := domainpipeline.NewDomainError(
+					domainpipeline.ErrCodeCancelled,
+					"execution cancelled",
+					err,
+					map[string]interface{}{"pipeline": pipeline.Name},
+				)
+				return results, cancelErr
+			}
 			if !continueOnError {
 				return results, levelErr
 			}
+			continue
+		}
+
+		if err := ctx.Err(); err != nil {
+			return results, domainpipeline.NewDomainError(
+				domainpipeline.ErrCodeCancelled,
+				"execution cancelled",
+				err,
+				map[string]interface{}{"pipeline": pipeline.Name},
+			)
 		}
 	}
 
@@ -158,10 +201,16 @@ func (e *Executor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPl
 // Verify evaluates each step without applying changes.
 func (e *Executor) Verify(ctx context.Context, pipeline *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
 	if pipeline == nil {
-		return nil, &domainpipeline.DomainError{Code: domainpipeline.ErrCodeInternal, Message: "pipeline is nil"}
+		return nil, domainpipeline.NewInternalError("pipeline is nil", nil, nil)
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return nil, domainpipeline.NewInternalError("verification context is required", nil, nil)
+	}
+
+	settings := pipeline.EffectiveSettings()
+	defaultTimeout := time.Duration(settings.Timeout) * time.Second
+	if defaultTimeout <= 0 {
+		defaultTimeout = 0
 	}
 
 	results := make([]domainpipeline.VerificationResult, 0, len(pipeline.Steps))
@@ -169,14 +218,24 @@ func (e *Executor) Verify(ctx context.Context, pipeline *domainpipeline.Pipeline
 
 	for _, step := range pipeline.Steps {
 		if err := ctx.Err(); err != nil {
-			dErr := &domainpipeline.DomainError{Code: domainpipeline.ErrCodeCancelled, Message: "verification cancelled", Cause: err}
+			dErr := domainpipeline.NewDomainError(
+				domainpipeline.ErrCodeCancelled,
+				"verification cancelled",
+				err,
+				map[string]interface{}{"pipeline": pipeline.Name, "step_id": step.ID},
+			)
 			if firstErr == nil {
 				firstErr = dErr
 			}
 			break
 		}
 
-		result, err := e.verifyStep(ctx, step)
+		stepTimeout := defaultTimeout
+		if step.VerifyTimeout > 0 {
+			stepTimeout = time.Duration(step.VerifyTimeout) * time.Second
+		}
+
+		result, err := e.verifyStep(ctx, step, stepTimeout)
 		results = append(results, result)
 
 		if err != nil && firstErr == nil {
@@ -188,32 +247,61 @@ func (e *Executor) Verify(ctx context.Context, pipeline *domainpipeline.Pipeline
 }
 
 // executeStep evaluates and applies a single step.
-func (e *Executor) executeStep(ctx context.Context, pipelineName string, step domainpipeline.Step, dryRun bool) (domainpipeline.StepResult, error) {
+func (e *Executor) executeStep(ctx context.Context, pipelineName string, step domainpipeline.Step, dryRun bool, timeout time.Duration) (domainpipeline.StepResult, error) {
 	logger := e.logger
-	if ctx.Err() != nil {
-		return domainpipeline.StepResult{
+	if err := ctx.Err(); err != nil {
+		derr := domainpipeline.NewDomainError(
+			domainpipeline.ErrCodeCancelled,
+			"execution cancelled",
+			err,
+			map[string]interface{}{"pipeline": pipelineName, "step_id": step.ID},
+		)
+		result := domainpipeline.StepResult{
 			StepID: step.ID,
 			Status: domainpipeline.StatusFailure,
-			Error: &domainpipeline.DomainError{
-				Code:    domainpipeline.ErrCodeCancelled,
-				Message: "execution cancelled",
-				Cause:   ctx.Err(),
-			},
-		}, ctx.Err()
+			Error:  derr,
+		}
+		return result, derr
+	}
+
+	stepCtx := ctx
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		stepCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	if err := stepCtx.Err(); err != nil {
+		derr := domainpipeline.NewDomainError(
+			domainpipeline.ErrCodeCancelled,
+			"execution cancelled",
+			err,
+			map[string]interface{}{"pipeline": pipelineName, "step_id": step.ID},
+		)
+		result := domainpipeline.StepResult{
+			StepID: step.ID,
+			Status: domainpipeline.StatusFailure,
+			Error:  derr,
+		}
+		return result, derr
 	}
 
 	pluginType := domainplugin.Type(step.Type)
 	handler, err := e.registry.Get(pluginType)
 	if err != nil {
+		derr := toDomainError(err, step.ID, pluginType).WithContext(map[string]interface{}{
+			"pipeline": pipelineName,
+			"phase":    "registry_lookup",
+		})
 		return domainpipeline.StepResult{
 			StepID: step.ID,
 			Status: domainpipeline.StatusFailure,
-			Error:  toDomainError(err),
-		}, err
+			Error:  derr,
+		}, derr
 	}
 
 	if logger != nil {
-		logger.Debug(ctx, "executing step", "step_id", step.ID, "step_type", pluginType)
+		logger.Debug(stepCtx, "executing step", "step_id", step.ID, "step_type", pluginType)
 	}
 
 	start := time.Now()
@@ -221,13 +309,13 @@ func (e *Executor) executeStep(ctx context.Context, pipelineName string, step do
 	var span ports.Span
 	if e.tracer != nil {
 		var spanCtx context.Context
-		spanCtx, span = e.tracer.StartSpan(ctx, "pipeline.step", "step_id", step.ID, "step_type", string(pluginType))
+		spanCtx, span = e.tracer.StartSpan(stepCtx, "pipeline.step", "step_id", step.ID, "step_type", string(pluginType))
 		if spanCtx != nil {
-			ctx = spanCtx
+			stepCtx = spanCtx
 		}
 	}
 
-	publishEvent(ctx, e.events, logger, ports.EventStepStarted, map[string]interface{}{
+	publishEvent(stepCtx, e.events, logger, ports.EventStepStarted, map[string]interface{}{
 		"pipeline":  pipelineName,
 		"step_id":   step.ID,
 		"step_type": step.Type,
@@ -235,41 +323,45 @@ func (e *Executor) executeStep(ctx context.Context, pipelineName string, step do
 		"timestamp": start.UTC(),
 	})
 
-	eval, err := handler.Evaluate(ctx, step)
+	eval, err := handler.Evaluate(stepCtx, step)
 	if err != nil {
+		derr := toDomainError(err, step.ID, pluginType).WithContext(map[string]interface{}{
+			"pipeline": pipelineName,
+			"phase":    "evaluate",
+		})
 		result := domainpipeline.StepResult{
 			StepID:   step.ID,
 			Status:   domainpipeline.StatusFailure,
-			Error:    toDomainError(err),
+			Error:    derr,
 			Duration: int(time.Since(start).Milliseconds()),
 		}
-		e.recordMetrics(ctx, result.StepID, result.Status, time.Since(start))
+		e.recordMetrics(stepCtx, pipelineName, result.StepID, step.Type, result.Status, time.Since(start))
 		if span != nil {
 			span.SetStatus(ports.SpanStatusError, err.Error())
 		}
 		if logger != nil {
-			logger.Error(ctx, "step evaluation failed", "step_id", step.ID, "error", err)
+			logger.Error(stepCtx, "step evaluation failed", "step_id", step.ID, "error", err)
 		}
-		publishEvent(ctx, e.events, logger, ports.EventStepFailed, map[string]interface{}{
+		publishEvent(stepCtx, e.events, logger, ports.EventStepFailed, map[string]interface{}{
 			"pipeline":  pipelineName,
 			"step_id":   step.ID,
 			"step_type": step.Type,
-			"error":     err,
+			"error":     derr,
 		})
-		return result, err
+		return result, derr
 	}
 
 	if dryRun {
 		result := dryRunResult(step, eval, time.Since(start))
-		e.recordMetrics(ctx, result.StepID, result.Status, time.Since(start))
+		e.recordMetrics(stepCtx, pipelineName, result.StepID, step.Type, result.Status, time.Since(start))
 		if logger != nil {
-			logger.Info(ctx, "step dry-run evaluation complete", "step_id", step.ID, "requires_action", eval != nil && eval.RequiresAction)
+			logger.Info(stepCtx, "step dry-run evaluation complete", "step_id", step.ID, "requires_action", eval != nil && eval.RequiresAction)
 		}
 		if span != nil {
 			span.SetAttribute("step_status", string(result.Status))
 			span.SetStatus(ports.SpanStatusOK, "dry-run")
 		}
-		publishEvent(ctx, e.events, logger, ports.EventStepCompleted, map[string]interface{}{
+		publishEvent(stepCtx, e.events, logger, ports.EventStepCompleted, map[string]interface{}{
 			"pipeline":  pipelineName,
 			"step_id":   step.ID,
 			"step_type": step.Type,
@@ -287,15 +379,15 @@ func (e *Executor) executeStep(ctx context.Context, pipelineName string, step do
 			Message:  "step already satisfied",
 			Duration: int(time.Since(start).Milliseconds()),
 		}
-		e.recordMetrics(ctx, result.StepID, result.Status, time.Since(start))
+		e.recordMetrics(stepCtx, pipelineName, result.StepID, step.Type, result.Status, time.Since(start))
 		if logger != nil {
-			logger.Info(ctx, "step already satisfied", "step_id", step.ID)
+			logger.Info(stepCtx, "step already satisfied", "step_id", step.ID)
 		}
 		if span != nil {
 			span.SetAttribute("step_status", string(result.Status))
 			span.SetStatus(ports.SpanStatusOK, "already_satisfied")
 		}
-		publishEvent(ctx, e.events, logger, ports.EventStepSkipped, map[string]interface{}{
+		publishEvent(stepCtx, e.events, logger, ports.EventStepSkipped, map[string]interface{}{
 			"pipeline":  pipelineName,
 			"step_id":   step.ID,
 			"step_type": step.Type,
@@ -304,7 +396,7 @@ func (e *Executor) executeStep(ctx context.Context, pipelineName string, step do
 		return result, nil
 	}
 
-	result, err := handler.Apply(ctx, eval, step)
+	result, err := handler.Apply(stepCtx, eval, step)
 	if result == nil {
 		result = &domainpipeline.StepResult{StepID: step.ID}
 	}
@@ -312,33 +404,36 @@ func (e *Executor) executeStep(ctx context.Context, pipelineName string, step do
 
 	if err != nil {
 		result.Status = domainpipeline.StatusFailure
-		result.Error = toDomainError(err)
-		e.recordMetrics(ctx, result.StepID, result.Status, time.Since(start))
+		result.Error = toDomainError(err, step.ID, pluginType).WithContext(map[string]interface{}{
+			"pipeline": pipelineName,
+			"phase":    "apply",
+		})
+		e.recordMetrics(stepCtx, pipelineName, result.StepID, step.Type, result.Status, time.Since(start))
 		if span != nil {
 			span.SetStatus(ports.SpanStatusError, err.Error())
 		}
 		if logger != nil {
-			logger.Error(ctx, "step execution failed", "step_id", step.ID, "error", err)
+			logger.Error(stepCtx, "step execution failed", "step_id", step.ID, "error", err)
 		}
-		publishEvent(ctx, e.events, logger, ports.EventStepFailed, map[string]interface{}{
+		publishEvent(stepCtx, e.events, logger, ports.EventStepFailed, map[string]interface{}{
 			"pipeline":  pipelineName,
 			"step_id":   step.ID,
 			"step_type": step.Type,
 			"duration":  result.Duration,
-			"error":     err,
+			"error":     result.Error,
 		})
-		return *result, err
+		return *result, result.Error
 	}
 
 	if logger != nil {
-		logger.Info(ctx, "step executed", "step_id", step.ID, "status", result.Status)
+		logger.Info(stepCtx, "step executed", "step_id", step.ID, "status", result.Status)
 	}
-	e.recordMetrics(ctx, result.StepID, result.Status, time.Since(start))
+	e.recordMetrics(stepCtx, pipelineName, result.StepID, step.Type, result.Status, time.Since(start))
 	if span != nil {
 		span.SetAttribute("step_status", string(result.Status))
 		span.SetStatus(ports.SpanStatusOK, "success")
 	}
-	publishEvent(ctx, e.events, logger, ports.EventStepCompleted, map[string]interface{}{
+	publishEvent(stepCtx, e.events, logger, ports.EventStepCompleted, map[string]interface{}{
 		"pipeline":  pipelineName,
 		"step_id":   step.ID,
 		"step_type": step.Type,
@@ -349,22 +444,32 @@ func (e *Executor) executeStep(ctx context.Context, pipelineName string, step do
 	return *result, nil
 }
 
-func (e *Executor) verifyStep(ctx context.Context, step domainpipeline.Step) (domainpipeline.VerificationResult, error) {
+func (e *Executor) verifyStep(ctx context.Context, step domainpipeline.Step, timeout time.Duration) (domainpipeline.VerificationResult, error) {
 	pluginType := domainplugin.Type(step.Type)
 	handler, err := e.registry.Get(pluginType)
 	if err != nil {
+		derr := toDomainError(err, step.ID, pluginType)
 		return domainpipeline.VerificationResult{
 			StepID:  step.ID,
 			Type:    string(pluginType),
 			Status:  domainpipeline.VerificationUnknown,
-			Message: err.Error(),
-		}, err
+			Message: derr.Error(),
+		}, derr
 	}
 
-	eval, err := handler.Evaluate(ctx, step)
+	stepCtx := ctx
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		stepCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	eval, err := handler.Evaluate(stepCtx, step)
 	if err != nil {
-		derr := toDomainError(err)
-		details := map[string]interface{}{"step_id": step.ID}
+		derr := toDomainError(err, step.ID, pluginType).WithContext(map[string]interface{}{
+			"phase": "verify_evaluate",
+		})
+		details := map[string]interface{}{"step_id": step.ID, "plugin_type": string(pluginType)}
 		if status := categorizeVerificationError(derr); status != "" {
 			details["status"] = status
 		}
@@ -374,7 +479,24 @@ func (e *Executor) verifyStep(ctx context.Context, step domainpipeline.Step) (do
 			Status:  domainpipeline.VerificationFailed,
 			Message: derr.Error(),
 			Details: details,
-		}, err
+		}, derr
+	}
+
+	if err := stepCtx.Err(); err != nil {
+		derr := toDomainError(err, step.ID, pluginType).WithContext(map[string]interface{}{
+			"phase": "verify_evaluate",
+		})
+		details := map[string]interface{}{"step_id": step.ID, "plugin_type": string(pluginType)}
+		if status := categorizeVerificationError(derr); status != "" {
+			details["status"] = status
+		}
+		return domainpipeline.VerificationResult{
+			StepID:  step.ID,
+			Type:    string(pluginType),
+			Status:  domainpipeline.VerificationFailed,
+			Message: derr.Error(),
+			Details: details,
+		}, derr
 	}
 
 	result := domainpipeline.VerificationResult{
@@ -403,16 +525,26 @@ func (e *Executor) verifyStep(ctx context.Context, step domainpipeline.Step) (do
 	return result, nil
 }
 
-func (e *Executor) recordMetrics(ctx context.Context, stepID string, status domainpipeline.ResultStatus, duration time.Duration) {
+func (e *Executor) recordMetrics(ctx context.Context, pipelineName, stepID string, stepType domainpipeline.StepType, status domainpipeline.ResultStatus, duration time.Duration) {
 	if e.metrics == nil {
 		return
 	}
 	labels := map[string]string{
-		"step_id": stepID,
-		"status":  string(status),
+		"pipeline":  pipelineName,
+		"step_id":   stepID,
+		"step_type": string(stepType),
+		"status":    string(status),
 	}
 	e.metrics.IncCounter(ctx, "streamy_step_executions_total", labels)
 	e.metrics.ObserveHistogram(ctx, "streamy_step_execution_duration_seconds", duration.Seconds(), labels)
+	if status == domainpipeline.StatusFailure {
+		failureLabels := map[string]string{
+			"pipeline":  pipelineName,
+			"step_id":   stepID,
+			"step_type": string(stepType),
+		}
+		e.metrics.IncCounter(ctx, "streamy_step_failures_total", failureLabels)
+	}
 }
 
 func dryRunResult(step domainpipeline.Step, eval *domainpipeline.EvaluationResult, elapsed time.Duration) domainpipeline.StepResult {
@@ -433,18 +565,34 @@ func dryRunResult(step domainpipeline.Step, eval *domainpipeline.EvaluationResul
 	}
 }
 
-func toDomainError(err error) *domainpipeline.DomainError {
+func toDomainError(err error, stepID string, pluginType domainplugin.Type) *domainpipeline.DomainError {
 	if err == nil {
 		return nil
 	}
+
+	contextFields := map[string]interface{}{}
+	if stepID != "" {
+		contextFields["step_id"] = stepID
+	}
+	if pluginType != "" {
+		contextFields["plugin_type"] = string(pluginType)
+	}
+
 	var derr *domainpipeline.DomainError
 	if errors.As(err, &derr) {
-		return derr
+		if len(contextFields) == 0 {
+			return derr
+		}
+		return derr.WithContext(contextFields)
 	}
-	return &domainpipeline.DomainError{
-		Code:    domainpipeline.ErrCodeExecution,
-		Message: err.Error(),
-		Cause:   err,
+
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return domainpipeline.NewTimeoutError("plugin operation timed out", err, contextFields)
+	case errors.Is(err, context.Canceled):
+		return domainpipeline.NewDomainError(domainpipeline.ErrCodeCancelled, "plugin operation cancelled", err, contextFields)
+	default:
+		return domainpipeline.NewExecutionError("plugin execution failed", err, contextFields)
 	}
 }
 
@@ -459,6 +607,10 @@ func categorizeVerificationError(err *domainpipeline.DomainError) string {
 		return "blocked"
 	case domainpipeline.ErrCodeValidation:
 		return "unknown"
+	case domainpipeline.ErrCodeTimeout:
+		return "timeout"
+	case domainpipeline.ErrCodeCancelled:
+		return "cancelled"
 	}
 	msg := strings.ToLower(err.Message)
 	if strings.Contains(msg, "no such file") || strings.Contains(msg, "not found") {

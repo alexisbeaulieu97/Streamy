@@ -6,61 +6,66 @@ import (
 	"path/filepath"
 	"testing"
 
-	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/infrastructure/logging"
+	"github.com/stretchr/testify/require"
+
+	"github.com/alexisbeaulieu97/streamy/internal/application/pipeline/testutil"
+	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )
 
-func TestServiceRunValidations(t *testing.T) {
+func TestService_RunValidations_AllPass(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	filePath := filepath.Join(dir, "check.txt")
-	if err := os.WriteFile(filePath, []byte("welcome to streamy"), 0o644); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
+	tmpDir := t.TempDir()
 
-	svc := NewService(logging.NewNoOpLogger())
+	// Use the Go toolchain binary for command validation (always available in CI).
+	cmdName := "go"
 
-	validations := []domain.Validation{
-		{
-			Type: domain.ValidationFileExists,
-			Config: map[string]interface{}{
-				"path": filePath,
-			},
-		},
-		{
-			Type: domain.ValidationPathContains,
-			Config: map[string]interface{}{
-				"file": filePath,
-				"text": "streamy",
-			},
-		},
+	existingPath := filepath.Join(tmpDir, "exists.txt")
+	require.NoError(t, os.WriteFile(existingPath, []byte("content"), 0o644))
+
+	containsPath := filepath.Join(tmpDir, "contains.txt")
+	require.NoError(t, os.WriteFile(containsPath, []byte("hello streamy"), 0o644))
+
+	svc := NewService(testutil.NewMockLogger())
+	validations := []domainpipeline.Validation{
+		{Type: domainpipeline.ValidationCommandExists, Config: map[string]interface{}{"command": cmdName}},
+		{Type: domainpipeline.ValidationFileExists, Config: map[string]interface{}{"path": existingPath}},
+		{Type: domainpipeline.ValidationPathContains, Config: map[string]interface{}{"file": containsPath, "text": "streamy"}},
 	}
 
 	summary, err := svc.RunValidations(context.Background(), validations)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if summary.TotalChecks != 2 || summary.PassedChecks != 2 || summary.FailedChecks != 0 {
-		t.Fatalf("unexpected summary counts: %+v", summary)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 3, summary.TotalChecks)
+	require.Equal(t, 3, summary.PassedChecks)
+	require.Zero(t, summary.FailedChecks)
 }
 
-func TestServiceRunValidationsFailure(t *testing.T) {
-	svc := NewService(logging.NewNoOpLogger())
+func TestService_RunValidations_Failures(t *testing.T) {
+	t.Parallel()
 
-	validations := []domain.Validation{
-		{
-			Type:   domain.ValidationFileExists,
-			Config: map[string]interface{}{"path": "/path/does/not/exist"},
-		},
+	logger := testutil.NewMockLogger()
+	svc := NewService(logger)
+
+	validations := []domainpipeline.Validation{
+		{Type: domainpipeline.ValidationCommandExists, Config: map[string]interface{}{"command": "nonexistent-command"}},
+		{Type: domainpipeline.ValidationFileExists, Config: nil},
 	}
 
 	summary, err := svc.RunValidations(context.Background(), validations)
-	if err == nil {
-		t.Fatal("expected error for missing file")
-	}
-	if summary.FailedChecks != 1 {
-		t.Fatalf("expected one failed check, got %+v", summary)
-	}
+	require.Error(t, err)
+	require.Equal(t, 2, summary.TotalChecks)
+	require.Equal(t, 2, summary.FailedChecks)
+	require.Zero(t, summary.PassedChecks)
+	require.Len(t, summary.FailureDetails, 2)
+
+	var derr *domainpipeline.DomainError
+	require.ErrorAs(t, err, &derr)
+	require.Equal(t, domainpipeline.ErrCodeValidation, derr.Code)
+	require.Equal(t, 2, derr.Context["failed_checks"])
+	failures, ok := derr.Context["failures"].([]map[string]interface{})
+	require.True(t, ok)
+	require.Len(t, failures, 2)
+
+	entries := logger.Entries()
+	require.NotEmpty(t, entries)
 }

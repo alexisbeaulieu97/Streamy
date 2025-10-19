@@ -3,51 +3,62 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
-	cfgpkg "github.com/alexisbeaulieu97/streamy/internal/config"
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	apperrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"gopkg.in/yaml.v3"
 )
 
 // YAMLLoader implements the ConfigLoader port by reading YAML files from disk.
 type YAMLLoader struct {
 	logger ports.Logger
+	open   func(string) (io.ReadCloser, error)
 }
 
 func NewYAMLLoader(logger ports.Logger) *YAMLLoader {
-	return &YAMLLoader{logger: logger}
+	return &YAMLLoader{
+		logger: logger,
+		open: func(path string) (io.ReadCloser, error) {
+			return os.Open(path)
+		},
+	}
 }
 
 func (l *YAMLLoader) Load(ctx context.Context, path string) (*domain.Pipeline, error) {
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, domainError(domain.ErrCodeCancelled, "load cancelled", ctxErr, nil)
+		return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", ctxErr, map[string]interface{}{"path": path})
 	}
 
 	l.logDebug(ctx, "loading pipeline configuration", map[string]interface{}{"path": path})
 
-	cfg, err := cfgpkg.ParseConfig(path)
+	file, err := l.open(path)
 	if err != nil {
-		l.logError(ctx, "failed to parse configuration", err, map[string]interface{}{"path": path})
+		l.logError(ctx, "failed to open configuration", err, map[string]interface{}{"path": path})
 		return nil, convertError(err, path)
 	}
+	defer func() {
+		_ = file.Close()
+	}()
 
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, domainError(domain.ErrCodeCancelled, "load cancelled", ctxErr, nil)
-	}
-
-	domainPipeline := mapToDomain(cfg)
-	if err := domainPipeline.Validate(); err != nil {
-		l.logError(ctx, "configuration failed domain validation", err, map[string]interface{}{"path": path})
+	pipelineConfig, err := l.parseConfig(ctx, file, path)
+	if err != nil {
 		return nil, err
 	}
 
-	l.logInfo(ctx, "pipeline configuration loaded", map[string]interface{}{"path": path, "steps": len(domainPipeline.Steps)})
-	return domainPipeline, nil
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", ctxErr, map[string]interface{}{"path": path})
+	}
+
+	l.logInfo(ctx, "pipeline configuration loaded", map[string]interface{}{"path": path, "steps": len(pipelineConfig.Steps)})
+	return pipelineConfig, nil
 }
 
 func (l *YAMLLoader) Validate(ctx context.Context, path string) error {
@@ -61,7 +72,7 @@ func (l *YAMLLoader) Validate(ctx context.Context, path string) error {
 		return convertError(err, path)
 	}
 	if info.IsDir() {
-		return domainError(domain.ErrCodeValidation, "configuration path is a directory", nil, map[string]interface{}{"path": path})
+		return domain.NewValidationError("configuration path is a directory", map[string]interface{}{"path": path})
 	}
 
 	ext := filepath.Ext(path)
@@ -70,7 +81,7 @@ func (l *YAMLLoader) Validate(ctx context.Context, path string) error {
 		l.logDebug(ctx, "validating pipeline configuration", map[string]interface{}{"path": path})
 		_, err = l.Load(ctx, path)
 	default:
-		err = domainError(domain.ErrCodeValidation, "unsupported configuration file extension", nil, map[string]interface{}{"path": path, "extension": ext})
+		err = domain.NewValidationError("unsupported configuration file extension", map[string]interface{}{"path": path, "extension": ext})
 	}
 
 	return err
@@ -82,12 +93,19 @@ func convertError(err error, path string) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return domain.NewDomainError(domain.ErrCodeCancelled, "operation cancelled", err, map[string]interface{}{"path": path})
+	}
 	var parseErr *apperrors.ParseError
 	if errors.As(err, &parseErr) {
-		if errors.Is(parseErr.Err, os.ErrNotExist) {
-			return domainError(domain.ErrCodeNotFound, "configuration not found", parseErr.Err, map[string]interface{}{"path": path})
+		ctx := map[string]interface{}{"path": parseErr.Path, "line": parseErr.Line}
+		if parseErr.Line == 0 {
+			delete(ctx, "line")
 		}
-		return domainError(domain.ErrCodeValidation, "invalid configuration syntax", err, map[string]interface{}{"path": parseErr.Path, "line": parseErr.Line})
+		if errors.Is(parseErr.Err, os.ErrNotExist) {
+			return domain.NewNotFoundError("configuration", ctx)
+		}
+		return domain.NewConfigError("invalid configuration syntax", parseErr.Err, ctx)
 	}
 	var valErr *apperrors.ValidationError
 	if errors.As(err, &valErr) {
@@ -103,12 +121,12 @@ func convertError(err error, path string) error {
 		case strings.Contains(msg, "depends on"):
 			code = domain.ErrCodeDependency
 		}
-		return domainError(code, valErr.Message, valErr.Err, context)
+		return domain.NewDomainError(code, valErr.Message, valErr.Err, context)
 	}
 	if os.IsNotExist(err) {
-		return domainError(domain.ErrCodeNotFound, "configuration not found", err, map[string]interface{}{"path": path})
+		return domain.NewNotFoundError("configuration", map[string]interface{}{"path": path})
 	}
-	return domainError(domain.ErrCodeInternal, "configuration load failed", err, map[string]interface{}{"path": path})
+	return domain.NewInternalError("configuration load failed", err, map[string]interface{}{"path": path})
 }
 
 func contextCheck(ctx context.Context) error {
@@ -116,18 +134,77 @@ func contextCheck(ctx context.Context) error {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
-		return domainError(domain.ErrCodeCancelled, "operation cancelled", err, nil)
+		return domain.NewDomainError(domain.ErrCodeCancelled, "operation cancelled", err, nil)
 	}
 	return nil
 }
 
-func domainError(code domain.ErrorCode, message string, cause error, ctx map[string]interface{}) *domain.DomainError {
-	return &domain.DomainError{
-		Code:    code,
-		Message: message,
-		Cause:   cause,
-		Context: ctx,
+func (l *YAMLLoader) parseConfig(ctx context.Context, r io.Reader, path string) (*domain.Pipeline, error) {
+	reader := r
+	if ctx != nil {
+		reader = &ctxAwareReader{ctx: ctx, reader: r}
 	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", err, map[string]interface{}{"path": path})
+		}
+		l.logError(ctx, "failed to read configuration", err, map[string]interface{}{"path": path})
+		return nil, convertError(err, path)
+	}
+
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", err, map[string]interface{}{"path": path})
+		}
+	}
+
+	var cfg fileConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		parseErr := apperrors.NewParseError(path, extractLine(err), err)
+		l.logError(ctx, "failed to parse configuration", parseErr, map[string]interface{}{"path": path})
+		return nil, convertError(parseErr, path)
+	}
+
+	pipelineConfig, err := cfg.toPipeline()
+	if err != nil {
+		l.logError(ctx, "configuration failed domain validation", err, map[string]interface{}{"path": path})
+		return nil, err
+	}
+
+	return pipelineConfig, nil
+}
+
+type ctxAwareReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *ctxAwareReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+var yamlLineRegex = regexp.MustCompile(`line (\d+)`)
+
+func extractLine(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	matches := yamlLineRegex.FindStringSubmatch(err.Error())
+	if len(matches) != 2 {
+		return 0
+	}
+
+	var line int
+	if _, scanErr := fmt.Sscanf(matches[1], "%d", &line); scanErr != nil {
+		return 0
+	}
+	return line
 }
 
 func (l *YAMLLoader) logDebug(ctx context.Context, msg string, fields map[string]interface{}) {
@@ -171,81 +248,4 @@ func flattenFields(fields map[string]interface{}) []interface{} {
 		args = append(args, k, fields[k])
 	}
 	return args
-}
-
-func mapToDomain(cfg *cfgpkg.Config) *domain.Pipeline {
-	if cfg == nil {
-		return &domain.Pipeline{}
-	}
-
-	steps := make([]domain.Step, len(cfg.Steps))
-	for i, step := range cfg.Steps {
-		steps[i] = domain.Step{
-			ID:            step.ID,
-			Name:          step.Name,
-			Type:          domain.StepType(step.Type),
-			DependsOn:     append([]string(nil), step.DependsOn...),
-			Enabled:       step.Enabled,
-			VerifyTimeout: step.VerifyTimeout,
-			Config:        cloneMap(step.RawConfig()),
-		}
-	}
-
-	validations := make([]domain.Validation, len(cfg.Validations))
-	for i, val := range cfg.Validations {
-		validations[i] = domain.Validation{
-			Type:   domain.ValidationType(val.Type),
-			Config: extractValidationConfig(val),
-		}
-	}
-
-	settings := domain.Settings{
-		Parallel:        cfg.Settings.Parallel,
-		Timeout:         cfg.Settings.Timeout,
-		ContinueOnError: cfg.Settings.ContinueOnError,
-		DryRun:          cfg.Settings.DryRun,
-		Verbose:         cfg.Settings.Verbose,
-	}
-
-	return &domain.Pipeline{
-		Version:     cfg.Version,
-		Name:        cfg.Name,
-		Description: cfg.Description,
-		Settings:    settings,
-		Steps:       steps,
-		Validations: validations,
-	}
-}
-
-func cloneMap(src map[string]any) map[string]any {
-	if src == nil {
-		return map[string]any{}
-	}
-	clone := make(map[string]any, len(src))
-	for k, v := range src {
-		clone[k] = v
-	}
-	return clone
-}
-
-func extractValidationConfig(val cfgpkg.Validation) map[string]any {
-	switch val.Type {
-	case "command_exists":
-		if val.CommandExists == nil {
-			return map[string]any{}
-		}
-		return cloneMap(map[string]any{"command": val.CommandExists.Command})
-	case "file_exists":
-		if val.FileExists == nil {
-			return map[string]any{}
-		}
-		return cloneMap(map[string]any{"path": val.FileExists.Path})
-	case "path_contains":
-		if val.PathContains == nil {
-			return map[string]any{}
-		}
-		return cloneMap(map[string]any{"file": val.PathContains.File, "text": val.PathContains.Text})
-	default:
-		return map[string]any{}
-	}
 }

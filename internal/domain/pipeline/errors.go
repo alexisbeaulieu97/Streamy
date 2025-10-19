@@ -25,6 +25,7 @@ const (
 	ErrCodeTimeout    ErrorCode = "TIMEOUT"
 	ErrCodeCancelled  ErrorCode = "CANCELLED"
 	ErrCodeInternal   ErrorCode = "INTERNAL_ERROR"
+	ErrCodeConfig     ErrorCode = "CONFIG_ERROR"
 )
 
 // DomainError represents a typed error enriched with contextual data while
@@ -84,47 +85,87 @@ func (e *DomainError) WithContext(ctx map[string]interface{}) *DomainError {
 	}
 }
 
-// newDomainError constructs a DomainError with the supplied code and message.
-func newDomainError(code ErrorCode, message string, cause error, context map[string]interface{}) *DomainError {
-	return (&DomainError{
+// NewDomainError constructs a DomainError with the supplied code, message, cause, and context.
+func NewDomainError(code ErrorCode, message string, cause error, context map[string]interface{}) *DomainError {
+	return &DomainError{
 		Code:    code,
 		Message: message,
 		Cause:   cause,
 		Context: context,
-	})
+	}
 }
 
 // Helper constructors to simplify error creation throughout the domain.
 
-func newValidationError(message string, context map[string]interface{}) *DomainError {
-	return newDomainError(ErrCodeValidation, message, nil, context)
+func NewValidationError(message string, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeValidation, message, nil, context)
 }
 
-func newDuplicateError(identifier string) *DomainError {
-	return newDomainError(ErrCodeDuplicate, "duplicate identifier", nil, map[string]interface{}{
+func NewDuplicateError(identifier string) *DomainError {
+	return NewDomainError(ErrCodeDuplicate, "duplicate identifier", nil, map[string]interface{}{
 		"id": identifier,
 	})
 }
 
-func newDependencyError(message string, context map[string]interface{}) *DomainError {
-	return newDomainError(ErrCodeDependency, message, nil, context)
+func NewDependencyError(message string, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeDependency, message, nil, context)
 }
 
-func newCycleError(path []string) *DomainError {
-	return newDomainError(ErrCodeCycle, "circular dependency detected", nil, map[string]interface{}{
+func NewCycleError(path []string) *DomainError {
+	return NewDomainError(ErrCodeCycle, "circular dependency detected", nil, map[string]interface{}{
 		"path": path,
 	})
 }
 
-func newTypeError(expected string, actual string) *DomainError {
-	return newDomainError(ErrCodeType, "invalid type", nil, map[string]interface{}{
+func NewTypeError(expected string, actual string) *DomainError {
+	return NewDomainError(ErrCodeType, "invalid type", nil, map[string]interface{}{
 		"expected": expected,
 		"actual":   actual,
 	})
 }
 
-func newMissingFieldError(field string) *DomainError {
-	return newDomainError(ErrCodeMissing, "missing required field", nil, map[string]interface{}{
+func NewMissingFieldError(field string) *DomainError {
+	return NewDomainError(ErrCodeMissing, "missing required field", nil, map[string]interface{}{
 		"field": field,
 	})
+}
+
+func NewNotFoundError(entity string, context map[string]interface{}) *DomainError {
+	ctx := map[string]interface{}{"entity": entity}
+	for k, v := range context {
+		ctx[k] = v
+	}
+	return NewDomainError(ErrCodeNotFound, "resource not found", nil, ctx)
+}
+
+func NewStateError(message string, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeState, message, nil, context)
+}
+
+func NewConflictError(message string, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeConflict, message, nil, context)
+}
+
+func NewExecutionError(message string, cause error, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeExecution, message, cause, context)
+}
+
+func NewPluginError(message string, cause error, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodePlugin, message, cause, context)
+}
+
+func NewTimeoutError(message string, cause error, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeTimeout, message, cause, context)
+}
+
+func NewCancelledError(message string, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeCancelled, message, nil, context)
+}
+
+func NewInternalError(message string, cause error, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeInternal, message, cause, context)
+}
+
+func NewConfigError(message string, cause error, context map[string]interface{}) *DomainError {
+	return NewDomainError(ErrCodeConfig, message, cause, context)
 }

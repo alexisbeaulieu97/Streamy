@@ -41,6 +41,8 @@ func (s *stubDashboardService) Apply(ctx context.Context, opts dashboard.ApplyOp
 	return s.applyResult, s.applyErr
 }
 
+func (s *stubDashboardService) StepProgressCmd() tea.Cmd { return nil }
+
 func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses map[string]registry.PipelineStatus) (string, *registry.Registry, *registry.StatusCache, *stubDashboardService) {
 	t.Helper()
 

@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+	"errors"
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
@@ -24,9 +25,10 @@ func NewService(logger ports.Logger) *Service {
 // with domain context.
 func (s *Service) RunValidations(ctx context.Context, validations []domain.Validation) (domain.VerificationSummary, error) {
 	summary := domain.VerificationSummary{}
+	failureErrors := make([]error, 0)
 	for _, val := range validations {
 		if err := ctx.Err(); err != nil {
-			return summary, &domain.DomainError{Code: domain.ErrCodeCancelled, Message: "validation cancelled", Cause: err}
+			return summary, domain.NewDomainError(domain.ErrCodeCancelled, "validation cancelled", err, nil)
 		}
 		result := domain.VerificationResult{
 			Type: string(val.Type),
@@ -67,6 +69,12 @@ func (s *Service) RunValidations(ctx context.Context, validations []domain.Valid
 		}
 
 		if err != nil {
+			var derr *domain.DomainError
+			if errors.As(err, &derr) {
+				err = derr
+			} else {
+				err = domain.NewDomainError(domain.ErrCodeValidation, err.Error(), err, map[string]interface{}{"validation_type": val.Type})
+			}
 			result.Status = domain.VerificationFailed
 			result.Message = err.Error()
 			result.Details = map[string]interface{}{
@@ -76,6 +84,7 @@ func (s *Service) RunValidations(ctx context.Context, validations []domain.Valid
 				s.logger.Warn(ctx, "validation failed", "validation_type", val.Type, "error", err)
 			}
 			summary.Add(result)
+			failureErrors = append(failureErrors, err)
 			continue
 		}
 
@@ -88,11 +97,12 @@ func (s *Service) RunValidations(ctx context.Context, validations []domain.Valid
 	}
 
 	if summary.FailedChecks > 0 {
-		return summary, &domain.DomainError{
-			Code:    domain.ErrCodeValidation,
-			Message: "one or more validations failed",
-			Context: map[string]interface{}{"failed_checks": summary.FailedChecks},
+		aggregateContext := map[string]interface{}{"failed_checks": summary.FailedChecks}
+		if len(summary.FailureDetails) > 0 {
+			aggregateContext["failures"] = summary.FailureDetails
 		}
+		joined := errors.Join(failureErrors...)
+		return summary, domain.NewDomainError(domain.ErrCodeValidation, "one or more validations failed", joined, aggregateContext)
 	}
 
 	return summary, nil

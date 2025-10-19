@@ -4,219 +4,188 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
-	configpkg "github.com/alexisbeaulieu97/streamy/internal/config"
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
-	enginepkg "github.com/alexisbeaulieu97/streamy/internal/engine"
-	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
+	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
-// ConvertPipelineToConfig maps a domain pipeline to the legacy config representation.
-func ConvertPipelineToConfig(p *domainpipeline.Pipeline) *configpkg.Config {
-	if p == nil {
-		return &configpkg.Config{}
-	}
-	cfg := &configpkg.Config{
-		Name:        p.Name,
-		Description: p.Description,
-		Settings: configpkg.Settings{
-			Parallel:        p.Settings.Parallel,
-			Timeout:         p.Settings.Timeout,
-			ContinueOnError: p.Settings.ContinueOnError,
-			DryRun:          p.Settings.DryRun,
-			Verbose:         p.Settings.Verbose,
-		},
-		Steps: make([]configpkg.Step, len(p.Steps)),
-	}
-	for i, step := range p.Steps {
-		cfg.Steps[i] = configpkg.Step{
-			ID:            step.ID,
-			Name:          step.Name,
-			Type:          string(step.Type),
-			DependsOn:     append([]string(nil), step.DependsOn...),
-			Enabled:       step.Enabled,
-			VerifyTimeout: step.VerifyTimeout,
-		}
-	}
-	return cfg
+const (
+	stepStatusPending      = "pending"
+	stepStatusRunning      = "running"
+	stepStatusSuccess      = "success"
+	stepStatusSkipped      = "skipped"
+	stepStatusFailed       = "failed"
+	stepStatusWouldCreate  = "would_create"
+	stepStatusWouldUpdate  = "would_update"
+	defaultVerificationMsg = "verification result unavailable"
+)
+
+// VerificationStatus mirrors the legacy verification status strings for CLI output.
+type VerificationStatus string
+
+const (
+	VerificationSatisfied VerificationStatus = "satisfied"
+	VerificationMissing   VerificationStatus = "missing"
+	VerificationDrifted   VerificationStatus = "drifted"
+	VerificationBlocked   VerificationStatus = "blocked"
+	VerificationUnknown   VerificationStatus = "unknown"
+)
+
+// VerificationResult represents the outcome of verifying a single step for CLI output.
+type VerificationResult struct {
+	StepID    string
+	Status    VerificationStatus
+	Message   string
+	Details   string
+	Error     error
+	Duration  time.Duration
+	Timestamp time.Time
 }
 
-// ConvertPlanToEngine translates the domain execution plan into the legacy engine representation.
-func ConvertPlanToEngine(plan *domainpipeline.ExecutionPlan) *enginepkg.ExecutionPlan {
-	if plan == nil {
-		return &enginepkg.ExecutionPlan{}
-	}
-	levels := make([]enginepkg.ExecutionLevel, len(plan.Levels))
-	baseDuration := time.Second
-	if plan.EstimatedDuration > 0 && len(plan.Levels) > 0 {
-		calculated := time.Duration(plan.EstimatedDuration/len(plan.Levels)) * time.Millisecond
-		if calculated > 0 {
-			baseDuration = calculated
-		}
-	}
-	for i, level := range plan.Levels {
-		levels[i] = enginepkg.ExecutionLevel{
-			StepIDs:           append([]string(nil), level.StepIDs...),
-			EstimatedDuration: baseDuration,
-		}
-	}
-	return &enginepkg.ExecutionPlan{Levels: levels}
+// VerificationSummary aggregates verification results for CLI and JSON output.
+type VerificationSummary struct {
+	TotalSteps int
+	Satisfied  int
+	Missing    int
+	Drifted    int
+	Blocked    int
+	Unknown    int
+	Results    []*VerificationResult
+	Duration   time.Duration
 }
 
-// ConvertStepResult maps a domain step result into the legacy model result for UI consumption.
-func ConvertStepResult(res domainpipeline.StepResult, dryRun bool) model.StepResult {
-	status := mapStepStatus(res.Status)
-	if dryRun && res.Changed {
-		status = model.StatusWouldUpdate
-	}
-	result := model.StepResult{
-		StepID:    res.StepID,
-		Status:    status,
-		Message:   res.FormatOutput(),
-		Error:     res.Error,
-		Duration:  time.Duration(res.Duration) * time.Millisecond,
-		Timestamp: time.Now().UTC(),
-	}
-	if res.Status == domainpipeline.StatusSkipped && dryRun && res.Changed {
-		result.Status = model.StatusWouldCreate
-	}
-	return result
+// AllSatisfied reports whether every step is satisfied.
+func (s *VerificationSummary) AllSatisfied() bool {
+	return s.TotalSteps > 0 && s.Satisfied == s.TotalSteps
 }
 
-func mapStepStatus(status domainpipeline.ResultStatus) string {
-	switch status {
-	case domainpipeline.StatusSuccess:
-		return model.StatusSuccess
-	case domainpipeline.StatusFailure:
-		return model.StatusFailed
-	case domainpipeline.StatusSkipped:
-		return model.StatusSkipped
-	case domainpipeline.StatusAlreadySatisfied:
-		return model.StatusSuccess
-	default:
-		return model.StatusFailed
+// ExitCode returns an exit code compatible with the legacy CLI.
+// 0 = all satisfied, 1 = needs apply.
+func (s *VerificationSummary) ExitCode() int {
+	if s.AllSatisfied() {
+		return 0
 	}
+	return 1
 }
 
-// BuildVerificationSummary aggregates verification results into the legacy summary model.
-func BuildVerificationSummary(pipeline *domainpipeline.Pipeline, results []domainpipeline.VerificationResult) *model.VerificationSummary {
-	summary := &model.VerificationSummary{
+// BuildVerificationSummary aggregates domain verification results into a CLI-friendly summary.
+func BuildVerificationSummary(pipeline *domainpipeline.Pipeline, results []domainpipeline.VerificationResult) *VerificationSummary {
+	summary := &VerificationSummary{
 		TotalSteps: len(results),
-		Results:    make([]*model.VerificationResult, 0, len(results)),
+		Results:    make([]*VerificationResult, 0, len(results)),
 	}
 
-	if pipeline != nil && len(pipeline.Steps) > 0 {
+	if pipeline != nil && len(pipeline.Steps) > summary.TotalSteps {
 		summary.TotalSteps = len(pipeline.Steps)
 	}
 
 	for _, res := range results {
-		status := deriveVerificationStatus(res)
+		status := mapVerificationStatus(res)
+		message := res.Message
+		if strings.TrimSpace(message) == "" {
+			message = defaultVerificationMsg
+		}
+		details := formatVerificationDetails(res.Details)
+		vr := &VerificationResult{
+			StepID:    res.StepID,
+			Status:    status,
+			Message:   message,
+			Details:   details,
+			Timestamp: time.Now().UTC(),
+		}
+
 		switch status {
-		case model.StatusSatisfied:
+		case VerificationSatisfied:
 			summary.Satisfied++
-		case model.StatusMissing:
+		case VerificationMissing:
 			summary.Missing++
-		case model.StatusDrifted:
+		case VerificationDrifted:
 			summary.Drifted++
-		case model.StatusBlocked:
+		case VerificationBlocked:
 			summary.Blocked++
-		case model.StatusUnknown:
+		case VerificationUnknown:
 			summary.Unknown++
 		}
 
-		vr := &model.VerificationResult{
-			StepID:    res.StepID,
-			Status:    status,
-			Message:   res.Message,
-			Details:   formatVerificationDetails(res.Details),
-			Timestamp: time.Now().UTC(),
-		}
 		summary.Results = append(summary.Results, vr)
 	}
 
 	return summary
 }
 
-// SummaryToExecutionResult maps a verification summary to the registry execution result.
-func SummaryToExecutionResult(summary *model.VerificationSummary, configPath string) *registry.ExecutionResult {
+// SummaryToExecutionResult converts a verification summary into the registry execution result format.
+func SummaryToExecutionResult(summary *VerificationSummary, configPath string) *registry.ExecutionResult {
 	if summary == nil {
 		return &registry.ExecutionResult{
 			Operation:   "verify",
 			Status:      registry.StatusFailed,
 			Success:     false,
-			Duration:    0,
-			CompletedAt: time.Now().UTC(),
-			StepResults: make([]registry.StepResult, 0),
-			StepCount:   0,
 			Summary:     "verification unavailable",
+			StepResults: []registry.StepResult{},
 			Error: &registry.ErrorDetail{
 				Message:    "Verification did not produce a summary",
 				Context:    fmt.Sprintf("Config: %s", configPath),
 				Suggestion: "Retry 'streamy verify' and check logs",
 			},
+			CompletedAt: time.Now().UTC(),
 		}
 	}
 
-	result := &registry.ExecutionResult{
+	execResult := &registry.ExecutionResult{
 		Operation:   "verify",
 		Status:      pipelineStatusFromSummary(summary),
 		Success:     summary.AllSatisfied(),
-		Duration:    summary.Duration,
-		CompletedAt: time.Now().UTC(),
+		StepCount:   summary.TotalSteps,
 		StepResults: make([]registry.StepResult, 0, len(summary.Results)),
+		CompletedAt: time.Now().UTC(),
 	}
 
 	var failed []string
-	for _, r := range summary.Results {
-		stepResult := registry.StepResult{
-			StepID:   r.StepID,
-			Status:   string(r.Status),
-			Message:  r.Message,
-			Duration: r.Duration,
+	for _, res := range summary.Results {
+		stepRes := registry.StepResult{
+			StepID:   res.StepID,
+			Status:   string(res.Status),
+			Message:  res.Message,
+			Duration: res.Duration,
 		}
-		if r.Error != nil {
-			stepResult.Error = &registry.ErrorDetail{
-				Message: r.Error.Error(),
-				Context: fmt.Sprintf("Config: %s", configPath),
+		if res.Error != nil {
+			stepRes.Error = &registry.ErrorDetail{
+				Message: res.Error.Error(),
+				Context: fmt.Sprintf("Config: %s, Step: %s", configPath, res.StepID),
 			}
-			failed = append(failed, r.StepID)
+			failed = append(failed, res.StepID)
 		}
-		switch r.Status {
-		case model.StatusMissing, model.StatusDrifted, model.StatusBlocked, model.StatusUnknown:
-			failed = append(failed, r.StepID)
+		if res.Status == VerificationMissing || res.Status == VerificationDrifted || res.Status == VerificationBlocked || res.Status == VerificationUnknown {
+			failed = append(failed, res.StepID)
 		}
-
-		result.StepResults = append(result.StepResults, stepResult)
+		execResult.StepResults = append(execResult.StepResults, stepRes)
 	}
 
-	result.StepCount = summary.TotalSteps
-	result.FailedSteps = dedupeStrings(failed)
-
-	switch {
-	case summary.Missing > 0 || summary.Drifted > 0:
-		result.Summary = fmt.Sprintf("%d steps need changes", summary.Missing+summary.Drifted)
-	case summary.Blocked > 0 || summary.Unknown > 0:
-		result.Summary = fmt.Sprintf("%d steps failed or unknown", summary.Blocked+summary.Unknown)
-	default:
-		result.Summary = fmt.Sprintf("All %d steps passed", summary.TotalSteps)
-	}
-
-	if len(result.FailedSteps) > 0 && result.Error == nil {
-		result.Error = &registry.ErrorDetail{
-			Message:    "Verification detected drift",
-			Context:    fmt.Sprintf("Config: %s", configPath),
-			Suggestion: "Run 'streamy apply' to reconcile changes",
+	execResult.FailedSteps = dedupeStrings(failed)
+	if len(execResult.FailedSteps) > 0 {
+		execResult.Success = false
+		execResult.Status = registry.StatusDrifted
+		execResult.Summary = fmt.Sprintf("%d steps need changes", len(execResult.FailedSteps))
+		if execResult.Error == nil {
+			execResult.Error = &registry.ErrorDetail{
+				Message:    "Verification detected drift",
+				Context:    fmt.Sprintf("Config: %s", configPath),
+				Suggestion: "Run 'streamy apply' to reconcile changes",
+			}
 		}
+	} else {
+		execResult.Summary = fmt.Sprintf("All %d steps passed", summary.TotalSteps)
 	}
 
-	return result
+	return execResult
 }
 
-func pipelineStatusFromSummary(summary *model.VerificationSummary) registry.PipelineStatus {
+func pipelineStatusFromSummary(summary *VerificationSummary) registry.PipelineStatus {
 	if summary == nil {
 		return registry.StatusFailed
 	}
@@ -229,31 +198,31 @@ func pipelineStatusFromSummary(summary *model.VerificationSummary) registry.Pipe
 	return registry.StatusFailed
 }
 
-func deriveVerificationStatus(res domainpipeline.VerificationResult) model.VerificationStatus {
+func mapVerificationStatus(res domainpipeline.VerificationResult) VerificationStatus {
 	if status := legacyStateFromDetails(res.Details); status != "" {
 		switch strings.ToLower(strings.TrimSpace(status)) {
 		case "satisfied":
-			return model.StatusSatisfied
+			return VerificationSatisfied
 		case "missing", "not_satisfied", "not satisfied":
-			return model.StatusMissing
+			return VerificationMissing
 		case "drifted", "drift", "not_matching":
-			return model.StatusDrifted
+			return VerificationDrifted
 		case "blocked":
-			return model.StatusBlocked
+			return VerificationBlocked
 		case "unknown":
-			return model.StatusUnknown
+			return VerificationUnknown
 		}
 	}
 
 	switch res.Status {
 	case domainpipeline.VerificationSatisfied:
-		return model.StatusSatisfied
+		return VerificationSatisfied
 	case domainpipeline.VerificationFailed:
-		return model.StatusDrifted
+		return VerificationDrifted
 	case domainpipeline.VerificationUnknown:
-		return model.StatusUnknown
+		return VerificationUnknown
 	default:
-		return model.StatusUnknown
+		return VerificationUnknown
 	}
 }
 
@@ -281,7 +250,50 @@ func formatVerificationDetails(details map[string]interface{}) string {
 	return string(data)
 }
 
-func ConvertApplyResults(results []model.StepResult, configPath string, execErr, validationErr error) *registry.ExecutionResult {
+// ConvertStepResult maps a domain step result into a registry step result.
+func ConvertStepResult(res domainpipeline.StepResult, dryRun bool) registry.StepResult {
+	status := mapStepStatus(res.Status)
+	if dryRun && res.Changed {
+		status = stepStatusWouldUpdate
+		if res.Status == domainpipeline.StatusSkipped {
+			status = stepStatusWouldCreate
+		}
+	}
+
+	stepResult := registry.StepResult{
+		StepID:   res.StepID,
+		Status:   status,
+		Message:  res.FormatOutput(),
+		Duration: time.Duration(res.Duration) * time.Millisecond,
+	}
+
+	if res.Error != nil {
+		stepResult.Error = &registry.ErrorDetail{
+			Code:       string(res.Error.Code),
+			Message:    res.Error.Error(),
+			Context:    fmt.Sprintf("%v", res.Error.Context),
+			Suggestion: "",
+		}
+	}
+
+	return stepResult
+}
+
+func mapStepStatus(status domainpipeline.ResultStatus) string {
+	switch status {
+	case domainpipeline.StatusSuccess, domainpipeline.StatusAlreadySatisfied:
+		return stepStatusSuccess
+	case domainpipeline.StatusFailure:
+		return stepStatusFailed
+	case domainpipeline.StatusSkipped:
+		return stepStatusSkipped
+	default:
+		return stepStatusFailed
+	}
+}
+
+// ConvertApplyResults builds a registry execution result from domain step results.
+func ConvertApplyResults(results []domainpipeline.StepResult, configPath string, dryRun bool, execErr, validationErr error) *registry.ExecutionResult {
 	execResult := &registry.ExecutionResult{
 		Operation:   "apply",
 		Status:      registry.StatusSatisfied,
@@ -292,35 +304,27 @@ func ConvertApplyResults(results []model.StepResult, configPath string, execErr,
 
 	var totalDuration time.Duration
 	var failed []string
+
 	for _, res := range results {
-		stepResult := registry.StepResult{
-			StepID:   res.StepID,
-			Status:   res.Status,
-			Message:  res.Message,
-			Duration: res.Duration,
-		}
+		stepResult := ConvertStepResult(res, dryRun)
+		totalDuration += stepResult.Duration
 
-		totalDuration += res.Duration
-
-		if res.Error != nil {
-			stepResult.Error = &registry.ErrorDetail{
-				Message: res.Error.Error(),
-				Context: fmt.Sprintf("Config: %s, Step: %s", configPath, res.StepID),
-			}
-			failed = append(failed, res.StepID)
-		}
-		if res.Status == model.StatusFailed {
+		if stepResult.Error != nil || stepResult.Status == stepStatusFailed {
 			failed = append(failed, res.StepID)
 		}
 		execResult.StepResults = append(execResult.StepResults, stepResult)
 	}
+
+	execResult.StepCount = len(results)
 	execResult.Duration = totalDuration
 
 	if execErr != nil || validationErr != nil || len(failed) > 0 {
 		execResult.Success = false
 		execResult.Status = registry.StatusFailed
 		execResult.FailedSteps = dedupeStrings(failed)
-		if execErr != nil {
+
+		switch {
+		case execErr != nil:
 			execResult.Error = &registry.ErrorDetail{
 				Code:       "APPLY_FAILED",
 				Message:    execErr.Error(),
@@ -328,7 +332,7 @@ func ConvertApplyResults(results []model.StepResult, configPath string, execErr,
 				Suggestion: "Review step output for details",
 			}
 			execResult.Summary = execErr.Error()
-		} else if validationErr != nil {
+		case validationErr != nil:
 			execResult.Error = &registry.ErrorDetail{
 				Code:       "VALIDATION_FAILED",
 				Message:    validationErr.Error(),
@@ -336,8 +340,10 @@ func ConvertApplyResults(results []model.StepResult, configPath string, execErr,
 				Suggestion: "Review validation results and retry",
 			}
 			execResult.Summary = validationErr.Error()
-		} else if len(execResult.FailedSteps) > 0 {
+		case len(execResult.FailedSteps) > 0:
 			execResult.Summary = fmt.Sprintf("%d steps failed", len(execResult.FailedSteps))
+		default:
+			execResult.Summary = "apply failed"
 		}
 	} else {
 		execResult.Summary = fmt.Sprintf("All %d steps applied successfully", len(results))
@@ -346,11 +352,45 @@ func ConvertApplyResults(results []model.StepResult, configPath string, execErr,
 	return execResult
 }
 
+// ToStepState converts a domain step result into a TUI step state.
+func ToStepState(res domainpipeline.StepResult, dryRun bool) components.StepState {
+	status := mapStepStateStatus(res.Status)
+	changed := res.Changed
+	if dryRun && changed {
+		status = components.StepStatusWouldUpdate
+	}
+	if res.Status == domainpipeline.StatusSkipped && dryRun && changed {
+		status = components.StepStatusWouldCreate
+	}
+	return components.StepState{
+		Status:   status,
+		Message:  res.FormatOutput(),
+		Error:    res.Error,
+		Duration: time.Duration(res.Duration) * time.Millisecond,
+		Changed:  changed,
+	}
+}
+
+func mapStepStateStatus(status domainpipeline.ResultStatus) components.StepStatus {
+	switch status {
+	case domainpipeline.StatusSuccess, domainpipeline.StatusAlreadySatisfied:
+		return components.StepStatusSuccess
+	case domainpipeline.StatusFailure:
+		return components.StepStatusFailed
+	case domainpipeline.StatusSkipped:
+		return components.StepStatusSkipped
+	default:
+		return components.StepStatusFailed
+	}
+}
+
+// IsParseError reports whether the error represents a configuration parse failure.
 func IsParseError(err error) bool {
 	var parseErr *streamyerrors.ParseError
 	return errors.As(err, &parseErr)
 }
 
+// IsConfigError reports whether the error represents a configuration validation failure.
 func IsConfigError(err error) bool {
 	if err == nil {
 		return false
@@ -382,16 +422,14 @@ func dedupeStrings(values []string) []string {
 		return nil
 	}
 	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
+	result := make([]string, 0, len(values))
 	for _, v := range values {
-		if v == "" {
-			continue
-		}
 		if _, ok := seen[v]; ok {
 			continue
 		}
 		seen[v] = struct{}{}
-		out = append(out, v)
+		result = append(result, v)
 	}
-	return out
+	sort.Strings(result)
+	return result
 }

@@ -20,7 +20,7 @@ func newDashboardCmd(app *AppContext) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, logger := app.CommandContext(cmd, "command.dashboard")
 			if logger != nil {
-				logger.Info(ctx, "launching dashboard")
+				logger.Info(ctx, "launching dashboard", "command", "dashboard")
 			}
 			err := runDashboard(ctx, app, logger)
 			if err != nil && logger != nil {
@@ -50,7 +50,6 @@ func runDashboard(ctx context.Context, app *AppContext, logger ports.Logger) err
 		return fmt.Errorf("failed to determine status cache path: %w", err)
 	}
 
-	// Load registry
 	reg, err := registry.NewRegistry(registryPath)
 	if err != nil {
 		if logger != nil {
@@ -59,7 +58,6 @@ func runDashboard(ctx context.Context, app *AppContext, logger ports.Logger) err
 		return fmt.Errorf("failed to load registry: %w", err)
 	}
 
-	// Load status cache
 	cache, err := registry.NewStatusCache(cachePath)
 	if err != nil {
 		if logger != nil {
@@ -68,20 +66,16 @@ func runDashboard(ctx context.Context, app *AppContext, logger ports.Logger) err
 		return fmt.Errorf("failed to load status cache: %w", err)
 	}
 
-	// Get pipelines
+	svc := newDashboardPipelineService(app.ApplyUseCase, app.VerifyUseCase, app.EventPublisher())
+
 	pipelines := reg.List()
 	if logger != nil {
 		logger.Info(ctx, "dashboard loaded", "pipeline_count", len(pipelines))
 	}
 
-	service := newDashboardPipelineAdapter(app)
-
-	// Create dashboard model
-	m := dashboard.NewModel(pipelines, reg, cache, service)
-
-	// Create and run Bubble Tea program
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
+	model := dashboard.NewModel(pipelines, reg, cache, svc)
+	program := tea.NewProgram(model, tea.WithAltScreen())
+	if _, err := program.Run(); err != nil {
 		if logger != nil {
 			logger.Error(ctx, "dashboard execution failed", "error", err)
 		}
@@ -89,7 +83,7 @@ func runDashboard(ctx context.Context, app *AppContext, logger ports.Logger) err
 	}
 
 	if logger != nil {
-		logger.Info(ctx, "dashboard closed")
+		logger.Info(ctx, "dashboard closed", "command", "dashboard")
 	}
 
 	return nil

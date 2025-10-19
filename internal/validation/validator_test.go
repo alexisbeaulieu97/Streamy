@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/alexisbeaulieu97/streamy/internal/config"
+	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )
 
 func TestRunValidations_Success(t *testing.T) {
@@ -18,24 +18,24 @@ func TestRunValidations_Success(t *testing.T) {
 	filePath := filepath.Join(tmp, "exists.txt")
 	require.NoError(t, os.WriteFile(filePath, []byte("export PATH"), 0o644))
 
-	validations := []config.Validation{
+	validations := []domain.Validation{
 		{
-			Type: "command_exists",
-			CommandExists: &config.CommandExistsValidation{
-				Command: "echo",
+			Type: domain.ValidationCommandExists,
+			Config: map[string]any{
+				"command": "echo",
 			},
 		},
 		{
-			Type: "file_exists",
-			FileExists: &config.FileExistsValidation{
-				Path: filePath,
+			Type: domain.ValidationFileExists,
+			Config: map[string]any{
+				"path": filePath,
 			},
 		},
 		{
-			Type: "path_contains",
-			PathContains: &config.PathContainsValidation{
-				File: filePath,
-				Text: "PATH",
+			Type: domain.ValidationPathContains,
+			Config: map[string]any{
+				"file": filePath,
+				"text": "PATH",
 			},
 		},
 	}
@@ -53,17 +53,17 @@ func TestRunValidations_Success(t *testing.T) {
 func TestRunValidations_FailureAggregatesResults(t *testing.T) {
 	t.Parallel()
 
-	validations := []config.Validation{
+	validations := []domain.Validation{
 		{
-			Type: "command_exists",
-			CommandExists: &config.CommandExistsValidation{
-				Command: "definitely_missing_command",
+			Type: domain.ValidationCommandExists,
+			Config: map[string]any{
+				"command": "definitely_missing_command",
 			},
 		},
 		{
-			Type: "file_exists",
-			FileExists: &config.FileExistsValidation{
-				Path: "./missing-file",
+			Type: domain.ValidationFileExists,
+			Config: map[string]any{
+				"path": "./missing-file",
 			},
 		},
 	}
@@ -85,7 +85,7 @@ func TestRunValidations_FailureAggregatesResults(t *testing.T) {
 func TestRunValidations_EmptyList(t *testing.T) {
 	t.Parallel()
 
-	results, err := RunValidations(context.Background(), []config.Validation{})
+	results, err := RunValidations(context.Background(), []domain.Validation{})
 	require.NoError(t, err)
 	require.Empty(t, results)
 }
@@ -97,23 +97,23 @@ func TestRunValidations_MixedResults(t *testing.T) {
 	existingFile := filepath.Join(tmp, "exists.txt")
 	require.NoError(t, os.WriteFile(existingFile, []byte("content"), 0o644))
 
-	validations := []config.Validation{
+	validations := []domain.Validation{
 		{
-			Type: "command_exists",
-			CommandExists: &config.CommandExistsValidation{
-				Command: "echo", // This should pass
+			Type: domain.ValidationCommandExists,
+			Config: map[string]any{
+				"command": "echo", // This should pass
 			},
 		},
 		{
-			Type: "file_exists",
-			FileExists: &config.FileExistsValidation{
-				Path: filepath.Join(tmp, "nonexistent.txt"), // This should fail
+			Type: domain.ValidationFileExists,
+			Config: map[string]any{
+				"path": filepath.Join(tmp, "nonexistent.txt"), // This should fail
 			},
 		},
 		{
-			Type: "file_exists",
-			FileExists: &config.FileExistsValidation{
-				Path: existingFile, // This should pass
+			Type: domain.ValidationFileExists,
+			Config: map[string]any{
+				"path": existingFile, // This should pass
 			},
 		},
 	}

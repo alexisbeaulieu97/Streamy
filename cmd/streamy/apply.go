@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
 	"github.com/alexisbeaulieu97/streamy/internal/pipelineconv"
+	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	"github.com/alexisbeaulieu97/streamy/internal/tui"
 )
 
@@ -19,6 +21,7 @@ type applyOptions struct {
 	Verbose             bool
 	NonInteractive      bool
 	ForceNonInteractive bool
+	Timeout             time.Duration
 }
 
 func newApplyCmd(root *rootFlags, app *AppContext) *cobra.Command {
@@ -31,57 +34,84 @@ func newApplyCmd(root *rootFlags, app *AppContext) *cobra.Command {
 			opts.DryRun = root.dryRun
 			opts.Verbose = root.verbose
 			opts.NonInteractive = opts.ForceNonInteractive || !term.IsTerminal(int(os.Stdout.Fd()))
+			if opts.Timeout <= 0 {
+				opts.Timeout = root.timeout
+			}
 
 			if err := validateApplyOptions(opts); err != nil {
 				return err
 			}
 
-			return runApply(cmd.Context(), app, opts)
+			cmdCtx, logger := app.CommandContext(cmd, "command.apply")
+
+			return runApply(cmdCtx, app, opts, logger)
 		},
 	}
 
 	cmd.Flags().StringVarP(&opts.ConfigPath, "config", "c", "", "Path to configuration file")
 	cmd.Flags().BoolVar(&opts.ForceNonInteractive, "non-interactive", false, "Disable the interactive TUI and print results to stdout")
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 0, "Maximum duration for the apply command (defaults to root timeout)")
 	cmd.MarkFlagRequired("config") //nolint:errcheck
 
 	return cmd
 }
 
-func runApply(ctx context.Context, app *AppContext, opts applyOptions) error {
+func runApply(ctx context.Context, app *AppContext, opts applyOptions, logger ports.Logger) error {
 	if ctx == nil {
-		ctx = context.Background()
+		return fmt.Errorf("context is required")
 	}
-	ctx, cancel := context.WithCancel(ctx)
+
+	var (
+		execCtx context.Context
+		cancel  context.CancelFunc
+	)
+	if opts.Timeout > 0 {
+		execCtx, cancel = context.WithTimeout(ctx, opts.Timeout)
+	} else {
+		execCtx, cancel = context.WithCancel(ctx)
+	}
 	defer cancel()
 
-	pipelineDomain, planDomain, err := app.PrepareUseCase.Prepare(ctx, opts.ConfigPath)
+	if logger != nil {
+		logger.Info(execCtx, "command.apply.start", "config_path", opts.ConfigPath, "dry_run", opts.DryRun, "non_interactive", opts.NonInteractive)
+		defer logger.Info(execCtx, "command.apply.finish", "config_path", opts.ConfigPath)
+	}
+
+	pipelineDomain, planDomain, err := app.PrepareUseCase.Prepare(execCtx, opts.ConfigPath)
 	if err != nil {
 		return err
 	}
 
-	cfg := pipelineconv.ConvertPipelineToConfig(pipelineDomain)
-	plan := pipelineconv.ConvertPlanToEngine(planDomain)
-
-	modelState := tui.NewModel(cfg, plan, opts.NonInteractive)
+	modelState := tui.NewModel(pipelineDomain, planDomain, opts.NonInteractive)
 	interactive := !opts.NonInteractive
 
-	var program *tea.Program
-	var programErr error
-	done := make(chan struct{})
+	var (
+		program     *tea.Program
+		programErr  error
+		programDone chan struct{}
+	)
 
 	if interactive {
 		program = tea.NewProgram(modelState)
+		programDone = make(chan struct{})
 		go func() {
 			_, programErr = program.Run()
-			close(done)
+			close(programDone)
+		}()
+		go func() {
+			select {
+			case <-execCtx.Done():
+				program.Send(tea.QuitMsg{})
+			case <-programDone:
+			}
 		}()
 	}
 
-	_, domainResults, summary, execErr := app.ApplyUseCase.Apply(ctx, opts.ConfigPath, opts.DryRun)
+	_, domainResults, summary, execErr := app.ApplyUseCase.Apply(execCtx, opts.ConfigPath, opts.DryRun)
 
 	for _, res := range domainResults {
-		modelRes := pipelineconv.ConvertStepResult(res, opts.DryRun)
-		dispatchTuiMessage(interactive, program, &modelState, tui.StepCompleteMsg{Result: modelRes})
+		state := pipelineconv.ToStepState(res, opts.DryRun)
+		dispatchTuiMessage(interactive, program, &modelState, tui.StepCompleteMsg{StepID: res.StepID, State: state})
 	}
 
 	if summary != nil {
@@ -97,7 +127,12 @@ func runApply(ctx context.Context, app *AppContext, opts applyOptions) error {
 		if program != nil {
 			program.Send(tea.QuitMsg{})
 		}
-		<-done
+		if programDone != nil {
+			select {
+			case <-programDone:
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
 		if programErr != nil {
 			return programErr
 		}

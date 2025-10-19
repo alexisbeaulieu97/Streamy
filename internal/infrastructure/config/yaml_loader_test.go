@@ -3,9 +3,11 @@ package config
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/infrastructure/logging"
@@ -75,7 +77,20 @@ func TestYAMLLoaderLoadParseError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected parse error")
 	}
-	assertDomainError(t, err, pipeline.ErrCodeValidation)
+
+	var domainErr *pipeline.DomainError
+	if !errors.As(err, &domainErr) {
+		t.Fatalf("expected DomainError, got %T", err)
+	}
+	if domainErr.Code != pipeline.ErrCodeConfig {
+		t.Fatalf("expected code %s, got %s", pipeline.ErrCodeConfig, domainErr.Code)
+	}
+	if domainErr.Context["path"] != configPath {
+		t.Fatalf("expected path in context, got %+v", domainErr.Context)
+	}
+	if _, ok := domainErr.Context["line"]; !ok {
+		t.Fatalf("expected line number in context")
+	}
 }
 
 func TestYAMLLoaderLoadDomainValidationError(t *testing.T) {
@@ -115,6 +130,37 @@ func TestYAMLLoaderLoadCancelled(t *testing.T) {
 	cancel()
 
 	_, err := loader.Load(ctx, "whatever.yaml")
+	if err == nil {
+		t.Fatalf("expected cancellation error")
+	}
+	assertDomainError(t, err, pipeline.ErrCodeCancelled)
+}
+
+func TestYAMLLoaderLoadCancelledDuringRead(t *testing.T) {
+	loader := newTestLoader()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	pr, pw := io.Pipe()
+	loader.open = func(string) (io.ReadCloser, error) {
+		return pr, nil
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := loader.Load(ctx, "stream.yaml")
+		done <- err
+	}()
+
+	go func() {
+		// Write initial bytes then cancel before completing the document.
+		_, _ = pw.Write([]byte("version: \"1.0\"\n"))
+		time.Sleep(5 * time.Millisecond)
+		cancel()
+		_, _ = pw.Write([]byte("name: \"demo\"\nsteps: []\n"))
+		_ = pw.Close()
+	}()
+
+	err := <-done
 	if err == nil {
 		t.Fatalf("expected cancellation error")
 	}

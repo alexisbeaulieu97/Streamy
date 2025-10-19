@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -152,4 +154,74 @@ func TestBufferedLoggerStoresAndFlushes(t *testing.T) {
 	if second["correlation_id"] != "buffered" {
 		t.Fatalf("expected correlation id to be preserved, got %v", second["correlation_id"])
 	}
+}
+
+func TestLoggerIncludesErrorChain(t *testing.T) {
+	var buf bytes.Buffer
+	logger, err := New(Options{
+		Writer:    &buf,
+		Formatter: cblog.JSONFormatter,
+		Layer:     "application",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	rootErr := errors.New("disk full")
+	wrapped := fmt.Errorf("executor failed: %w", rootErr)
+	top := fmt.Errorf("verify pipeline: %w", wrapped)
+
+	logger.Error(context.Background(), "verification failed", "error", top)
+
+	line := strings.TrimSpace(buf.String())
+	if line == "" {
+		t.Fatal("expected log output for error")
+	}
+
+	payload := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(line), &payload); err != nil {
+		t.Fatalf("failed to parse error log: %v", err)
+	}
+
+	if payload["error"] != top.Error() {
+		t.Fatalf("expected error field to contain full message, got %v", payload["error"])
+	}
+
+	rawChain, ok := payload["error_chain"].([]interface{})
+	if !ok {
+		t.Fatalf("expected error_chain field to be present, got %T", payload["error_chain"])
+	}
+	gotChain := make([]string, len(rawChain))
+	for i, v := range rawChain {
+		msg, ok := v.(string)
+		if !ok {
+			t.Fatalf("expected chain entry to be string, got %T", v)
+		}
+		gotChain[i] = msg
+	}
+
+	expectedChain := []string{
+		top.Error(),
+		wrapped.Error(),
+		rootErr.Error(),
+	}
+	if !equalStrings(gotChain, expectedChain) {
+		t.Fatalf("unexpected error chain. expected %v, got %v", expectedChain, gotChain)
+	}
+
+	if payload["error_cause"] != rootErr.Error() {
+		t.Fatalf("expected error_cause to reference root error, got %v", payload["error_cause"])
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

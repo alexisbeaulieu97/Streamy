@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -35,6 +36,8 @@ func (s *stubPipelineService) Verify(ctx context.Context, opts VerifyOptions) (*
 func (s *stubPipelineService) Apply(ctx context.Context, opts ApplyOptions) (*registry.ExecutionResult, error) {
 	return s.applyResult, s.applyErr
 }
+
+func (s *stubPipelineService) StepProgressCmd() tea.Cmd { return nil }
 
 func TestLoadInitialStatusCmd(t *testing.T) {
 	tmpDir := t.TempDir()

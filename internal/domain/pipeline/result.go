@@ -76,20 +76,28 @@ func (v VerificationResult) FormatMessage() string {
 
 // VerificationSummary aggregates validation results and counts.
 type VerificationSummary struct {
-	TotalChecks  int
-	PassedChecks int
-	FailedChecks int
-	Results      []VerificationResult
+	TotalChecks    int
+	PassedChecks   int
+	FailedChecks   int
+	Results        []VerificationResult
+	FailureDetails []map[string]interface{}
 }
 
 // Add appends a result and updates counters.
 func (s *VerificationSummary) Add(result VerificationResult) {
 	s.Results = append(s.Results, result)
 	s.TotalChecks++
-	if result.Status == VerificationSatisfied {
+	switch result.Status {
+	case VerificationSatisfied:
 		s.PassedChecks++
-	} else if result.Status == VerificationFailed {
+	case VerificationFailed:
 		s.FailedChecks++
+		if result.Details != nil {
+			if s.FailureDetails == nil {
+				s.FailureDetails = make([]map[string]interface{}, 0)
+			}
+			s.FailureDetails = append(s.FailureDetails, result.Details)
+		}
 	}
 }
 
@@ -99,4 +107,7 @@ func (s *VerificationSummary) Merge(other VerificationSummary) {
 	s.PassedChecks += other.PassedChecks
 	s.FailedChecks += other.FailedChecks
 	s.Results = append(s.Results, other.Results...)
+	if len(other.FailureDetails) > 0 {
+		s.FailureDetails = append(s.FailureDetails, other.FailureDetails...)
+	}
 }

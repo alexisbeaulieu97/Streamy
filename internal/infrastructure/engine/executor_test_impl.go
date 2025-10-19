@@ -25,7 +25,7 @@ func NewTestExecutor(registry ports.PluginRegistry) *TestExecutor {
 // pools and tracing to keep behaviour deterministic for comparison tests.
 func (e *TestExecutor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 	if ctx == nil {
-		ctx = context.Background()
+		return nil, &domainpipeline.DomainError{Code: domainpipeline.ErrCodeInternal, Message: "execution context is required"}
 	}
 	if plan == nil {
 		return nil, &domainpipeline.DomainError{Code: domainpipeline.ErrCodeInternal, Message: "execution plan is nil"}
@@ -73,23 +73,25 @@ func (e *TestExecutor) runStep(ctx context.Context, step domainpipeline.Step, dr
 	pluginType := domainplugin.Type(step.Type)
 	handler, err := e.registry.Get(pluginType)
 	if err != nil {
+		derr := toDomainError(err, step.ID, pluginType)
 		return domainpipeline.StepResult{
 			StepID: step.ID,
 			Status: domainpipeline.StatusFailure,
-			Error:  toDomainError(err),
-		}, err
+			Error:  derr,
+		}, derr
 	}
 
 	start := time.Now()
 
 	eval, err := handler.Evaluate(ctx, step)
 	if err != nil {
+		derr := toDomainError(err, step.ID, pluginType)
 		return domainpipeline.StepResult{
 			StepID:   step.ID,
 			Status:   domainpipeline.StatusFailure,
-			Error:    toDomainError(err),
+			Error:    derr,
 			Duration: int(time.Since(start).Milliseconds()),
-		}, err
+		}, derr
 	}
 
 	if dryRun {
@@ -113,8 +115,8 @@ func (e *TestExecutor) runStep(ctx context.Context, step domainpipeline.Step, dr
 
 	if err != nil {
 		result.Status = domainpipeline.StatusFailure
-		result.Error = toDomainError(err)
-		return *result, err
+		result.Error = toDomainError(err, step.ID, pluginType)
+		return *result, result.Error
 	}
 
 	return *result, nil
@@ -123,7 +125,7 @@ func (e *TestExecutor) runStep(ctx context.Context, step domainpipeline.Step, dr
 // Verify evaluates each step sequentially and returns the aggregated results.
 func (e *TestExecutor) Verify(ctx context.Context, pipeline *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
 	if ctx == nil {
-		ctx = context.Background()
+		return nil, &domainpipeline.DomainError{Code: domainpipeline.ErrCodeInternal, Message: "verification context is required"}
 	}
 	if pipeline == nil {
 		return nil, &domainpipeline.DomainError{Code: domainpipeline.ErrCodeInternal, Message: "pipeline is nil"}
@@ -155,7 +157,7 @@ func (e *TestExecutor) verifyStep(ctx context.Context, step domainpipeline.Step)
 	pluginType := domainplugin.Type(step.Type)
 	handler, err := e.registry.Get(pluginType)
 	if err != nil {
-		derr := toDomainError(err)
+		derr := toDomainError(err, step.ID, pluginType)
 		return domainpipeline.VerificationResult{
 			StepID:  step.ID,
 			Type:    string(pluginType),
@@ -169,7 +171,7 @@ func (e *TestExecutor) verifyStep(ctx context.Context, step domainpipeline.Step)
 
 	eval, err := handler.Evaluate(ctx, step)
 	if err != nil {
-		derr := toDomainError(err)
+		derr := toDomainError(err, step.ID, pluginType)
 		details := map[string]interface{}{"step_id": step.ID}
 		if status := categorizeVerificationError(derr); status != "" {
 			details["status"] = status

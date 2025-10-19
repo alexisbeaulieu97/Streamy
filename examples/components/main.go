@@ -1,160 +1,162 @@
 package main
 
 import (
-	"fmt"
+	"bufio"
+	"os"
 
 	"github.com/alexisbeaulieu97/streamy/internal/ui/components"
 	"github.com/charmbracelet/lipgloss"
 )
 
 func main() {
-	fmt.Println("=== Component Library Showcase ===")
-	fmt.Println()
+	writer := bufio.NewWriter(os.Stdout)
+	printLine(writer, "=== Component Library Showcase ===")
+	printLine(writer, "")
 
 	// 1. Basic Text Components
-	fmt.Println("--- Text Components ---")
+	printLine(writer, "--- Text Components ---")
 	text := components.BoldText("Hello, Components!")
-	fmt.Println(text.View())
+	printLine(writer, text.View())
 
 	faintText := components.NewText("This is faint text").WithAppliers(components.Typography(components.TypographyVariantTextSm))
-	fmt.Println(faintText.View())
+	printLine(writer, faintText.View())
 
 	styledText := components.NewText("Themed Text").
 		WithAppliers(
 			components.Foreground(components.PalettePrimary),
 			components.Typography(components.TypographyVariantEmphasis),
 		)
-	fmt.Println(styledText.View())
-	fmt.Println()
+	printLine(writer, styledText.View())
+	printLine(writer, "")
 
 	// 2. Headers
-	fmt.Println("--- Headers ---")
+	printLine(writer, "--- Headers ---")
 	h1 := components.NewHeader("Main Title").
 		WithAppliers(components.Typography(components.TypographyVariantTitle))
-	fmt.Println(h1.View())
+	printLine(writer, h1.View())
 
 	h2 := components.NewHeader("Subtitle").
 		WithSubtitle("With additional context")
-	fmt.Println(h2.View())
-	fmt.Println()
+	printLine(writer, h2.View())
+	printLine(writer, "")
 
 	// 3. Dividers
-	fmt.Println("--- Dividers ---")
+	printLine(writer, "--- Dividers ---")
 	divider := components.HorizontalDivider().WithWidth(50)
-	fmt.Println(divider.View())
+	printLine(writer, divider.View())
 
 	dashedDivider := components.DashedDivider().WithWidth(50)
-	fmt.Println(dashedDivider.View())
+	printLine(writer, dashedDivider.View())
 
 	thickDivider := components.ThickDivider().WithWidth(50)
-	fmt.Println(thickDivider.View())
-	fmt.Println()
+	printLine(writer, thickDivider.View())
+	printLine(writer, "")
 
 	// 4. Buttons
-	fmt.Println("--- Buttons ---")
+	printLine(writer, "--- Buttons ---")
 	primaryBtn := components.PrimaryButton("Primary")
-	fmt.Println(primaryBtn.View())
+	printLine(writer, primaryBtn.View())
 
 	secondaryBtn := components.SecondaryButton("Secondary")
-	fmt.Println(secondaryBtn.View())
+	printLine(writer, secondaryBtn.View())
 
 	successBtn := components.SuccessButton("Success")
-	fmt.Println(successBtn.View())
+	printLine(writer, successBtn.View())
 
 	errorBtn := components.ErrorButton("Error")
-	fmt.Println(errorBtn.View())
+	printLine(writer, errorBtn.View())
 
 	warningBtn := components.WarningButton("Warning")
-	fmt.Println(warningBtn.View())
+	printLine(writer, warningBtn.View())
 
 	infoBtn := components.InfoButton("Info")
-	fmt.Println(infoBtn.View())
+	printLine(writer, infoBtn.View())
 
 	disabledBtn := components.PrimaryButton("Disabled").WithDisabled(true)
-	fmt.Println(disabledBtn.View())
-	fmt.Println()
+	printLine(writer, disabledBtn.View())
+	printLine(writer, "")
 
 	// 5. Badges
-	fmt.Println("--- Badges ---")
+	printLine(writer, "--- Badges ---")
 	primaryBadge := components.PrimaryBadge("v1.0.0")
-	fmt.Println(primaryBadge.View())
+	printLine(writer, primaryBadge.View())
 
 	successBadge := components.SuccessBadge("Active")
-	fmt.Println(successBadge.View())
+	printLine(writer, successBadge.View())
 
 	warningBadge := components.WarningBadge("Beta")
-	fmt.Println(warningBadge.View())
+	printLine(writer, warningBadge.View())
 
 	errorBadge := components.ErrorBadge("Deprecated")
-	fmt.Println(errorBadge.View())
-	fmt.Println()
+	printLine(writer, errorBadge.View())
+	printLine(writer, "")
 
 	// 6. Stack Layout (Horizontal)
-	fmt.Println("--- Horizontal Stack ---")
+	printLine(writer, "--- Horizontal Stack ---")
 	hstack := components.HStack(
 		components.PrimaryButton("Left"),
 		components.SecondaryButton("Middle"),
 		components.SuccessButton("Right"),
 	).WithGap(2)
-	fmt.Println(hstack.View())
-	fmt.Println()
+	printLine(writer, hstack.View())
+	printLine(writer, "")
 
 	// 7. Stack Layout (Vertical)
-	fmt.Println("--- Vertical Stack ---")
+	printLine(writer, "--- Vertical Stack ---")
 	vstack := components.VStack(
 		components.BoldText("First item"),
 		components.NewText("Second item"),
 		components.NewText("Third item").WithAppliers(components.Typography(components.TypographyVariantTextSm)),
 	).WithGap(1)
-	fmt.Println(vstack.View())
-	fmt.Println()
+	printLine(writer, vstack.View())
+	printLine(writer, "")
 
 	// 8. Alerts
-	fmt.Println("--- Alerts ---")
+	printLine(writer, "--- Alerts ---")
 	successAlert := components.SuccessAlert("Operation completed successfully!")
-	fmt.Println(successAlert.View())
-	fmt.Println()
+	printLine(writer, successAlert.View())
+	printLine(writer, "")
 
 	warningAlert := components.WarningAlert("Warning: This action cannot be undone")
-	fmt.Println(warningAlert.View())
-	fmt.Println()
+	printLine(writer, warningAlert.View())
+	printLine(writer, "")
 
 	errorAlert := components.ErrorAlert("Error: Failed to connect to server")
-	fmt.Println(errorAlert.View())
-	fmt.Println()
+	printLine(writer, errorAlert.View())
+	printLine(writer, "")
 
 	infoAlert := components.InfoAlert("Tip: You can use keyboard shortcuts")
-	fmt.Println(infoAlert.View())
-	fmt.Println()
+	printLine(writer, infoAlert.View())
+	printLine(writer, "")
 
 	// 9. Cards
-	fmt.Println("--- Cards ---")
+	printLine(writer, "--- Cards ---")
 	simpleCard := components.NewCard(
 		components.NewHeader("Simple Card"),
 		components.HorizontalDivider(),
 		components.NewText("This is a card with some content"),
 	)
-	fmt.Println(simpleCard.View())
-	fmt.Println()
+	printLine(writer, simpleCard.View())
+	printLine(writer, "")
 
 	cardWithTitle := components.NewCard(
 		components.NewText("Card content goes here"),
 		components.NewText("More content below"),
 	).WithTitle("Card with Title")
-	fmt.Println(cardWithTitle.View())
-	fmt.Println()
+	printLine(writer, cardWithTitle.View())
+	printLine(writer, "")
 
 	// 10. Panels
-	fmt.Println("--- Panels ---")
+	printLine(writer, "--- Panels ---")
 	panel := components.NewPanel(
 		components.NewText("Panel content"),
 		components.NewText("Panels are lighter than cards"),
 	).WithTitle("Information Panel")
-	fmt.Println(panel.View())
-	fmt.Println()
+	printLine(writer, panel.View())
+	printLine(writer, "")
 
 	// 11. Container
-	fmt.Println("--- Custom Container ---")
+	printLine(writer, "--- Custom Container ---")
 	container := components.NewContainer(
 		components.BoldText("Custom styled container"),
 		components.HorizontalDivider(),
@@ -166,11 +168,11 @@ func main() {
 		WithAppliers(
 			components.Background(components.PaletteSurface),
 		)
-	fmt.Println(container.View())
-	fmt.Println()
+	printLine(writer, container.View())
+	printLine(writer, "")
 
 	// 12. Complex Composition
-	fmt.Println("--- Complex Example ---")
+	printLine(writer, "--- Complex Example ---")
 	complexCard := components.NewCard(
 		components.VStack(
 			components.HStack(
@@ -200,34 +202,39 @@ func main() {
 			).WithGap(2),
 		).WithGap(1),
 	)
-	fmt.Println(complexCard.View())
-	fmt.Println()
+	printLine(writer, complexCard.View())
+	printLine(writer, "")
 
 	// 13. Spacers
-	fmt.Println("--- Spacers ---")
+	printLine(writer, "--- Spacers ---")
 	stackWithSpacers := components.HStack(
 		components.NewText("Left"),
 		components.HorizontalSpacer(10),
 		components.NewText("Right"),
 	)
-	fmt.Println(stackWithSpacers.View())
-	fmt.Println()
+	printLine(writer, stackWithSpacers.View())
+	printLine(writer, "")
 
 	// 14. Theme Switching
-	fmt.Println("--- Theme Switching ---")
-	fmt.Println("Default Theme:")
+	printLine(writer, "--- Theme Switching ---")
+	printLine(writer, "Default Theme:")
 	themedCard := components.NewCard(
 		components.NewText("Themed content"),
 	).WithTitle("Themed Card")
-	fmt.Println(themedCard.View())
+	printLine(writer, themedCard.View())
 
-	fmt.Println("\nDark Theme:")
+	printLine(writer, "\nDark Theme:")
 	// Create a render context with dark theme
 	darkCtx := components.DefaultContext().WithTheme(components.DarkTheme())
 	themedCardDark := components.NewCard(
 		components.NewText("Themed content"),
 	).WithTitle("Themed Card")
-	fmt.Println(themedCardDark.ViewWithContext(darkCtx))
+	printLine(writer, themedCardDark.ViewWithContext(darkCtx))
 
 	// Default theme is used automatically in View()
+	_ = writer.Flush()
+}
+
+func printLine(writer *bufio.Writer, line string) {
+	_, _ = writer.WriteString(line + "\n")
 }

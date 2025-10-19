@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -192,11 +193,63 @@ func mergeFields(base []interface{}, additions []interface{}, extras map[string]
 		}
 	}
 
+	if rawErr, ok := store["error"]; ok {
+		if errVal, ok := toError(rawErr); ok {
+			chain := flattenErrorChain(errVal)
+			addPair("error", errVal.Error())
+			if len(chain) > 0 {
+				addPair("error_chain", chain)
+				addPair("error_cause", chain[len(chain)-1])
+			}
+		}
+	}
+
 	result := make([]interface{}, 0, len(order)*2)
 	for _, key := range order {
 		result = append(result, key, store[key])
 	}
 	return result
+}
+
+func toError(value interface{}) (error, bool) {
+	switch v := value.(type) {
+	case error:
+		return v, true
+	case fmt.Stringer:
+		return errors.New(v.String()), true
+	default:
+		return nil, false
+	}
+}
+
+func flattenErrorChain(err error) []string {
+	if err == nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	var chain []string
+	var walk func(error)
+	walk = func(e error) {
+		if e == nil {
+			return
+		}
+		msg := e.Error()
+		if _, exists := seen[msg]; !exists {
+			seen[msg] = struct{}{}
+			chain = append(chain, msg)
+		}
+		if unwrapper, ok := e.(interface{ Unwrap() []error }); ok {
+			for _, inner := range unwrapper.Unwrap() {
+				walk(inner)
+			}
+			return
+		}
+		walk(errors.Unwrap(e))
+	}
+
+	walk(err)
+	return chain
 }
 
 // compile-time assurance

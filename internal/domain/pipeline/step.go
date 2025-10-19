@@ -45,25 +45,25 @@ type Step struct {
 // Validate ensures the step satisfies all business rules.
 func (s Step) Validate() error {
 	if s.ID == "" {
-		return newMissingFieldError("id")
+		return NewMissingFieldError("id")
 	}
 	if !stepIDPattern.MatchString(s.ID) {
-		return newValidationError("step id must match ^[a-zA-Z0-9_-]+$", map[string]interface{}{"step_id": s.ID})
+		return NewValidationError("step id must match ^[a-zA-Z0-9_-]+$", map[string]interface{}{"step_id": s.ID})
 	}
 
 	if s.Type == "" {
-		return newMissingFieldError("type")
+		return NewMissingFieldError("type")
 	}
 	if !isValidStepType(s.Type) {
-		return newTypeError(fmt.Sprintf("one of %v", validStepTypes), string(s.Type)).WithContext(map[string]interface{}{"step_id": s.ID})
+		return NewTypeError(fmt.Sprintf("one of %v", validStepTypes), string(s.Type)).WithContext(map[string]interface{}{"step_id": s.ID})
 	}
 
 	if s.VerifyTimeout < 0 {
-		return newValidationError("verify timeout must be non-negative", map[string]interface{}{"step_id": s.ID})
+		return NewValidationError("verify timeout must be non-negative", map[string]interface{}{"step_id": s.ID})
 	}
 
 	if s.Enabled && len(s.Config) == 0 {
-		return newValidationError("enabled step requires configuration", map[string]interface{}{"step_id": s.ID})
+		return NewValidationError("enabled step requires configuration", map[string]interface{}{"step_id": s.ID})
 	}
 
 	return nil

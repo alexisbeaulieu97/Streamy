@@ -14,10 +14,11 @@ import (
 // Model is the main dashboard model
 type Model struct {
 	// Core data
-	pipelines   []registry.Pipeline
-	registry    *registry.Registry
-	statusCache *registry.StatusCache
-	service     PipelineService
+	pipelines    []registry.Pipeline
+	registry     *registry.Registry
+	statusCache  *registry.StatusCache
+	service      PipelineService
+	stepProgress map[string]StepProgress
 
 	// UI state
 	viewMode     ViewMode
@@ -74,6 +75,7 @@ func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *regi
 		registry:        reg,
 		statusCache:     cache,
 		service:         svc,
+		stepProgress:    make(map[string]StepProgress),
 		viewMode:        ViewList,
 		cursor:          0,
 		loading:         make(map[string]bool),
@@ -104,6 +106,14 @@ func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *regi
 	return m
 }
 
+// StepProgress represents latest step status for a pipeline.
+type StepProgress struct {
+	StepID   string
+	Status   string
+	Message  string
+	Recorded time.Time
+}
+
 // Init initializes the model and returns initial commands
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
@@ -113,6 +123,12 @@ func (m Model) Init() tea.Cmd {
 	// Load initial statuses if available
 	if len(m.pipelines) > 0 {
 		cmds = append(cmds, loadInitialStatusCmd(m.pipelines, m.statusCache))
+	}
+
+	if m.service != nil {
+		if progressCmd := m.service.StepProgressCmd(); progressCmd != nil {
+			cmds = append(cmds, progressCmd)
+		}
 	}
 
 	return tea.Batch(cmds...)

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -13,12 +15,12 @@ import (
 	applicationpipeline "github.com/alexisbeaulieu97/streamy/internal/application/pipeline"
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	logginginfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/logging"
+	metricsinfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/metrics"
+	tracinginfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/tracing"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
 )
 
 func TestVerifyCommandStructuredLogging(t *testing.T) {
-	t.Parallel()
-
 	var logBuf bytes.Buffer
 	logger, err := logginginfra.New(logginginfra.Options{
 		Writer:    &logBuf,
@@ -49,10 +51,14 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 	}
 	validator := &stubValidationService{}
 
+	tracer := tracinginfra.NewNoOpTracer()
+	metrics := metricsinfra.NewNoOpCollector()
+
 	prepareUseCase := applicationpipeline.NewPrepareUseCase(
 		configLoader,
 		dagBuilder,
 		logger.With("component", "prepare_usecase"),
+		tracer,
 		eventPublisher,
 	)
 	applyUseCase := applicationpipeline.NewApplyUseCase(
@@ -60,12 +66,16 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 		executor,
 		validator,
 		logger.With("component", "apply_usecase"),
+		metrics,
+		tracer,
 		eventPublisher,
 	)
 	verifyUseCase := applicationpipeline.NewVerifyUseCase(
 		prepareUseCase,
 		executor,
 		logger.With("component", "verify_usecase"),
+		metrics,
+		tracer,
 		eventPublisher,
 	)
 
@@ -108,6 +118,123 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 	for _, event := range eventPublisher.events {
 		require.Equal(t, "cli-corr-id", event.correlationID)
 		require.NotEmpty(t, event.eventType)
+	}
+}
+
+func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger, err := logginginfra.New(logginginfra.Options{
+		Writer:    &logBuf,
+		Formatter: cblog.JSONFormatter,
+		Level:     "info",
+		Layer:     "infrastructure",
+		Component: "cli",
+	})
+	require.NoError(t, err)
+
+	eventPublisher := &eventsRecordingPublisher{logger: logger}
+
+	configLoader := &stubConfigLoader{
+		pipeline: &domainpipeline.Pipeline{
+			Name: "demo",
+			Steps: []domainpipeline.Step{
+				{ID: "setup", Type: domainpipeline.StepType("command"), Enabled: true},
+			},
+		},
+	}
+	dagBuilder := &stubDAGBuilder{}
+	rootErr := errors.New("plugin boom")
+	execErr := fmt.Errorf("executor failed: %w", rootErr)
+	verifyErr := fmt.Errorf("verify failed: %w", execErr)
+	executor := &stubExecutor{verifyErr: verifyErr}
+	validator := &stubValidationService{}
+
+	tracer := tracinginfra.NewNoOpTracer()
+	metrics := metricsinfra.NewNoOpCollector()
+
+	prepareUseCase := applicationpipeline.NewPrepareUseCase(
+		configLoader,
+		dagBuilder,
+		logger.With("component", "prepare_usecase"),
+		tracer,
+		eventPublisher,
+	)
+	applyUseCase := applicationpipeline.NewApplyUseCase(
+		prepareUseCase,
+		executor,
+		validator,
+		logger.With("component", "apply_usecase"),
+		metrics,
+		tracer,
+		eventPublisher,
+	)
+	verifyUseCase := applicationpipeline.NewVerifyUseCase(
+		prepareUseCase,
+		executor,
+		logger.With("component", "verify_usecase"),
+		metrics,
+		tracer,
+		eventPublisher,
+	)
+
+	app := &AppContext{
+		Logger:         logger,
+		Events:         eventPublisher,
+		PrepareUseCase: prepareUseCase,
+		ApplyUseCase:   applyUseCase,
+		VerifyUseCase:  verifyUseCase,
+	}
+
+	rootCmd := newRootCmd(app)
+
+	var outBuf, errBuf bytes.Buffer
+	rootCmd.SetOut(&outBuf)
+	rootCmd.SetErr(&errBuf)
+	rootCmd.SetArgs([]string{"verify", "--json", "pipeline.yaml"})
+
+	originalExit := exitFunc
+	exitFunc = func(int) {}
+	t.Cleanup(func() { exitFunc = originalExit })
+
+	ctx := logginginfra.WithCorrelationID(context.Background(), "cli-corr-id")
+	require.NoError(t, rootCmd.ExecuteContext(ctx))
+
+	logLines := filterLines(logBuf.String())
+	require.NotEmpty(t, logLines)
+
+	var errorSeen bool
+	var observedChain []string
+	var observedCause string
+	for _, line := range logLines {
+		var payload map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(line), &payload))
+		require.Equal(t, "cli-corr-id", payload["correlation_id"])
+		require.NotEmpty(t, payload["layer"])
+		if strings.Contains(line, "boom") {
+			errorSeen = true
+			if msg, ok := payload["msg"].(string); ok && msg == "pipeline verification failed" {
+				rawChain, ok := payload["error_chain"].([]interface{})
+				require.True(t, ok, "expected error_chain field in payload")
+				for _, entry := range rawChain {
+					observedChain = append(observedChain, entry.(string))
+				}
+				if cause, ok := payload["error_cause"].(string); ok {
+					observedCause = cause
+				}
+			}
+		}
+	}
+	require.True(t, errorSeen, "expected error log containing boom")
+	require.Equal(t, []string{
+		verifyErr.Error(),
+		execErr.Error(),
+		rootErr.Error(),
+	}, observedChain)
+	require.Equal(t, rootErr.Error(), observedCause)
+
+	require.True(t, eventPublisher.contains(ports.EventValidationFailed))
+	for _, event := range eventPublisher.events {
+		require.Equal(t, "cli-corr-id", event.correlationID)
 	}
 }
 
@@ -157,6 +284,15 @@ func (eventsRecordingPublisher) Subscribe(string, ports.EventHandler) (ports.Sub
 	return noopSubscription{}, nil
 }
 
+func (e *eventsRecordingPublisher) contains(eventType string) bool {
+	for _, evt := range e.events {
+		if evt.eventType == eventType {
+			return true
+		}
+	}
+	return false
+}
+
 type noopSubscription struct{}
 
 func (noopSubscription) Unsubscribe() {}
@@ -185,6 +321,7 @@ type stubExecutor struct {
 	results       []domainpipeline.StepResult
 	err           error
 	verifyResults []domainpipeline.VerificationResult
+	verifyErr     error
 }
 
 func (s *stubExecutor) Execute(context.Context, *domainpipeline.ExecutionPlan, *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
@@ -192,7 +329,7 @@ func (s *stubExecutor) Execute(context.Context, *domainpipeline.ExecutionPlan, *
 }
 
 func (s *stubExecutor) Verify(context.Context, *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
-	return s.verifyResults, nil
+	return s.verifyResults, s.verifyErr
 }
 
 type stubValidationService struct{}

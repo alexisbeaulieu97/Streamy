@@ -20,10 +20,10 @@ func TestExecutorSwapProducesIdenticalResults(t *testing.T) {
 	plan := buildTestPlan(t, pipeline)
 
 	defaultRegistry := plugininfra.NewRegistry()
-	require.NoError(t, defaultRegistry.Register(commandplugin.NewPort()))
+	require.NoError(t, defaultRegistry.Register(commandplugin.New()))
 
 	altRegistry := plugininfra.NewRegistry()
-	require.NoError(t, altRegistry.Register(commandplugin.NewPort()))
+	require.NoError(t, altRegistry.Register(commandplugin.New()))
 
 	defaultExec := NewExecutor(defaultRegistry, WithExecutorLogger(logginginfra.NewNoOpLogger()))
 	altExec := NewTestExecutor(altRegistry)

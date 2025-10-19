@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alexisbeaulieu97/streamy/internal/config"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
@@ -36,7 +35,7 @@ func newAddCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 			if logger != nil {
 				logger.Info(ctx, "adding pipeline", "config_path", args[0])
 			}
-			err := runAdd(ctx, logger, cmd, args[0], opts)
+			err := runAdd(ctx, logger, app, cmd, args[0], opts)
 			if err != nil && logger != nil {
 				logger.Error(ctx, "add command failed", "config_path", args[0], "error", err)
 			}
@@ -51,17 +50,13 @@ func newAddCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 	return cmd
 }
 
-func runAdd(ctx context.Context, logger ports.Logger, cmd *cobra.Command, configPath string, opts *addOptions) error {
+func runAdd(ctx context.Context, logger ports.Logger, app *AppContext, cmd *cobra.Command, configPath string, opts *addOptions) error {
 	absPath, err := validateAndNormalizePath(configPath)
 	if err != nil {
 		if logger != nil {
 			logger.Error(ctx, "invalid config path", "config_path", configPath, "error", err)
 		}
 		return newCommandError("add", fmt.Sprintf("resolving config path %q", configPath), err, "Check that the file exists and you have permission to read it.")
-	}
-
-	if opts.name == "" {
-		opts.name = deriveNameFromPath(absPath)
 	}
 
 	if opts.id == "" {
@@ -79,12 +74,22 @@ func runAdd(ctx context.Context, logger ports.Logger, cmd *cobra.Command, config
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "→ Validating config file: %s\n", absPath)
 	}
 
-	cfg, err := config.ParseConfig(absPath)
+	nameProvided := strings.TrimSpace(opts.name) != ""
+
+	pipeline, _, err := app.PrepareUseCase.Prepare(ctx, absPath)
 	if err != nil {
 		if logger != nil {
 			logger.Error(ctx, "configuration validation failed", "config_path", absPath, "error", err)
 		}
 		return newCommandError("add", "validating configuration", err, "Fix the configuration errors shown above and try again.")
+	}
+
+	if !nameProvided {
+		if pipeline != nil && strings.TrimSpace(pipeline.Name) != "" {
+			opts.name = pipeline.Name
+		} else {
+			opts.name = deriveNameFromPath(absPath)
+		}
 	}
 
 	registryPath, err := defaultRegistryPath()
@@ -138,8 +143,6 @@ func runAdd(ctx context.Context, logger ports.Logger, cmd *cobra.Command, config
 	if logger != nil {
 		logger.Info(ctx, "pipeline registered", "pipeline_id", newPipeline.ID, "config_path", absPath)
 	}
-
-	_ = cfg // Ensures validation executed
 
 	return nil
 }

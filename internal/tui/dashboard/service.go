@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -12,6 +14,7 @@ import (
 type PipelineService interface {
 	Verify(ctx context.Context, opts VerifyOptions) (*registry.ExecutionResult, error)
 	Apply(ctx context.Context, opts ApplyOptions) (*registry.ExecutionResult, error)
+	StepProgressCmd() tea.Cmd
 }
 
 // VerifyOptions configures a verification request.

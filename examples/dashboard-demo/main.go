@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"bufio"
+	"os"
 
 	"github.com/alexisbeaulieu97/streamy/internal/ui/components"
 )
@@ -9,7 +10,9 @@ import (
 func main() {
 	// Simulate a CLI dashboard view
 	dashboard := buildDashboard()
-	fmt.Println(dashboard.View())
+	writer := bufio.NewWriter(os.Stdout)
+	_, _ = writer.WriteString(dashboard.View() + "\n")
+	_ = writer.Flush()
 }
 
 func buildDashboard() *components.Card {

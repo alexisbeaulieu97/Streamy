@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -73,5 +74,71 @@ func TestDomainError_WithContextNil(t *testing.T) {
 	var err *DomainError
 	if err.WithContext(map[string]interface{}{"key": "value"}) != nil {
 		t.Fatal("expected nil WithContext result for nil receiver")
+	}
+}
+
+func TestErrorHelperConstructors(t *testing.T) {
+	t.Parallel()
+
+	var (
+		baseCause    = errors.New("root cause")
+		timeoutCause = context.DeadlineExceeded
+	)
+
+	testCases := []struct {
+		name    string
+		err     *DomainError
+		want    ErrorCode
+		message string
+	}{
+		{"validation", NewValidationError("invalid", nil), ErrCodeValidation, "invalid"},
+		{"duplicate", NewDuplicateError("step-1"), ErrCodeDuplicate, "duplicate identifier"},
+		{"dependency", NewDependencyError("missing dep", map[string]interface{}{"dep": "step-2"}), ErrCodeDependency, "missing dep"},
+		{"cycle", NewCycleError([]string{"a", "b"}), ErrCodeCycle, "circular dependency detected"},
+		{"type", NewTypeError("command", "template"), ErrCodeType, "invalid type"},
+		{"missing", NewMissingFieldError("field"), ErrCodeMissing, "missing required field"},
+		{"not found", NewNotFoundError("step", nil), ErrCodeNotFound, "resource not found"},
+		{"state", NewStateError("bad state", nil), ErrCodeState, "bad state"},
+		{"conflict", NewConflictError("conflict", nil), ErrCodeConflict, "conflict"},
+		{"execution", NewExecutionError("exec failed", baseCause, nil), ErrCodeExecution, "exec failed"},
+		{"plugin", NewPluginError("plugin failed", baseCause, nil), ErrCodePlugin, "plugin failed"},
+		{"timeout", NewTimeoutError("timed out", timeoutCause, nil), ErrCodeTimeout, "timed out"},
+		{"cancelled", NewCancelledError("cancelled", nil), ErrCodeCancelled, "cancelled"},
+		{"internal", NewInternalError("internal", baseCause, nil), ErrCodeInternal, "internal"},
+		{"config", NewConfigError("config error", baseCause, map[string]interface{}{"path": "config.yaml"}), ErrCodeConfig, "config error"},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.err == nil {
+				t.Fatalf("expected error instance for %s", tc.name)
+			}
+			if tc.err.Code != tc.want {
+				t.Fatalf("expected code %s, got %s", tc.want, tc.err.Code)
+			}
+			if tc.err.Message != tc.message {
+				t.Fatalf("expected message %q, got %q", tc.message, tc.err.Message)
+			}
+			switch tc.want {
+			case ErrCodeExecution, ErrCodePlugin, ErrCodeInternal:
+				if !errors.Is(tc.err, baseCause) {
+					t.Fatalf("expected to wrap base cause for %s", tc.name)
+				}
+			case ErrCodeTimeout:
+				if !errors.Is(tc.err, timeoutCause) {
+					t.Fatalf("expected timeout to wrap context deadline for %s", tc.name)
+				}
+			}
+		})
+	}
+
+	// Ensure NewDomainError behaves as passthrough.
+	custom := NewDomainError(ErrCodeInternal, "custom", baseCause, map[string]interface{}{"x": 1})
+	if custom.Code != ErrCodeInternal || custom.Message != "custom" || !errors.Is(custom, baseCause) {
+		t.Fatal("NewDomainError did not populate fields correctly")
+	}
+	if custom.Context["x"] != 1 {
+		t.Fatal("expected context propagated")
 	}
 }

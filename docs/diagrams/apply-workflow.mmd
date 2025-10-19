@@ -1,0 +1,27 @@
+%% Apply workflow diagram (Mermaid sequence)
+%% Generate with: mmdc -i apply-workflow.mmd -o apply-workflow.svg
+sequenceDiagram
+    participant CLI as CLI (cmd/streamy apply)
+    participant Loader as Config Loader<br/>(ports.ConfigLoader)
+    participant Prepare as PrepareUseCase
+    participant Executor as Executor<br/>(ports.PluginExecutor)
+    participant Registry as Plugin Registry<br/>(ports.PluginRegistry)
+    participant Plugin as Ports Plugin<br/>(ports.Plugin)
+
+    CLI->>Loader: Load(ctx, path)
+    Loader-->>CLI: *domain.Pipeline
+
+    CLI->>Prepare: Prepare(ctx, pipeline)
+    Prepare->>Executor: Build DAG + Plan
+    Executor-->>Prepare: ExecutionPlan
+    Prepare-->>CLI: Prepared pipeline
+
+    CLI->>Executor: Execute(ctx, plan, pipeline)
+    Executor->>Registry: Get(stepType)
+    Registry-->>Executor: ports.Plugin
+    Executor->>Plugin: Evaluate(ctx, step)
+    Plugin-->>Executor: EvaluationResult
+    Executor->>Plugin: Apply(ctx, evaluation, step)
+    Plugin-->>Executor: StepResult
+    Executor-->>CLI: []StepResult
+

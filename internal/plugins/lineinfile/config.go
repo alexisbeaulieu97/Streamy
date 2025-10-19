@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alexisbeaulieu97/streamy/internal/config"
+	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 )
 
@@ -46,29 +46,36 @@ type LineInFileConfig struct {
 }
 
 // newConfigFromStep extracts and validates the line_in_file configuration.
-func newConfigFromStep(step *config.Step) (*LineInFileConfig, error) {
-	if step == nil {
-		return nil, streamyerrors.NewValidationError("", "lineinfile configuration missing", nil)
-	}
-
-	if len(step.RawConfig()) == 0 {
+func newConfigFromDomainStep(step domainpipeline.Step) (*LineInFileConfig, error) {
+	if step.Config == nil {
 		return nil, streamyerrors.NewValidationError(step.ID, "lineinfile configuration missing", nil)
 	}
-	var decoded config.LineInFileStep
-	if err := step.DecodeConfig(&decoded); err != nil {
-		return nil, streamyerrors.NewValidationError(step.ID, fmt.Sprintf("failed to decode lineinfile config: %v", err), err)
+
+	file, ok := getStringValue(step.Config["file"])
+	if !ok || strings.TrimSpace(file) == "" {
+		return nil, streamyerrors.NewValidationError("file", "file path is required", nil)
 	}
-	cfg := &decoded
+
+	line, _ := getStringValue(step.Config["line"])
+	state, _ := getStringValue(step.Config["state"])
+	match, _ := getStringValue(step.Config["match"])
+	onMultiple, _ := getStringValue(step.Config["on_multiple_matches"])
+	backup, err := getBoolValue(step.Config["backup"])
+	if err != nil {
+		return nil, streamyerrors.NewValidationError("backup", err.Error(), err)
+	}
+	backupDir, _ := getStringValue(step.Config["backup_dir"])
+	encoding, _ := getStringValue(step.Config["encoding"])
 
 	normalized := &LineInFileConfig{
-		File:              strings.TrimSpace(cfg.File),
-		Line:              cfg.Line,
-		State:             strings.TrimSpace(strings.ToLower(cfg.State)),
-		Match:             cfg.Match,
-		OnMultipleMatches: strings.TrimSpace(strings.ToLower(cfg.OnMultipleMatches)),
-		Backup:            cfg.Backup,
-		BackupDir:         strings.TrimSpace(cfg.BackupDir),
-		Encoding:          strings.TrimSpace(strings.ToLower(cfg.Encoding)),
+		File:              strings.TrimSpace(file),
+		Line:              line,
+		State:             strings.TrimSpace(strings.ToLower(state)),
+		Match:             match,
+		OnMultipleMatches: strings.TrimSpace(strings.ToLower(onMultiple)),
+		Backup:            backup,
+		BackupDir:         strings.TrimSpace(backupDir),
+		Encoding:          strings.TrimSpace(strings.ToLower(encoding)),
 	}
 
 	if normalized.State == "" {
@@ -78,11 +85,7 @@ func newConfigFromStep(step *config.Step) (*LineInFileConfig, error) {
 		normalized.OnMultipleMatches = defaultOnMultipleMatches
 	}
 
-	if normalized.File == "" {
-		return nil, streamyerrors.NewValidationError("file", "file path is required", nil)
-	}
-
-	if strings.TrimSpace(normalized.Line) == "" && normalized.State != stateAbsent {
+	if normalized.State != stateAbsent && strings.TrimSpace(normalized.Line) == "" {
 		return nil, streamyerrors.NewValidationError("line", "line is required", nil)
 	}
 
@@ -119,4 +122,37 @@ func isSupportedEncoding(name string) bool {
 		return true
 	}
 	return false
+}
+
+func getStringValue(value interface{}) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+	switch v := value.(type) {
+	case string:
+		return v, true
+	default:
+		return fmt.Sprintf("%v", v), true
+	}
+}
+
+func getBoolValue(value interface{}) (bool, error) {
+	if value == nil {
+		return false, nil
+	}
+	switch v := value.(type) {
+	case bool:
+		return v, nil
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "", "false", "0", "no":
+			return false, nil
+		case "true", "1", "yes":
+			return true, nil
+		default:
+			return false, fmt.Errorf("invalid boolean value %q", v)
+		}
+	default:
+		return false, fmt.Errorf("invalid boolean type %T", v)
+	}
 }

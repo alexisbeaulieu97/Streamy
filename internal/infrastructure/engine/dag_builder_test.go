@@ -3,8 +3,10 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )
@@ -98,6 +100,32 @@ func TestDAGBuilderBuildCancelled(t *testing.T) {
 	cancel()
 
 	steps := []pipeline.Step{{ID: "a", Type: pipeline.StepTypeCommand, Enabled: true}}
+
+	_, err := builder.Build(ctx, steps)
+	if err == nil {
+		t.Fatalf("expected cancellation error")
+	}
+	assertDomainErrorCode(t, err, pipeline.ErrCodeCancelled)
+}
+
+func TestDAGBuilderCancellationDuringProcessing(t *testing.T) {
+	builder := NewDAGBuilder()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	steps := make([]pipeline.Step, 0, 5000)
+	for i := 0; i < 5000; i++ {
+		id := fmt.Sprintf("step-%d", i)
+		step := pipeline.Step{ID: id, Type: pipeline.StepTypeCommand, Enabled: true}
+		if i > 0 {
+			step.DependsOn = []string{fmt.Sprintf("step-%d", i-1)}
+		}
+		steps = append(steps, step)
+	}
+
+	go func() {
+		time.Sleep(1 * time.Millisecond)
+		cancel()
+	}()
 
 	_, err := builder.Build(ctx, steps)
 	if err == nil {

@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
 )
 
@@ -60,26 +59,28 @@ func renderStepEntries(entries []components.StepEntry) string {
 }
 
 func (m Model) title() string {
-	if m.cfg != nil && strings.TrimSpace(m.cfg.Name) != "" {
-		return m.cfg.Name
+	if m.pipeline != nil {
+		if name := strings.TrimSpace(m.pipeline.Name); name != "" {
+			return name
+		}
 	}
 	return "Execution"
 }
 
 // StatusIcon returns the glyph representing a step status.
-func StatusIcon(status string) string {
+func StatusIcon(status components.StepStatus) string {
 	switch status {
-	case model.StatusSuccess:
+	case components.StepStatusSuccess:
 		return successStyle.Render("✓")
-	case model.StatusRunning:
+	case components.StepStatusRunning:
 		return runningStyle.Render("⏳")
-	case model.StatusFailed:
+	case components.StepStatusFailed:
 		return failureStyle.Render("✗")
-	case model.StatusSkipped:
+	case components.StepStatusSkipped:
 		return skippedStyle.Render("⊘")
-	case model.StatusWouldCreate:
+	case components.StepStatusWouldCreate:
 		return pendingStyle.Render("✱")
-	case model.StatusWouldUpdate:
+	case components.StepStatusWouldUpdate:
 		return pendingStyle.Render("↻")
 	default:
 		return pendingStyle.Render("…")
