@@ -3,6 +3,7 @@ package packageplugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	require "github.com/stretchr/testify/require"
@@ -11,6 +12,10 @@ import (
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/plugins/internalexec"
 )
+
+type stringerPackage struct{}
+
+func (stringerPackage) String() string { return "curl" }
 
 func TestMetadata(t *testing.T) {
 	meta := New().Metadata()
@@ -338,4 +343,55 @@ func TestDecodeConfigValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"curl"}, cfg.Packages)
 	require.True(t, cfg.Update)
+}
+
+func TestToStringSlice(t *testing.T) {
+	out, err := toStringSlice([]string{"curl"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"curl"}, out)
+
+	original := []string{"git"}
+	out, err = toStringSlice(original)
+	require.NoError(t, err)
+
+	original[0] = "changed"
+
+	require.Equal(t, []string{"git"}, out)
+
+	mixed, err := toStringSlice([]interface{}{"htop", stringerPackage{}})
+	require.NoError(t, err)
+	require.Equal(t, []string{"htop", "curl"}, mixed)
+
+	_, err = toStringSlice([]interface{}{"valid", 42})
+	require.Error(t, err)
+
+	_, err = toStringSlice(123)
+	require.Error(t, err)
+}
+
+func TestGetBool(t *testing.T) {
+	cases := []struct {
+		input interface{}
+		want  bool
+	}{
+		{input: true, want: true},
+		{input: false, want: false},
+		{input: "true", want: true},
+		{input: "YES", want: true},
+		{input: "1", want: true},
+		{input: "no", want: false},
+		{input: "unexpected", want: false},
+		{input: 42, want: false},
+	}
+
+	values := make(map[string]interface{})
+
+	for i, tc := range cases {
+		key := fmt.Sprintf("k%d", i)
+		values[key] = tc.input
+		require.Equal(t, tc.want, getBool(values, key))
+	}
+
+	require.False(t, getBool(nil, "missing"))
+	require.False(t, getBool(map[string]interface{}{}, "missing"))
 }

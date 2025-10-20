@@ -1,10 +1,14 @@
 package pipelineconv
 
 import (
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
+	"github.com/alexisbeaulieu97/streamy/internal/registry"
+	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
 	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
 	assert "github.com/stretchr/testify/assert"
 )
@@ -101,4 +105,150 @@ func TestIsConfigError(t *testing.T) {
 	assert.True(t, IsConfigError(&streamyerrors.ValidationError{}))
 	assert.True(t, IsConfigError(&domainpipeline.DomainError{Code: domainpipeline.ErrCodeValidation}))
 	assert.False(t, IsConfigError(assert.AnError))
+}
+
+func TestSummaryToExecutionResultNilSummary(t *testing.T) {
+	execResult := SummaryToExecutionResult(nil, "config.yml")
+
+	assert.Equal(t, "verify", execResult.Operation)
+	assert.Equal(t, registry.StatusFailed, execResult.Status)
+	assert.False(t, execResult.Success)
+	assert.Equal(t, "verification unavailable", execResult.Summary)
+
+	if assert.NotNil(t, execResult.Error) {
+		assert.Contains(t, execResult.Error.Message, "Verification did not produce a summary")
+		assert.Contains(t, execResult.Error.Context, "config.yml")
+	}
+}
+
+func TestSummaryToExecutionResultDedupesFailures(t *testing.T) {
+	summary := &VerificationSummary{
+		TotalSteps: 3,
+		Results: []*VerificationResult{
+			{StepID: "step1", Status: VerificationDrifted},
+			{StepID: "step1", Status: VerificationMissing, Error: errors.New("boom")},
+			{StepID: "step2", Status: VerificationSatisfied},
+		},
+	}
+
+	execResult := SummaryToExecutionResult(summary, "config.yml")
+
+	assert.Equal(t, registry.StatusDrifted, execResult.Status)
+	assert.False(t, execResult.Success)
+	assert.Equal(t, []string{"step1"}, execResult.FailedSteps)
+	assert.Len(t, execResult.StepResults, 3)
+	assert.Contains(t, execResult.Summary, "steps need changes")
+}
+
+func TestMapVerificationStatusLegacyDetails(t *testing.T) {
+	res := domainpipeline.VerificationResult{
+		Details: map[string]interface{}{"status": "missing"},
+	}
+
+	assert.Equal(t, VerificationMissing, mapVerificationStatus(res))
+}
+
+func TestMapVerificationStatusFallbacks(t *testing.T) {
+	assert.Equal(t, VerificationDrifted, mapVerificationStatus(domainpipeline.VerificationResult{Status: domainpipeline.VerificationFailed}))
+	assert.Equal(t, VerificationSatisfied, mapVerificationStatus(domainpipeline.VerificationResult{Status: domainpipeline.VerificationSatisfied}))
+	assert.Equal(t, VerificationUnknown, mapVerificationStatus(domainpipeline.VerificationResult{}))
+}
+
+func TestFormatVerificationDetails(t *testing.T) {
+	formatted := formatVerificationDetails(map[string]interface{}{"alpha": 1, "beta": "two"})
+
+	decoded := make(map[string]interface{})
+	assert.NoError(t, json.Unmarshal([]byte(formatted), &decoded))
+	assert.Equal(t, float64(1), decoded["alpha"])
+	assert.Equal(t, "two", decoded["beta"])
+}
+
+func TestFormatVerificationDetailsEmpty(t *testing.T) {
+	assert.Equal(t, "", formatVerificationDetails(nil))
+}
+
+func TestMapStepStatus(t *testing.T) {
+	cases := []struct {
+		name   string
+		status domainpipeline.ResultStatus
+		want   string
+	}{
+		{name: "success", status: domainpipeline.StatusSuccess, want: stepStatusSuccess},
+		{name: "already satisfied", status: domainpipeline.StatusAlreadySatisfied, want: stepStatusSuccess},
+		{name: "failure", status: domainpipeline.StatusFailure, want: stepStatusFailed},
+		{name: "skipped", status: domainpipeline.StatusSkipped, want: stepStatusSkipped},
+		{name: "default", status: "unknown", want: stepStatusFailed},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, mapStepStatus(tc.status))
+		})
+	}
+}
+
+func TestConvertApplyResultsWithErrors(t *testing.T) {
+	validationErr := errors.New("validation failed")
+	results := []domainpipeline.StepResult{
+		{StepID: "step1", Status: domainpipeline.StatusFailure},
+		{StepID: "step1", Status: domainpipeline.StatusFailure},
+	}
+
+	execResult := ConvertApplyResults(results, "config.yml", false, nil, validationErr)
+
+	assert.False(t, execResult.Success)
+	assert.Equal(t, registry.StatusFailed, execResult.Status)
+	assert.Contains(t, execResult.FailedSteps, "step1")
+	assert.Equal(t, "validation failed", execResult.Summary)
+
+	if assert.NotNil(t, execResult.Error) {
+		assert.Equal(t, "VALIDATION_FAILED", execResult.Error.Code)
+	}
+}
+
+func TestConvertApplyResultsWithExecError(t *testing.T) {
+	execErr := errors.New("apply failed")
+	results := []domainpipeline.StepResult{
+		{StepID: "step1", Status: domainpipeline.StatusSuccess},
+	}
+
+	execResult := ConvertApplyResults(results, "config.yml", false, execErr, nil)
+
+	assert.False(t, execResult.Success)
+	assert.Equal(t, registry.StatusFailed, execResult.Status)
+	assert.Equal(t, "apply failed", execResult.Summary)
+
+	if assert.NotNil(t, execResult.Error) {
+		assert.Equal(t, "APPLY_FAILED", execResult.Error.Code)
+	}
+}
+
+func TestToStepStateDryRun(t *testing.T) {
+	res := domainpipeline.StepResult{Status: domainpipeline.StatusSkipped, Changed: true}
+
+	state := ToStepState(res, true)
+
+	assert.Equal(t, components.StepStatusWouldCreate, state.Status)
+	assert.True(t, state.Changed)
+}
+
+func TestToStepStateLiveExecution(t *testing.T) {
+	res := domainpipeline.StepResult{Status: domainpipeline.StatusFailure}
+
+	state := ToStepState(res, false)
+
+	assert.Equal(t, components.StepStatusFailed, state.Status)
+}
+
+func TestIsParseError(t *testing.T) {
+	parseErr := streamyerrors.NewParseError("config.yml", 12, errors.New("boom"))
+
+	assert.True(t, IsParseError(parseErr))
+	assert.False(t, IsParseError(assert.AnError))
+}
+
+func TestDedupeStrings(t *testing.T) {
+	deduped := dedupeStrings([]string{"b", "a", "b", "a"})
+	assert.Equal(t, []string{"a", "b"}, deduped)
+	assert.Nil(t, dedupeStrings(nil))
 }
