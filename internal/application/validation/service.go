@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
+
+	"golang.org/x/sync/errgroup"
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
@@ -27,16 +30,62 @@ func NewService(logger ports.Logger) *Service {
 // with domain context.
 func (s *Service) RunValidations(ctx context.Context, validations []domain.Validation) (domain.VerificationSummary, error) {
 	summary := domain.VerificationSummary{}
+
+	if len(validations) == 0 {
+		return summary, nil
+	}
+
+	if err := ctx.Err(); err != nil {
+		return summary, domain.NewDomainError(domain.ErrCodeCancelled, "validation cancelled", err, nil)
+	}
+
+	workerLimit := validationWorkerLimit(len(validations))
+	if workerLimit == 0 {
+		workerLimit = 1
+	}
+
+	outcomes := make([]validationOutcome, len(validations))
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(workerLimit)
+
+	for idx, val := range validations {
+		idx, val := idx, val
+
+		group.Go(func() error {
+			if err := groupCtx.Err(); err != nil {
+				outcomes[idx] = validationOutcome{
+					fatal: true,
+					err:   domain.NewDomainError(domain.ErrCodeCancelled, "validation cancelled", err, nil),
+				}
+
+				return nil
+			}
+
+			outcome := s.executeValidation(groupCtx, val)
+			outcomes[idx] = outcome
+
+			if outcome.fatal {
+				return outcome.err
+			}
+
+			return nil
+		})
+	}
+
+	_ = group.Wait()
+
 	failureErrors := make([]error, 0)
 
-	for _, val := range validations {
-		if err := ctx.Err(); err != nil {
-			return summary, domain.NewDomainError(domain.ErrCodeCancelled, "validation cancelled", err, nil)
-		}
+	for i := range outcomes {
+		outcome := outcomes[i]
 
-		outcome := s.executeValidation(ctx, val)
 		if outcome.fatal {
-			return summary, outcome.err
+			if outcome.err != nil {
+				return summary, outcome.err
+			}
+
+			return summary, domain.NewDomainError(domain.ErrCodeCancelled, "validation cancelled", context.Canceled, nil)
 		}
 
 		summary.Add(outcome.result)
@@ -107,7 +156,10 @@ func (s *Service) executeValidation(ctx context.Context, val domain.Validation) 
 		err := &domain.DomainError{
 			Code:    domain.ErrCodeValidation,
 			Message: "unsupported validation type",
-			Context: map[string]interface{}{"validation_type": val.Type},
+			Context: map[string]interface{}{
+				"validation_type":            val.Type,
+				"supported_validation_types": supportedValidationTypesForContext(),
+			},
 		}
 
 		return s.failValidation(ctx, result, err)
@@ -159,6 +211,14 @@ var validationRunners = map[domain.ValidationType]validationRunner{
 	domain.ValidationCommandExists: runCommandExists,
 	domain.ValidationFileExists:    runFileExists,
 	domain.ValidationPathContains:  runPathContains,
+}
+
+func supportedValidationTypesForContext() []domain.ValidationType {
+	return []domain.ValidationType{
+		domain.ValidationCommandExists,
+		domain.ValidationFileExists,
+		domain.ValidationPathContains,
+	}
 }
 
 func runCommandExists(val domain.Validation) error {
@@ -221,6 +281,23 @@ func stringConfig(cfg map[string]interface{}, key string) (string, error) {
 	}
 
 	return value, nil
+}
+
+func validationWorkerLimit(total int) int {
+	if total <= 0 {
+		return 0
+	}
+
+	maxProcs := runtime.GOMAXPROCS(0)
+	if maxProcs < 1 {
+		maxProcs = 1
+	}
+
+	if total < maxProcs {
+		return total
+	}
+
+	return maxProcs
 }
 
 var _ ports.ValidationService = (*Service)(nil)

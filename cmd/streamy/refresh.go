@@ -347,6 +347,7 @@ func verifyPipelines(ctx context.Context, logger ports.Logger, cmd *cobra.Comman
 				result := refreshResult{
 					PipelineID: pipeline.ID,
 					Status:     registry.StatusFailed,
+					Summary:    verificationFailureSummary(ctx, err),
 					Err:        err,
 				}
 				results[i] = result
@@ -392,8 +393,8 @@ func verifyPipelines(ctx context.Context, logger ports.Logger, cmd *cobra.Comman
 }
 
 func refreshPipeline(ctx context.Context, logger ports.Logger, app *AppContext, p registry.Pipeline, timeout, perStepTimeout time.Duration) refreshResult {
-	ctx, cancel := withOptionalTimeout(ctx, timeout)
-	defer cancel()
+	ctx, cancelPipeline := withOptionalTimeout(ctx, timeout)
+	defer cancelPipeline()
 
 	stepCount, failure := preparePipelineForRefresh(ctx, logger, app, p)
 	if failure != nil {
@@ -402,8 +403,8 @@ func refreshPipeline(ctx context.Context, logger ports.Logger, app *AppContext, 
 
 	perStepTotal := perStepTimeoutDuration(perStepTimeout, stepCount)
 
-	ctx, cancel = withOptionalTimeout(ctx, perStepTotal)
-	defer cancel()
+	ctx, cancelSteps := withOptionalTimeout(ctx, perStepTotal)
+	defer cancelSteps()
 
 	return verifyPreparedPipeline(ctx, logger, app, p)
 }

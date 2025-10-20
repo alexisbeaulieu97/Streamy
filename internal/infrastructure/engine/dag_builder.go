@@ -39,7 +39,11 @@ func (b *DAGBuilder) Build(ctx context.Context, steps []pipeline.Step) (*pipelin
 		return nil, err
 	}
 
-	if err := ensureNoCycles(indegree, active, processed); err != nil {
+	if err := ensureNoCycles(indegree, adjacency, active, processed); err != nil {
+		return nil, err
+	}
+
+	if err := contextCancelled(ctx, "topological_sort_finalize"); err != nil {
 		return nil, err
 	}
 
@@ -167,28 +171,98 @@ func topologicalLevels(ctx context.Context, indegree map[string]int, adjacency m
 			}
 		}
 
-		sort.Strings(next)
 		queue = next
 	}
 
 	return levels, processed, nil
 }
 
-func ensureNoCycles(indegree map[string]int, active map[string]pipeline.Step, processed int) error {
+func ensureNoCycles(indegree map[string]int, adjacency map[string][]string, active map[string]pipeline.Step, processed int) error {
 	if processed == len(active) {
 		return nil
 	}
 
-	cycle := make([]string, 0, len(active)-processed)
-	for id, step := range active {
+	nodesInCycle := make(map[string]struct{})
+
+	for id := range active {
 		if indegree[id] > 0 {
-			cycle = append(cycle, step.ID)
+			nodesInCycle[id] = struct{}{}
 		}
 	}
 
-	sort.Strings(cycle)
+	cycle := findCyclePath(nodesInCycle, adjacency)
+	if len(cycle) == 0 {
+		cycle = make([]string, 0, len(nodesInCycle))
+		for id := range nodesInCycle {
+			cycle = append(cycle, active[id].ID)
+		}
+
+		sort.Strings(cycle)
+	} else {
+		first := cycle[0]
+		if cycle[len(cycle)-1] != first {
+			cycle = append(cycle, first)
+		}
+	}
 
 	return pipeline.NewCycleError(cycle)
+}
+
+func findCyclePath(nodes map[string]struct{}, adjacency map[string][]string) []string {
+	if len(nodes) == 0 {
+		return nil
+	}
+
+	visited := make(map[string]bool, len(nodes))
+	stack := make(map[string]bool, len(nodes))
+	path := make([]string, 0, len(nodes))
+
+	var dfs func(string) []string
+
+	dfs = func(node string) []string {
+		visited[node] = true
+		stack[node] = true
+		path = append(path, node)
+
+		for _, next := range adjacency[node] {
+			if _, ok := nodes[next]; !ok {
+				continue
+			}
+
+			if !visited[next] {
+				if cycle := dfs(next); len(cycle) > 0 {
+					return cycle
+				}
+			} else if stack[next] {
+				idx := 0
+				for idx < len(path) && path[idx] != next {
+					idx++
+				}
+
+				cycle := append([]string(nil), path[idx:]...)
+				cycle = append(cycle, next)
+
+				return cycle
+			}
+		}
+
+		stack[node] = false
+		path = path[:len(path)-1]
+
+		return nil
+	}
+
+	for id := range nodes {
+		if visited[id] {
+			continue
+		}
+
+		if cycle := dfs(id); len(cycle) > 0 {
+			return cycle
+		}
+	}
+
+	return nil
 }
 
 func zeroIndegreeQueue(indegree map[string]int) []string {
@@ -199,8 +273,6 @@ func zeroIndegreeQueue(indegree map[string]int) []string {
 			queue = append(queue, id)
 		}
 	}
-
-	sort.Strings(queue)
 
 	return queue
 }

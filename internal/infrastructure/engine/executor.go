@@ -83,7 +83,7 @@ func (e *Executor) Execute(ctx context.Context, plan *domainpipeline.ExecutionPl
 	settings := pipeline.EffectiveSettings()
 	stepTimeout := computeStepTimeout(settings.Timeout)
 
-	results := make([]domainpipeline.StepResult, 0, len(plan.Levels))
+	results := make([]domainpipeline.StepResult, 0, plan.TotalSteps)
 
 	var firstErr error
 
@@ -141,6 +141,10 @@ func (e *Executor) resolveParallelism(requested, levelSize int) int {
 	}
 
 	if requested <= 0 {
+		return levelSize
+	}
+
+	if levelSize > 0 && requested > levelSize {
 		return levelSize
 	}
 
@@ -339,7 +343,7 @@ func (e *Executor) handleEvaluateError(ctx context.Context, pipelineName string,
 		Duration: elapsed,
 	}
 
-	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed)
+	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed, result.Error)
 	setSpanAttribute(span, "step_status", string(result.Status))
 	setSpanStatus(span, ports.SpanStatusError, evalErr.Error())
 	e.logStepError(ctx, "step evaluation failed", "step_id", step.ID, "error", evalErr)
@@ -352,7 +356,7 @@ func (e *Executor) handleDryRun(ctx context.Context, pipelineName string, step d
 	elapsed := time.Since(startedAt)
 	result := dryRunResult(step, eval, elapsed)
 
-	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed)
+	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed, result.Error)
 	e.logStepInfo(ctx, "step dry-run evaluation complete", "step_id", step.ID, "requires_action", eval != nil && eval.RequiresAction)
 	setSpanAttribute(span, "step_status", string(result.Status))
 	setSpanStatus(span, ports.SpanStatusOK, "dry-run")
@@ -370,7 +374,7 @@ func (e *Executor) handleAlreadySatisfied(ctx context.Context, pipelineName stri
 		Duration: elapsed,
 	}
 
-	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed)
+	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed, result.Error)
 	e.logStepInfo(ctx, "step already satisfied", "step_id", step.ID)
 	setSpanAttribute(span, "step_status", string(result.Status))
 	setSpanStatus(span, ports.SpanStatusOK, "already_satisfied")
@@ -395,7 +399,7 @@ func (e *Executor) handleApply(ctx context.Context, pipelineName string, step do
 			"phase":    "apply",
 		})
 
-		e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed)
+		e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed, result.Error)
 		setSpanAttribute(span, "step_status", string(result.Status))
 		setSpanStatus(span, ports.SpanStatusError, err.Error())
 		e.logStepError(ctx, "step execution failed", "step_id", step.ID, "error", err)
@@ -405,7 +409,7 @@ func (e *Executor) handleApply(ctx context.Context, pipelineName string, step do
 	}
 
 	e.logStepInfo(ctx, "step executed", "step_id", step.ID, "status", result.Status)
-	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed)
+	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed, result.Error)
 	setSpanAttribute(span, "step_status", string(result.Status))
 	setSpanStatus(span, ports.SpanStatusOK, "success")
 	e.publishStepCompleted(ctx, pipelineName, step, result.Duration, result.Changed, false)
@@ -500,10 +504,7 @@ func (e *Executor) Verify(ctx context.Context, pipeline *domainpipeline.Pipeline
 
 	settings := pipeline.EffectiveSettings()
 
-	defaultTimeout := time.Duration(settings.Timeout) * time.Second
-	if defaultTimeout <= 0 {
-		defaultTimeout = 0
-	}
+	defaultTimeout := computeStepTimeout(settings.Timeout)
 
 	results := make([]domainpipeline.VerificationResult, 0, len(pipeline.Steps))
 
@@ -580,7 +581,7 @@ func (e *Executor) executeStep(ctx context.Context, pipelineName string, step do
 		return e.handleDryRun(stepCtx, pipelineName, step, eval, start, span)
 	}
 
-	if eval != nil && !eval.RequiresAction {
+	if eval == nil || !eval.RequiresAction {
 		return e.handleAlreadySatisfied(stepCtx, pipelineName, step, start, span)
 	}
 
@@ -675,7 +676,7 @@ func (e *Executor) verifyStep(ctx context.Context, step domainpipeline.Step, tim
 	return result, nil
 }
 
-func (e *Executor) recordMetrics(ctx context.Context, pipelineName, stepID string, stepType domainpipeline.StepType, status domainpipeline.ResultStatus, duration time.Duration) {
+func (e *Executor) recordMetrics(ctx context.Context, pipelineName, stepID string, stepType domainpipeline.StepType, status domainpipeline.ResultStatus, duration time.Duration, resultErr error) {
 	if e.metrics == nil {
 		return
 	}
@@ -690,10 +691,18 @@ func (e *Executor) recordMetrics(ctx context.Context, pipelineName, stepID strin
 	e.metrics.ObserveHistogram(ctx, "streamy_step_execution_duration_seconds", duration.Seconds(), labels)
 
 	if status == domainpipeline.StatusFailure {
+		errorCode := "UNKNOWN"
+
+		var derr *domainpipeline.DomainError
+		if errors.As(resultErr, &derr) {
+			errorCode = string(derr.Code)
+		}
+
 		failureLabels := map[string]string{
-			"pipeline":  pipelineName,
-			"step_id":   stepID,
-			"step_type": string(stepType),
+			"pipeline":   pipelineName,
+			"step_id":    stepID,
+			"step_type":  string(stepType),
+			"error_code": errorCode,
 		}
 		e.metrics.IncCounter(ctx, "streamy_step_failures_total", failureLabels)
 	}

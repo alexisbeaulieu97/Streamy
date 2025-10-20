@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,7 +31,7 @@ type outputWriter interface {
 var (
 	exitFunc                            = os.Exit
 	stderrWriter           io.Writer    = os.Stderr
-	stdoutWriter           outputWriter = &stdoutPrinter{w: os.Stdout}
+	stdoutWriter           outputWriter = newStdoutPrinter(os.Stdout)
 	printTableOutputFunc                = printTableOutput
 	printVerboseOutputFunc              = printVerboseOutput
 	printJSONOutputFunc                 = printJSONOutput
@@ -273,7 +274,14 @@ func printJSONOutput(summary *pipelineconv.VerificationSummary, configPath strin
 		jsonOutput.Results[i] = jsonResult
 	}
 
-	encoder := json.NewEncoder(os.Stdout)
+	writer, ok := stdoutWriter.(*stdoutPrinter)
+
+	var out io.Writer = os.Stdout
+	if ok {
+		out = writer.writer()
+	}
+
+	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(jsonOutput); err != nil {
@@ -309,17 +317,31 @@ func truncateString(s string, maxLen int) string {
 }
 
 type stdoutPrinter struct {
-	w io.Writer
+	mu sync.Mutex
+	w  io.Writer
+	bw *bufio.Writer
+}
+
+func newStdoutPrinter(w io.Writer) *stdoutPrinter {
+	return &stdoutPrinter{w: w, bw: bufio.NewWriter(w)}
 }
 
 func (p *stdoutPrinter) Printf(format string, args ...interface{}) {
-	bw := bufio.NewWriter(p.w)
-	_, _ = fmt.Fprintf(bw, format, args...)
-	_ = bw.Flush()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, _ = fmt.Fprintf(p.bw, format, args...)
+	_ = p.bw.Flush()
 }
 
 func (p *stdoutPrinter) Println(args ...interface{}) {
-	bw := bufio.NewWriter(p.w)
-	_, _ = fmt.Fprintln(bw, args...)
-	_ = bw.Flush()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, _ = fmt.Fprintln(p.bw, args...)
+	_ = p.bw.Flush()
+}
+
+func (p *stdoutPrinter) writer() io.Writer {
+	return p.w
 }

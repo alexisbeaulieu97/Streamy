@@ -35,8 +35,8 @@ func NewYAMLLoader(logger ports.Logger) *YAMLLoader {
 
 // Load parses a pipeline configuration from the provided path.
 func (l *YAMLLoader) Load(ctx context.Context, path string) (*domain.Pipeline, error) {
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", ctxErr, map[string]interface{}{"path": path})
+	if err := contextDomainError(ctx, "load cancelled", "load timed out", map[string]interface{}{"path": path}); err != nil {
+		return nil, err
 	}
 
 	l.logDebug(ctx, "loading pipeline configuration", map[string]interface{}{"path": path})
@@ -56,8 +56,8 @@ func (l *YAMLLoader) Load(ctx context.Context, path string) (*domain.Pipeline, e
 		return nil, err
 	}
 
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", ctxErr, map[string]interface{}{"path": path})
+	if err := contextDomainError(ctx, "load cancelled", "load timed out", map[string]interface{}{"path": path}); err != nil {
+		return nil, err
 	}
 
 	l.logInfo(ctx, "pipeline configuration loaded", map[string]interface{}{"path": path, "steps": len(pipelineConfig.Steps)})
@@ -174,7 +174,11 @@ func convertError(err error, path string) error {
 		return nil
 	}
 
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return domain.NewTimeoutError("operation timed out", err, map[string]interface{}{"path": path})
+	}
+
+	if errors.Is(err, context.Canceled) {
 		return domain.NewDomainError(domain.ErrCodeCancelled, "operation cancelled", err, map[string]interface{}{"path": path})
 	}
 
@@ -220,15 +224,31 @@ func convertError(err error, path string) error {
 }
 
 func contextCheck(ctx context.Context) error {
+	return contextDomainError(ctx, "operation cancelled", "operation timed out", nil)
+}
+
+func contextDomainError(ctx context.Context, cancelMsg, timeoutMsg string, fields map[string]interface{}) error {
 	if ctx == nil {
 		return nil
 	}
 
-	if err := ctx.Err(); err != nil {
-		return domain.NewDomainError(domain.ErrCodeCancelled, "operation cancelled", err, nil)
+	return domainErrorFromContextErr(ctx.Err(), cancelMsg, timeoutMsg, fields)
+}
+
+func domainErrorFromContextErr(err error, cancelMsg, timeoutMsg string, fields map[string]interface{}) error {
+	if err == nil {
+		return nil
 	}
 
-	return nil
+	if errors.Is(err, context.DeadlineExceeded) {
+		return domain.NewTimeoutError(timeoutMsg, err, fields)
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return domain.NewDomainError(domain.ErrCodeCancelled, cancelMsg, err, fields)
+	}
+
+	return domain.NewDomainError(domain.ErrCodeCancelled, cancelMsg, err, fields)
 }
 
 func (l *YAMLLoader) parseConfig(ctx context.Context, r io.Reader, path string) (*domain.Pipeline, error) {
@@ -239,8 +259,8 @@ func (l *YAMLLoader) parseConfig(ctx context.Context, r io.Reader, path string) 
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", err, map[string]interface{}{"path": path})
+		if ctxErr := domainErrorFromContextErr(err, "load cancelled", "load timed out", map[string]interface{}{"path": path}); ctxErr != nil {
+			return nil, ctxErr
 		}
 
 		l.logError(ctx, "failed to read configuration", err, map[string]interface{}{"path": path})
@@ -248,10 +268,8 @@ func (l *YAMLLoader) parseConfig(ctx context.Context, r io.Reader, path string) 
 		return nil, convertError(err, path)
 	}
 
-	if ctx != nil {
-		if err := ctx.Err(); err != nil {
-			return nil, domain.NewDomainError(domain.ErrCodeCancelled, "load cancelled", err, map[string]interface{}{"path": path})
-		}
+	if err := contextDomainError(ctx, "load cancelled", "load timed out", map[string]interface{}{"path": path}); err != nil {
+		return nil, err
 	}
 
 	var cfg fileConfig
@@ -277,8 +295,8 @@ type ctxAwareReader struct {
 }
 
 func (r *ctxAwareReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, domain.NewDomainError(domain.ErrCodeCancelled, "stream read cancelled", err, nil)
+	if err := domainErrorFromContextErr(r.ctx.Err(), "stream read cancelled", "stream read timed out", nil); err != nil {
+		return 0, err
 	}
 
 	n, readErr := r.reader.Read(p)

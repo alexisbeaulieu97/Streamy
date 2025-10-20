@@ -173,14 +173,18 @@ func (e *TestExecutor) verifyStep(ctx context.Context, step domainpipeline.Step)
 	if err != nil {
 		derr := toDomainError(err, step.ID, pluginType)
 
+		status := domainpipeline.VerificationUnknown
+		details := map[string]interface{}{
+			"step_id": step.ID,
+			"status":  "plugin_lookup_failed",
+		}
+
 		return domainpipeline.VerificationResult{
 			StepID:  step.ID,
 			Type:    string(pluginType),
-			Status:  domainpipeline.VerificationFailed,
+			Status:  status,
 			Message: derr.Error(),
-			Details: map[string]interface{}{
-				"step_id": step.ID,
-			},
+			Details: details,
 		}, derr
 	}
 

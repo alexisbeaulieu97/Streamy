@@ -139,18 +139,6 @@ func (u *ApplyUseCase) Apply(ctx context.Context, configPath string, dryRun bool
 		return pip, results, summary, validationErr
 	}
 
-	if summary != nil {
-		setSpanStatus(span, ports.SpanStatusOK, "pipeline applied successfully")
-		logInfo(ctx, u.logger, "pipeline applied successfully", "config_path", configPath)
-		publishEvent(ctx, u.events, u.logger, ports.EventPipelineCompleted, map[string]interface{}{
-			"config_path": configPath,
-			"pipeline":    pip.Name,
-			"dry_run":     false,
-		})
-
-		return pip, results, summary, nil
-	}
-
 	setSpanStatus(span, ports.SpanStatusOK, "pipeline applied successfully")
 	logInfo(ctx, u.logger, "pipeline applied successfully", "config_path", configPath)
 
@@ -160,7 +148,7 @@ func (u *ApplyUseCase) Apply(ctx context.Context, configPath string, dryRun bool
 		"dry_run":     false,
 	})
 
-	return pip, results, nil, nil
+	return pip, results, summary, nil
 }
 
 func (u *ApplyUseCase) runValidations(ctx context.Context, configPath string, pip *pipeline.Pipeline, span ports.Span) (*pipeline.VerificationSummary, error) {
@@ -234,13 +222,16 @@ func pipelineMetricStatus(err error) string {
 		return metricStatusSuccess
 	}
 
-	if errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return metricStatusCancelled
 	}
 
 	var domainErr *pipeline.DomainError
-	if errors.As(err, &domainErr) && domainErr.Code == pipeline.ErrCodeCancelled {
-		return metricStatusCancelled
+	if errors.As(err, &domainErr) {
+		switch domainErr.Code {
+		case pipeline.ErrCodeCancelled, pipeline.ErrCodeTimeout:
+			return metricStatusCancelled
+		}
 	}
 
 	return metricStatusFailure

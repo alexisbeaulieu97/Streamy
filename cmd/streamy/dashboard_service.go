@@ -17,6 +17,8 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/tui/dashboard"
 )
 
+const stepProgressPollInterval = 250 * time.Millisecond
+
 type dashboardPipelineAdapter struct {
 	applyUseCase  *applicationpipeline.ApplyUseCase
 	verifyUseCase *applicationpipeline.VerifyUseCase
@@ -96,8 +98,8 @@ func (a *dashboardPipelineAdapter) StepProgressCmd() tea.Cmd {
 			}
 
 			return msg
-		case <-time.After(250 * time.Millisecond):
-			return dashboard.StepProgressTimeoutMsg{}
+		case <-time.After(stepProgressPollInterval):
+			return dashboard.StepProgressTimeoutMsg{PipelineID: a.progress.LastPipelineID()}
 		}
 	}
 }
@@ -169,8 +171,9 @@ func (a *dashboardPipelineAdapter) subscribeToEvents() error {
 }
 
 type stepProgress struct {
-	mu   sync.RWMutex
-	data map[string]dashboard.StepProgress
+	mu             sync.RWMutex
+	data           map[string]dashboard.StepProgress
+	lastPipelineID string
 }
 
 func newStepProgress() *stepProgress {
@@ -180,6 +183,7 @@ func newStepProgress() *stepProgress {
 func (s *stepProgress) Set(pipelineID string, progress dashboard.StepProgress) {
 	s.mu.Lock()
 	s.data[pipelineID] = progress
+	s.lastPipelineID = pipelineID
 	s.mu.Unlock()
 }
 
@@ -190,6 +194,13 @@ func (s *stepProgress) Get(pipelineID string) (dashboard.StepProgress, bool) {
 	progress, ok := s.data[pipelineID]
 
 	return progress, ok
+}
+
+func (s *stepProgress) LastPipelineID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.lastPipelineID
 }
 
 func wrapDashboardError(operation, configPath string, err error) error {

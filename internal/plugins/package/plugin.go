@@ -18,6 +18,8 @@ import (
 // errPackageMissing is returned when the system reports a package is not installed.
 var errPackageMissing = errors.New("package not installed")
 
+const dpkgQueryCommand = "dpkg-query"
+
 type commandRunner func(ctx context.Context, name string, args ...string) (internalexec.Result, error)
 
 var runCommand commandRunner = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
@@ -37,7 +39,7 @@ var runCommand commandRunner = func(ctx context.Context, name string, args ...st
 	}
 
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) && name == "dpkg-query" {
+	if errors.As(err, &exitErr) && name == dpkgQueryCommand {
 		// Non-zero exit from dpkg-query means package is missing.
 		return res, fmt.Errorf("%w: %w", errPackageMissing, err)
 	}
@@ -106,7 +108,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 	}
 
 	for _, name := range cfg.Packages {
-		_, cmdErr := runCommand(ctx, "dpkg-query", "-W", name)
+		_, cmdErr := runCommand(ctx, dpkgQueryCommand, "-W", name)
 		if cmdErr != nil {
 			switch {
 			case errors.Is(cmdErr, context.Canceled):
