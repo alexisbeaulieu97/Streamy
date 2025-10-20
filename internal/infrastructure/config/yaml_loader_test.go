@@ -211,10 +211,12 @@ func TestYAMLLoaderValidateErrors(t *testing.T) {
 			name: "unsupported extension",
 			prepare: func(t *testing.T) string {
 				dir := t.TempDir()
+
 				path := filepath.Join(dir, "pipeline.txt")
 				if err := os.WriteFile(path, []byte("name: demo"), 0o644); err != nil {
 					t.Fatalf("write config: %v", err)
 				}
+
 				return path
 			},
 		},
@@ -222,10 +224,12 @@ func TestYAMLLoaderValidateErrors(t *testing.T) {
 			name: "empty file",
 			prepare: func(t *testing.T) string {
 				dir := t.TempDir()
+
 				path := filepath.Join(dir, "pipeline.yaml")
 				if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
 					t.Fatalf("write config: %v", err)
 				}
+
 				return path
 			},
 		},
@@ -234,11 +238,13 @@ func TestYAMLLoaderValidateErrors(t *testing.T) {
 			prepare: func(t *testing.T) string {
 				dir := t.TempDir()
 				path := filepath.Join(dir, "pipeline.yaml")
+
 				yamlContent := `name: demo
 steps: [ { id: setup, type: command, command: "echo hi } `
 				if err := os.WriteFile(path, []byte(yamlContent), 0o644); err != nil {
 					t.Fatalf("write config: %v", err)
 				}
+
 				return path
 			},
 		},
