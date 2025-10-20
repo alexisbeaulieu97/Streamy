@@ -96,8 +96,6 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 		})
 	}
 
-	desiredMode := cfg.mode()
-
 	existingHash, existingMode, exists, stateErr := destinationState(cfg.Destination)
 	if stateErr != nil {
 		return nil, domainpipeline.NewExecutionError("inspect destination", stateErr, map[string]interface{}{
@@ -105,6 +103,18 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 			"plugin_type": string(domainplugin.TypeTemplate),
 			"destination": cfg.Destination,
 		})
+	}
+
+	var (
+		desiredMode os.FileMode
+		modeMatches = true
+	)
+
+	if cfg.Mode != nil {
+		desiredMode = os.FileMode(*cfg.Mode)
+		modeMatches = desiredMode.Perm() == existingMode.Perm()
+	} else if exists {
+		desiredMode = existingMode
 	}
 
 	data := &evaluationData{
@@ -128,7 +138,6 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 	}
 
 	contentMatches := renderedHash == existingHash
-	modeMatches := desiredMode.Perm() == existingMode.Perm()
 
 	if contentMatches && modeMatches {
 		return &domainpipeline.EvaluationResult{
@@ -197,7 +206,7 @@ func (Plugin) Apply(ctx context.Context, evaluation *domainpipeline.EvaluationRe
 
 	mode := data.DesiredMode
 	if mode == 0 {
-		mode = 0o600
+		mode = cfg.mode()
 	}
 
 	if mode.Perm() > 0o600 {

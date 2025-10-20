@@ -218,6 +218,10 @@ func (r *ctxAwareReader) Read(p []byte) (int, error) {
 
 	n, readErr := r.reader.Read(p)
 	if readErr != nil {
+		if errors.Is(readErr, io.EOF) {
+			return n, io.EOF
+		}
+
 		return n, fmt.Errorf("read configuration stream: %w", readErr)
 	}
 

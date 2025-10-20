@@ -2,6 +2,7 @@ package registry
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +33,7 @@ func NewRegistry(path string) (*Registry, error) {
 	// Load existing registry or create empty one
 	if err := r.Load(); err != nil {
 		// If file doesn't exist, start with empty registry
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
 

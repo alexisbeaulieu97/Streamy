@@ -3,6 +3,7 @@ package registry
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,7 +34,7 @@ func NewStatusCache(path string) (*StatusCache, error) {
 
 	// Load existing cache or start with empty one
 	if err := c.Load(); err != nil {
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
 		// Start with empty cache if file doesn't exist
