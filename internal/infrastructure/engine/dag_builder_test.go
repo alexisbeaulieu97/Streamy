@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )
@@ -150,7 +150,11 @@ func TestDAGBuilderBuildCancelled(t *testing.T) {
 
 func TestDAGBuilderCancellationDuringProcessing(t *testing.T) {
 	builder := NewDAGBuilder()
-	ctx, cancel := context.WithCancel(context.Background())
+
+	ctx := &countingContext{
+		Context: context.Background(),
+		limit:   1000,
+	}
 
 	steps := make([]pipeline.Step, 0, 5000)
 
@@ -165,17 +169,30 @@ func TestDAGBuilderCancellationDuringProcessing(t *testing.T) {
 		steps = append(steps, step)
 	}
 
-	go func() {
-		time.Sleep(1 * time.Millisecond)
-		cancel()
-	}()
-
 	_, err := builder.Build(ctx, steps)
 	if err == nil {
 		t.Fatalf("expected cancellation error")
 	}
 
 	assertDomainErrorCode(t, err, pipeline.ErrCodeCancelled)
+}
+
+type countingContext struct {
+	context.Context
+	limit int32
+	count int32
+}
+
+func (c *countingContext) Err() error {
+	if err := c.Context.Err(); err != nil {
+		return err
+	}
+
+	if atomic.AddInt32(&c.count, 1) >= c.limit {
+		return context.Canceled
+	}
+
+	return nil
 }
 
 func assertDomainErrorCode(t *testing.T, err error, code pipeline.ErrorCode) {

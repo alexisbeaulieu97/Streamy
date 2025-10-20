@@ -9,7 +9,7 @@ import (
 
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )

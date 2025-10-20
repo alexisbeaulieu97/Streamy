@@ -14,7 +14,7 @@ import (
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	apperrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // YAMLLoader implements the ConfigLoader port by reading YAML files from disk.

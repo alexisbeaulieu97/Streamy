@@ -27,7 +27,7 @@ The migration follows the strangler pattern: introduce new architecture alongsid
 - github.com/charmbracelet/bubbletea (existing - TUI)
 - github.com/charmbracelet/lipgloss (existing - TUI styling)
 - github.com/spf13/cobra (existing - CLI framework)
-- gopkg.in/yaml.v3 (existing - config parsing)
+- go.yaml.in/yaml/v3 (existing - config parsing)
 - No external DI frameworks (manual constructor injection)
 
 **Storage**: File-based YAML configuration, in-memory registry state (no persistent database)  

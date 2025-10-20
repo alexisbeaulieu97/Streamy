@@ -604,17 +604,34 @@ type noopSubscription struct{}
 func (noopSubscription) Unsubscribe() {}
 
 type metricsCollectorStub struct {
-	called bool
+	called   bool
+	counters []map[string]string
 }
 
-func (m *metricsCollectorStub) IncCounter(_ context.Context, _ string, _ map[string]string) {
+func (m *metricsCollectorStub) IncCounter(_ context.Context, _ string, labels map[string]string) {
 	m.called = true
+	if labelsCopy := copyLabels(labels); labelsCopy != nil {
+		m.counters = append(m.counters, labelsCopy)
+	}
 }
 
 func (m *metricsCollectorStub) SetGauge(_ context.Context, _ string, _ float64, _ map[string]string) {
 }
 
 func (m *metricsCollectorStub) ObserveHistogram(_ context.Context, _ string, _ float64, _ map[string]string) {
+}
+
+func copyLabels(labels map[string]string) map[string]string {
+	if labels == nil {
+		return nil
+	}
+
+	clone := make(map[string]string, len(labels))
+	for k, v := range labels {
+		clone[k] = v
+	}
+
+	return clone
 }
 
 type tracerStub struct {
@@ -747,5 +764,82 @@ func TestExecutorHandleAlreadySatisfied(t *testing.T) {
 
 	if !recorder.contains(ports.EventStepSkipped) {
 		t.Fatal("expected skipped event for already satisfied step")
+	}
+}
+
+func TestExecutorHandleRegistryLookupError(t *testing.T) {
+	registry := infraPlugin.NewRegistry()
+	executor := NewExecutor(registry, WithExecutorLogger(logging.NewNoOpLogger()))
+
+	step := domainpipeline.Step{ID: "missing", Type: domainpipeline.StepTypeCommand, Enabled: true}
+	result, err := executor.handleRegistryLookupError("demo", step, domainplugin.TypeCommand, errors.New("not registered"))
+
+	if result.Status != domainpipeline.StatusFailure {
+		t.Fatalf("expected failure status, got %+v", result)
+	}
+
+	var domainErr *domainpipeline.DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != domainpipeline.ErrCodeExecution {
+		t.Fatalf("expected execution domain error, got %v", err)
+	}
+
+	if domainErr.Context["phase"] != "registry_lookup" {
+		t.Fatalf("expected registry lookup phase context, got %+v", domainErr.Context)
+	}
+}
+
+func TestCheckStepContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, cancelled, err := checkStepContext(ctx, "pipeline", "step")
+	if !cancelled || err == nil {
+		t.Fatalf("expected cancellation, got cancelled=%v err=%v", cancelled, err)
+	}
+
+	if result.Status != domainpipeline.StatusFailure {
+		t.Fatalf("expected failure status, got %+v", result)
+	}
+}
+
+func TestRecordMetricsFailureCodeLabel(t *testing.T) {
+	metrics := &metricsCollectorStub{}
+	executor := NewExecutor(infraPlugin.NewRegistry(), WithExecutorMetrics(metrics))
+
+	executor.recordMetrics(context.Background(), "pipeline", "step", domainpipeline.StepTypeCommand, domainpipeline.StatusFailure, time.Millisecond, domainpipeline.NewTimeoutError("timed out", context.DeadlineExceeded, nil))
+
+	if len(metrics.counters) < 2 {
+		t.Fatalf("expected two counter increments, got %d", len(metrics.counters))
+	}
+
+	failureLabels := metrics.counters[len(metrics.counters)-1]
+	if failureLabels["error_code"] != string(domainpipeline.ErrCodeTimeout) {
+		t.Fatalf("expected timeout error code label, got %+v", failureLabels)
+	}
+}
+
+func TestCategorizeVerificationErrorMappings(t *testing.T) {
+	cases := []struct {
+		code     domainpipeline.ErrorCode
+		message  string
+		expected string
+	}{
+		{domainpipeline.ErrCodeNotFound, "missing", "missing"},
+		{domainpipeline.ErrCodeDependency, "blocked", "blocked"},
+		{domainpipeline.ErrCodeValidation, "invalid", "unknown"},
+		{domainpipeline.ErrCodeTimeout, "hit timeout", "timeout"},
+		{domainpipeline.ErrCodeCancelled, "cancelled", "cancelled"},
+		{domainpipeline.ErrCodeExecution, "no such file", "missing"},
+	}
+
+	for _, tc := range cases {
+		err := &domainpipeline.DomainError{Code: tc.code, Message: tc.message}
+		if got := categorizeVerificationError(err); got != tc.expected {
+			t.Fatalf("expected %s for code %s, got %s", tc.expected, tc.code, got)
+		}
+	}
+
+	if got := categorizeVerificationError(nil); got != "" {
+		t.Fatalf("expected empty classification for nil error, got %q", got)
 	}
 }

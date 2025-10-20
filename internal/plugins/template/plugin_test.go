@@ -2,8 +2,10 @@ package templateplugin
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	require "github.com/stretchr/testify/require"
@@ -137,4 +139,82 @@ func TestDecodeConfigValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg.Mode)
 	require.Equal(t, uint32(0o640), *cfg.Mode)
+}
+
+func TestEnsureEvaluationData(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "src.tmpl")
+	dest := filepath.Join(dir, "dst.txt")
+
+	require.NoError(t, os.WriteFile(source, []byte("content"), 0o644))
+
+	step := domainpipeline.Step{
+		ID:   "ensure",
+		Type: domainpipeline.StepTypeTemplate,
+		Config: map[string]interface{}{
+			"source":      source,
+			"destination": dest,
+		},
+	}
+
+	eval := &domainpipeline.EvaluationResult{InternalData: &evaluationData{RenderedContent: "content"}}
+	data, err := ensureEvaluationData(context.Background(), eval, step)
+	require.NoError(t, err)
+	require.NotNil(t, data)
+
+	data, err = ensureEvaluationData(context.Background(), &domainpipeline.EvaluationResult{}, step)
+	require.NoError(t, err)
+	require.NotNil(t, data)
+
+	_, err = ensureEvaluationData(context.Background(), nil, domainpipeline.Step{ID: "bad"})
+	require.Error(t, err)
+}
+
+func TestParseBool(t *testing.T) {
+	cases := map[interface{}]bool{
+		true:   true,
+		"true": true,
+		"1":    true,
+		false:  false,
+		"no":   false,
+		"":     false,
+	}
+
+	for raw, expected := range cases {
+		val, err := parseBool(raw)
+		require.NoError(t, err)
+		require.Equal(t, expected, val)
+	}
+
+	if _, err := parseBool(123); err == nil {
+		t.Fatal("expected error for invalid boolean type")
+	}
+}
+
+func TestParseMode(t *testing.T) {
+	modes := []interface{}{0o640, int32(0o644), int64(0o600), "0750"}
+	for _, raw := range modes {
+		val, err := parseMode(raw)
+		require.NoError(t, err)
+		require.NotZero(t, val)
+	}
+
+	if _, err := parseMode(-1); err == nil {
+		t.Fatal("expected error for negative mode")
+	}
+}
+
+func TestParseVarsInvalid(t *testing.T) {
+	if _, err := parseVars(42); err == nil {
+		t.Fatal("expected error for invalid vars type")
+	}
+
+	_, err := parseVars(map[string]interface{}{"k": 123})
+	require.Error(t, err)
+}
+
+func TestWrapTemplatePathError(t *testing.T) {
+	err := wrapTemplatePathError("read", "/tmp/file", errors.New("boom"))
+	require.Error(t, err)
+	require.True(t, strings.Contains(err.Error(), "read"))
 }
