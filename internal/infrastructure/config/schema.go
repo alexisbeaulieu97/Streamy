@@ -7,6 +7,7 @@ import (
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
 )
 
 type fileConfig struct {
@@ -81,7 +82,7 @@ type stepConfig struct {
 	rawConfig     map[string]any
 }
 
-func (s *stepConfig) UnmarshalYAML(value *yaml.Node) error {
+func (s *stepConfig) UnmarshalYAML(value ast.Node) error {
 	type baseStep struct {
 		ID            string   `yaml:"id"`
 		Name          string   `yaml:"name"`
@@ -92,7 +93,7 @@ func (s *stepConfig) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	var base baseStep
-	if err := value.Decode(&base); err != nil {
+	if err := yaml.NodeToValue(value, &base); err != nil {
 		return fmt.Errorf("decode step config: %w", err)
 	}
 
@@ -138,13 +139,13 @@ type validationConfig struct {
 	Config map[string]any
 }
 
-func (v *validationConfig) UnmarshalYAML(value *yaml.Node) error {
+func (v *validationConfig) UnmarshalYAML(value ast.Node) error {
 	type rawValidation struct {
 		Type string `yaml:"type"`
 	}
 
 	var raw rawValidation
-	if err := value.Decode(&raw); err != nil {
+	if err := yaml.NodeToValue(value, &raw); err != nil {
 		return fmt.Errorf("decode validation config: %w", err)
 	}
 
@@ -166,13 +167,13 @@ func (v validationConfig) toDomain() (domain.Validation, error) {
 	return validation, nil
 }
 
-func extractRawConfig(node *yaml.Node) map[string]any {
+func extractRawConfig(node ast.Node) map[string]any {
 	if node == nil {
 		return map[string]any{}
 	}
 
 	var raw map[string]any
-	if err := node.Decode(&raw); err != nil || raw == nil {
+	if err := yaml.NodeToValue(node, &raw); err != nil || raw == nil {
 		return map[string]any{}
 	}
 
@@ -194,13 +195,13 @@ func extractRawConfig(node *yaml.Node) map[string]any {
 	return raw
 }
 
-func extractValidationConfig(node *yaml.Node) map[string]any {
+func extractValidationConfig(node ast.Node) map[string]any {
 	if node == nil {
 		return map[string]any{}
 	}
 
 	var raw map[string]any
-	if err := node.Decode(&raw); err != nil || raw == nil {
+	if err := yaml.NodeToValue(node, &raw); err != nil || raw == nil {
 		return map[string]any{}
 	}
 

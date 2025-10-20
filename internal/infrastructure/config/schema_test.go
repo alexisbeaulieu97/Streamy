@@ -5,6 +5,7 @@ import (
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
 )
 
 func TestStepConfigUnmarshalYAMLDefaults(t *testing.T) {
@@ -159,12 +160,12 @@ func TestExtractRawConfigFiltersBaseKeys(t *testing.T) {
  custom: value
 `
 
-	var node yaml.Node
+	var node ast.Node
 	if err := yaml.Unmarshal([]byte(yamlContent), &node); err != nil {
 		t.Fatalf("unmarshal node: %v", err)
 	}
 
-	raw := extractRawConfig(&node)
+	raw := extractRawConfig(node)
 	if len(raw) != 1 || raw["custom"] != "value" {
 		t.Fatalf("expected only custom field, got %+v", raw)
 	}
@@ -183,12 +184,12 @@ func TestExtractValidationConfigRemovesType(t *testing.T) {
  path: /tmp/demo
 `
 
-	var node yaml.Node
+	var node ast.Node
 	if err := yaml.Unmarshal([]byte(yamlContent), &node); err != nil {
 		t.Fatalf("unmarshal node: %v", err)
 	}
 
-	raw := extractValidationConfig(&node)
+	raw := extractValidationConfig(node)
 	if len(raw) != 1 || raw["path"] != "/tmp/demo" {
 		t.Fatalf("expected only path key, got %+v", raw)
 	}
