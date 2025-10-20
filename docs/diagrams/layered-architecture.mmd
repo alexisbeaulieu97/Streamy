@@ -1,0 +1,44 @@
+%% Layered architecture diagram (Mermaid)
+%% Generate with: mmdc -i layered-architecture.mmd -o layered-architecture.svg
+flowchart TB
+    subgraph cli["CLI / UI"]
+        cmd["cmd/streamy\n(Cobra commands, composition root)"]
+        tui["internal/tui\n(Bubbletea dashboard)"]
+    end
+
+    subgraph infra["Infrastructure (internal/infrastructure, internal/plugins)"]
+        loader["config.YAMLLoader"]
+        engine["engine.Executor / DAG builder"]
+        observability["logging / metrics / tracing adapters"]
+        registry["plugin.Registry\n+ built-in plugins"]
+    end
+
+    subgraph app["Application (internal/application)"]
+        prepare["PrepareUseCase"]
+        apply["ApplyUseCase"]
+        verify["VerifyUseCase"]
+        validation["ValidationService"]
+    end
+
+    subgraph domain["Domain (internal/domain)"]
+        pipeline["Pipeline aggregate"]
+        step["Step value objects"]
+        plan["ExecutionPlan"]
+        result["StepResult / VerificationResult"]
+        errors["DomainError codes"]
+    end
+
+    cli --> infra
+    infra --> app
+    app --> domain
+
+    loader --> prepare
+    engine --> apply
+    registry --> engine
+    observability --> engine
+
+    prepare --> pipeline
+    apply --> pipeline
+    verify --> pipeline
+    validation --> pipeline
+

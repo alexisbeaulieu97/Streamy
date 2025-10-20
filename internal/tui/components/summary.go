@@ -49,11 +49,13 @@ func (s Summary) View() string {
 
 	if len(s.data.Validations) > 0 {
 		lines = append(lines, "Validations:")
+
 		for _, v := range s.data.Validations {
 			status := "✗"
 			if v.Passed {
 				status = "✓"
 			}
+
 			lines = append(lines, fmt.Sprintf("  %s %s", status, v.Message))
 		}
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -19,15 +21,25 @@ type listOptions struct {
 	jsonOutput bool
 }
 
-func newListCmd(rootFlags *rootFlags) *cobra.Command {
+func newListCmd(_ *rootFlags, app *AppContext) *cobra.Command {
 	opts := &listOptions{}
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List registered Streamy pipelines",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(cmd, opts)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, logger := app.CommandContext(cmd, "command.registry.list")
+			if logger != nil {
+				logger.Info(ctx, "listing pipelines", "json", opts.jsonOutput)
+			}
+
+			err := runList(ctx, logger, cmd, opts)
+			if err != nil && logger != nil {
+				logger.Error(ctx, "list command failed", "error", err)
+			}
+
+			return err
 		},
 	}
 
@@ -36,7 +48,7 @@ func newListCmd(rootFlags *rootFlags) *cobra.Command {
 	return cmd
 }
 
-func runList(cmd *cobra.Command, opts *listOptions) error {
+func runList(ctx context.Context, logger ports.Logger, cmd *cobra.Command, opts *listOptions) error {
 	registryPath, err := defaultRegistryPath()
 	if err != nil {
 		return newCommandError("list", "determining registry path", err, "Ensure your HOME directory is set correctly.")
@@ -54,6 +66,10 @@ func runList(cmd *cobra.Command, opts *listOptions) error {
 
 	pipelines := reg.List()
 	if len(pipelines) == 0 {
+		if logger != nil {
+			logger.Info(ctx, "no pipelines registered", "pipeline_count", 0)
+		}
+
 		return renderEmptyList(cmd)
 	}
 
@@ -65,7 +81,15 @@ func runList(cmd *cobra.Command, opts *listOptions) error {
 	enriched := enrichPipelinesWithStatus(pipelines, statusCache)
 
 	if opts.jsonOutput {
+		if logger != nil {
+			logger.Info(ctx, "rendering pipeline list", "format", "json", "pipeline_count", len(enriched))
+		}
+
 		return renderListJSON(cmd, enriched)
+	}
+
+	if logger != nil {
+		logger.Info(ctx, "rendering pipeline list", "format", "table", "pipeline_count", len(enriched))
 	}
 
 	return renderListTable(cmd, enriched)
@@ -101,6 +125,7 @@ func enrichPipelinesWithStatus(pipelines []registry.Pipeline, cache *registry.St
 func renderEmptyList(cmd *cobra.Command) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No pipelines registered yet.")
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nRun 'streamy registry add <config-path>' to add your first pipeline.")
+
 	return nil
 }
 
@@ -124,7 +149,11 @@ func renderListTable(cmd *cobra.Command, pipelines []pipelineWithStatus) error {
 		)
 	}
 
-	return writer.Flush()
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("flush table output: %w", err)
+	}
+
+	return nil
 }
 
 type listJSONPipeline struct {
@@ -170,13 +199,19 @@ func renderListJSON(cmd *cobra.Command, pipelines []pipelineWithStatus) error {
 
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(payload)
+
+	if err := encoder.Encode(payload); err != nil {
+		return fmt.Errorf("encode pipeline list JSON: %w", err)
+	}
+
+	return nil
 }
 
 func supportsUnicode(writer any) bool {
 	if file, ok := writer.(*os.File); ok {
 		return term.IsTerminal(int(file.Fd()))
 	}
+
 	return false
 }
 
@@ -197,9 +232,11 @@ func formatRelativeTime(ts time.Time) string {
 	if delta < time.Minute {
 		return "just now"
 	}
+
 	if delta < time.Hour {
 		return fmt.Sprintf("%d minutes ago", int(delta.Minutes()))
 	}
+
 	if delta < 24*time.Hour {
 		return fmt.Sprintf("%d hours ago", int(delta.Hours()))
 	}
@@ -212,5 +249,6 @@ func valueOrFallback(value, fallback string) string {
 	if trimmed == "" {
 		return fallback
 	}
+
 	return trimmed
 }

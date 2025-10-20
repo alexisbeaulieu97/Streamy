@@ -67,8 +67,10 @@ func TestGenerateUnifiedDiff_MultiLineChanges(t *testing.T) {
 
 func TestGenerateUnifiedDiff_Truncation(t *testing.T) {
 	// Create content with > 10,000 lines
-	var expectedLines []string
-	var actualLines []string
+	var (
+		expectedLines []string
+		actualLines   []string
+	)
 
 	for i := 0; i < 11000; i++ {
 		expectedLines = append(expectedLines, "expected line")

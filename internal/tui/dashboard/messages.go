@@ -9,6 +9,7 @@ import (
 // ViewMode determines which screen to render
 type ViewMode int
 
+// ViewMode values for the dashboard views.
 const (
 	ViewList ViewMode = iota
 	ViewDetail

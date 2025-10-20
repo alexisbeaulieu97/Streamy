@@ -11,7 +11,9 @@ import (
 type Direction int
 
 const (
+	// DirectionVertical lays out children from top to bottom.
 	DirectionVertical Direction = iota
+	// DirectionHorizontal lays out children from left to right.
 	DirectionHorizontal
 )
 
@@ -103,6 +105,7 @@ func (s *Stack) ViewWithContext(ctx RenderContext) string {
 	if effectiveConstraints.MaxWidth > 0 {
 		finalStyle = finalStyle.MaxWidth(effectiveConstraints.MaxWidth)
 	}
+
 	if effectiveConstraints.MaxHeight > 0 {
 		finalStyle = finalStyle.MaxHeight(effectiveConstraints.MaxHeight)
 	}
@@ -118,12 +121,15 @@ func (s *Stack) mergeConstraints(parentConstraints Constraints) Constraints {
 	if s.constraints.MaxWidth > 0 && (result.MaxWidth <= 0 || s.constraints.MaxWidth < result.MaxWidth) {
 		result.MaxWidth = s.constraints.MaxWidth
 	}
+
 	if s.constraints.MaxHeight > 0 && (result.MaxHeight <= 0 || s.constraints.MaxHeight < result.MaxHeight) {
 		result.MaxHeight = s.constraints.MaxHeight
 	}
+
 	if s.constraints.MinWidth > result.MinWidth {
 		result.MinWidth = s.constraints.MinWidth
 	}
+
 	if s.constraints.MinHeight > result.MinHeight {
 		result.MinHeight = s.constraints.MinHeight
 	}
@@ -139,6 +145,7 @@ func (s *Stack) deriveChildConstraints(parentConstraints Constraints) Constraint
 	if s.direction == DirectionHorizontal && parentConstraints.MaxWidth > 0 && len(s.children) > 0 {
 		// Account for gaps
 		totalGap := s.gap * (len(s.children) - 1)
+
 		availableWidth := parentConstraints.MaxWidth - totalGap
 		if availableWidth > 0 {
 			childConstraints.MaxWidth = availableWidth / len(s.children)
@@ -158,11 +165,13 @@ func (s *Stack) joinVertical(views []string) string {
 
 	// Insert gap rows between children
 	spacer := strings.Repeat("\n", s.gap)
+
 	result := make([]string, 0, len(views)*2-1)
 	for i, view := range views {
 		if i > 0 {
 			result = append(result, spacer)
 		}
+
 		result = append(result, view)
 	}
 
@@ -176,11 +185,13 @@ func (s *Stack) joinHorizontal(views []string) string {
 
 	// Insert gap columns between children
 	spacer := strings.Repeat(" ", s.gap)
+
 	result := make([]string, 0, len(views)*2-1)
 	for i, view := range views {
 		if i > 0 {
 			result = append(result, spacer)
 		}
+
 		result = append(result, view)
 	}
 

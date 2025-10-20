@@ -70,10 +70,13 @@ func (h *Header) WithLevel(level int) *Header {
 	if level < 1 {
 		level = 1
 	}
+
 	if level > 6 {
 		level = 6
 	}
+
 	h.level = level
+
 	return h
 }
 

@@ -23,6 +23,7 @@ type Pipeline struct {
 // PipelineStatus represents the verification state of a pipeline
 type PipelineStatus string
 
+// Pipeline status constants used to record registry execution outcomes.
 const (
 	StatusUnknown   PipelineStatus = "unknown"
 	StatusSatisfied PipelineStatus = "satisfied"
@@ -112,8 +113,8 @@ type ErrorDetail struct {
 	Stacktrace []string `json:"stacktrace,omitempty"`
 }
 
-// RegistryFile is the JSON file format for the pipeline registry
-type RegistryFile struct {
+// File is the JSON file format for the pipeline registry.
+type File struct {
 	Version   string     `json:"version"`
 	Pipelines []Pipeline `json:"pipelines"`
 }

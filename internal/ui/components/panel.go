@@ -56,6 +56,7 @@ func (p *Panel) WithHeader(header ui.Renderable) *Panel {
 	// Use Container's public API to update children and layout atomically
 	p.SetChildren(allChildren)
 	p.SetLayout(VStack(allChildren...))
+
 	return p
 }
 
@@ -71,6 +72,7 @@ func (p *Panel) WithFooter(footer ui.Renderable) *Panel {
 	// Only strip when penultimate is a Divider AND the last element is pointer-equal to priorFooter
 	if len(currentChildren) >= 2 {
 		penultimate := currentChildren[len(currentChildren)-2]
+
 		last := currentChildren[len(currentChildren)-1]
 		if _, ok := penultimate.(*Divider); ok {
 			if priorFooter != nil && last == priorFooter {
@@ -81,11 +83,13 @@ func (p *Panel) WithFooter(footer ui.Renderable) *Panel {
 
 	// Set the new footer
 	p.footer = footer
+
 	allChildren := append([]ui.Renderable{}, remainingChildren...)
 	allChildren = append(allChildren, HorizontalDivider(), footer)
 
 	p.SetChildren(allChildren)
 	p.SetLayout(VStack(allChildren...))
+
 	return p
 }
 
@@ -94,6 +98,7 @@ func (p *Panel) WithTitle(title string) *Panel {
 	header := NewHeader(title).WithAppliers(
 		Typography(TypographyVariantTitle),
 	)
+
 	return p.WithHeader(header)
 }
 

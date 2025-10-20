@@ -1,7 +1,9 @@
+// Package main renders a demo dashboard view for documentation purposes.
 package main
 
 import (
-	"fmt"
+	"bufio"
+	"os"
 
 	"github.com/alexisbeaulieu97/streamy/internal/ui/components"
 )
@@ -9,7 +11,9 @@ import (
 func main() {
 	// Simulate a CLI dashboard view
 	dashboard := buildDashboard()
-	fmt.Println(dashboard.View())
+	writer := bufio.NewWriter(os.Stdout)
+	_, _ = writer.WriteString(dashboard.View() + "\n")
+	_ = writer.Flush()
 }
 
 func buildDashboard() *components.Card {
@@ -80,8 +84,10 @@ func buildStatRow(label, value string, badgeFunc func(string) *components.Badge)
 }
 
 func buildPipelineItem(name, status, time string) *components.Stack {
-	var statusBadge *components.Badge
-	var icon string
+	var (
+		statusBadge *components.Badge
+		icon        string
+	)
 
 	switch status {
 	case "satisfied":

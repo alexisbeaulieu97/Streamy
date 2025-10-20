@@ -3,14 +3,70 @@ version: "2"
 run:
   timeout: 5m
   tests: true
+  allow-parallel-runners: true
 
 linters:
   enable:
     - govet
     - staticcheck
     - errcheck
+    - importas
+    - forbidigo
+    - contextcheck
+    - gomodguard
+    - bodyclose
+    - gocritic
+    - goconst
+    - gocyclo
+    - gosec
+    - makezero
+    - revive
+    - unconvert
+    - wrapcheck
+    - wsl_v5
+  disable:
+    - depguard # ❗ broken in v2.5.0 for $all/Main (keep config below ready to re-enable)
+  settings:
+    gocyclo:
+      min-complexity: 15
+    importas:
+      no-unaliased: true
+      alias:
+        - pkg: github.com/stretchr/testify/assert
+          alias: assert
+        - pkg: github.com/stretchr/testify/require
+          alias: require
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    forbidigo:
+      forbid:
+        - pattern: "fmt.Print.*"
+          msg: "Use the structured logger instead of fmt.Print"
+        - pattern: "log.Print.*"
+          msg: "Use the structured logger instead of log.Print"
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - goconst
+          - gosec
+          - gocritic
 
 formatters:
   enable:
-    - gofmt
+    - gofumpt
     - goimports
+    - gofmt
+  settings:
+    gofumpt:
+      extra-rules: true
+
+output:
+  formats:
+    text:
+      colors: true
+      print-issued-lines: true
+      print-linter-name: true

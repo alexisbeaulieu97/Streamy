@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
 )
 
@@ -22,6 +21,7 @@ func (m Model) View() string {
 	sections = append(sections, sectionStyle.Render("Progress"), progress)
 
 	listComp := components.NewStepList(m.order, m.steps)
+
 	entries := listComp.Entries()
 	if len(entries) > 0 {
 		sections = append(sections, sectionStyle.Render("Steps"))
@@ -44,42 +44,50 @@ func (m Model) View() string {
 
 func renderStepEntries(entries []components.StepEntry) string {
 	var lines []string
+
 	for _, entry := range entries {
 		res := entry.Result
 		icon := StatusIcon(res.Status)
+
 		line := fmt.Sprintf(" %s %s", icon, entry.ID)
 		if strings.TrimSpace(res.Message) != "" {
 			line = fmt.Sprintf("%s — %s", line, res.Message)
 		}
+
 		if res.Duration > 0 {
 			line = fmt.Sprintf("%s (%s)", line, res.Duration.Truncate(10*time.Millisecond))
 		}
+
 		lines = append(lines, line)
 	}
+
 	return strings.Join(lines, "\n")
 }
 
 func (m Model) title() string {
-	if m.cfg != nil && strings.TrimSpace(m.cfg.Name) != "" {
-		return m.cfg.Name
+	if m.pipeline != nil {
+		if name := strings.TrimSpace(m.pipeline.Name); name != "" {
+			return name
+		}
 	}
+
 	return "Execution"
 }
 
 // StatusIcon returns the glyph representing a step status.
-func StatusIcon(status string) string {
+func StatusIcon(status components.StepStatus) string {
 	switch status {
-	case model.StatusSuccess:
+	case components.StepStatusSuccess:
 		return successStyle.Render("✓")
-	case model.StatusRunning:
+	case components.StepStatusRunning:
 		return runningStyle.Render("⏳")
-	case model.StatusFailed:
+	case components.StepStatusFailed:
 		return failureStyle.Render("✗")
-	case model.StatusSkipped:
+	case components.StepStatusSkipped:
 		return skippedStyle.Render("⊘")
-	case model.StatusWouldCreate:
+	case components.StepStatusWouldCreate:
 		return pendingStyle.Render("✱")
-	case model.StatusWouldUpdate:
+	case components.StepStatusWouldUpdate:
 		return pendingStyle.Render("↻")
 	default:
 		return pendingStyle.Render("…")

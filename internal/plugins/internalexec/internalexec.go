@@ -1,7 +1,9 @@
+// Package internalexec wraps command execution for reuse across plugins.
 package internalexec
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -24,6 +26,7 @@ func RunStreaming(cmd *exec.Cmd) (Result, error) {
 	} else {
 		cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
 	}
+
 	if cmd.Stderr != nil {
 		cmd.Stderr = io.MultiWriter(cmd.Stderr, &stderrBuf)
 	} else {
@@ -32,10 +35,21 @@ func RunStreaming(cmd *exec.Cmd) (Result, error) {
 
 	err := cmd.Run()
 
-	return Result{
+	res := Result{
 		Stdout: strings.TrimSpace(stdoutBuf.String()),
 		Stderr: strings.TrimSpace(stderrBuf.String()),
-	}, err
+	}
+
+	if err != nil {
+		joined := strings.Join(cmd.Args, " ")
+		if joined == "" {
+			joined = cmd.Path
+		}
+
+		return res, fmt.Errorf("execute command %q: %w", joined, err)
+	}
+
+	return res, nil
 }
 
 // PrimaryOutput returns stderr if present, otherwise stdout.
@@ -43,5 +57,6 @@ func PrimaryOutput(res Result) string {
 	if res.Stderr != "" {
 		return res.Stderr
 	}
+
 	return res.Stdout
 }

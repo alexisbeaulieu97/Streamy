@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
@@ -147,7 +147,7 @@ func TestRenderConfirmView(t *testing.T) {
 	m.width = 120
 	m.height = 40
 	m.viewMode = ViewConfirm
-	m.confirmAction = "apply"
+	m.confirmAction = actionApply
 
 	view := m.renderConfirmView()
 	assert.NotEmpty(t, view)

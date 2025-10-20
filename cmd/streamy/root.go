@@ -1,13 +1,19 @@
 package main
 
 import (
+	"context"
+	"time"
+
 	"github.com/spf13/cobra"
 )
 
 type rootFlags struct {
 	verbose bool
 	dryRun  bool
+	timeout time.Duration
 }
+
+var rootDashboardLauncher = runDashboard
 
 func newRootCmd(app *AppContext) *cobra.Command {
 	flags := &rootFlags{}
@@ -20,14 +26,28 @@ func newRootCmd(app *AppContext) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If no subcommand is provided, launch the dashboard
 			if len(args) == 0 {
-				return runDashboard(app)
+				ctx, logger := app.CommandContext(cmd, "command.dashboard")
+
+				var cancel context.CancelFunc
+				if flags.timeout > 0 {
+					ctx, cancel = context.WithTimeout(ctx, flags.timeout)
+					defer cancel()
+				}
+
+				if logger != nil {
+					logger.Info(ctx, "launching dashboard from root command", "command", "dashboard", "source", "root")
+				}
+
+				return rootDashboardLauncher(ctx, app, logger)
 			}
+
 			return cmd.Help()
 		},
 	}
 
 	cmd.PersistentFlags().BoolVarP(&flags.verbose, "verbose", "v", false, "Enable verbose logging")
 	cmd.PersistentFlags().BoolVar(&flags.dryRun, "dry-run", false, "Preview execution without making changes")
+	cmd.PersistentFlags().DurationVar(&flags.timeout, "timeout", 30*time.Minute, "Maximum duration for a command before it is cancelled")
 
 	cmd.AddCommand(newApplyCmd(flags, app))
 	cmd.AddCommand(newVerifyCmd(flags, app))

@@ -1,3 +1,4 @@
+// Package dashboard exposes commands for driving the TUI dashboard state machine.
 package dashboard
 
 import (
@@ -7,8 +8,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/logger"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
@@ -16,24 +15,24 @@ import (
 func loadInitialStatusCmd(pipelines []registry.Pipeline, cache *registry.StatusCache) tea.Cmd {
 	return func() tea.Msg {
 		statuses := make(map[string]registry.CachedStatus)
+
 		for _, p := range pipelines {
 			if cached, ok := cache.Get(p.ID); ok {
 				statuses[p.ID] = cached
 			}
 		}
+
 		return InitialStatusLoadedMsg{Statuses: statuses}
 	}
 }
 
 // verifyCmd runs verification for a pipeline asynchronously
-func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc *pipelineapp.Service) tea.Cmd {
+func verifyCmd(ctx context.Context, pipelineID, configPath string, svc PipelineService) tea.Cmd {
 	return func() tea.Msg {
-		outcome, err := svc.Verify(ctx, pipelineapp.VerifyRequest{
-			ConfigPath:     configPath,
-			LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
-			DefaultTimeout: 30 * time.Second,
+		result, err := svc.Verify(ctx, VerifyOptions{
+			ConfigPath: configPath,
+			Timeout:    30 * time.Second,
 		})
-
 		if err != nil {
 			// Context cancellation
 			if ctx.Err() != nil {
@@ -46,14 +45,12 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc *p
 			}
 		}
 
-		if outcome == nil || outcome.ExecutionResult == nil {
+		if result == nil {
 			return VerifyErrorMsg{
 				PipelineID: pipelineID,
 				Error:      fmt.Errorf("verification produced no result"),
 			}
 		}
-
-		result := outcome.ExecutionResult
 
 		return VerifyCompleteMsg{
 			PipelineID: pipelineID,
@@ -63,14 +60,12 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc *p
 }
 
 // applyCmd runs apply for a pipeline asynchronously
-func applyCmd(ctx context.Context, pipelineID string, configPath string, svc *pipelineapp.Service) tea.Cmd {
+func applyCmd(ctx context.Context, pipelineID, configPath string, svc PipelineService) tea.Cmd {
 	return func() tea.Msg {
-		outcome, err := svc.Apply(ctx, pipelineapp.ApplyRequest{
+		result, err := svc.Apply(ctx, ApplyOptions{
 			ConfigPath:      configPath,
-			LoggerOptions:   logger.Options{Level: "error", HumanReadable: false},
 			ContinueOnError: false,
 		})
-
 		if err != nil {
 			// Context cancellation
 			if ctx.Err() != nil {
@@ -83,7 +78,7 @@ func applyCmd(ctx context.Context, pipelineID string, configPath string, svc *pi
 			}
 		}
 
-		if outcome == nil || outcome.ExecutionResult == nil {
+		if result == nil {
 			return ApplyErrorMsg{
 				PipelineID: pipelineID,
 				Error:      fmt.Errorf("apply produced no result"),
@@ -92,27 +87,25 @@ func applyCmd(ctx context.Context, pipelineID string, configPath string, svc *pi
 
 		return ApplyCompleteMsg{
 			PipelineID: pipelineID,
-			Result:     outcome.ExecutionResult,
+			Result:     result,
 		}
 	}
 }
 
 // refreshAllCmd runs verification for all pipelines in parallel
-func refreshAllCmd(ctx context.Context, pipelines []registry.Pipeline, _ *pipelineapp.Service) tea.Cmd {
+func refreshAllCmd(_ context.Context, pipelines []registry.Pipeline, _ PipelineService) tea.Cmd {
 	return func() tea.Msg {
 		return RefreshStartedMsg{Total: len(pipelines)}
 	}
 }
 
 // refreshSingleCmd runs verification for a single pipeline during refresh all
-func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc *pipelineapp.Service, index int, total int) tea.Cmd {
+func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc PipelineService, index, total int) tea.Cmd {
 	return func() tea.Msg {
-		outcome, err := svc.Verify(ctx, pipelineapp.VerifyRequest{
-			ConfigPath:     pl.Path,
-			LoggerOptions:  logger.Options{Level: "error", HumanReadable: false},
-			DefaultTimeout: 30 * time.Second,
+		result, err := svc.Verify(ctx, VerifyOptions{
+			ConfigPath: pl.Path,
+			Timeout:    30 * time.Second,
 		})
-
 		if err != nil {
 			if ctx.Err() != nil {
 				return RefreshCancelledMsg{}
@@ -127,7 +120,7 @@ func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc *pipelineap
 			}
 		}
 
-		if outcome == nil || outcome.ExecutionResult == nil {
+		if result == nil {
 			return RefreshPipelineCompleteMsg{
 				PipelineID: pl.ID,
 				Index:      index,
@@ -141,7 +134,7 @@ func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc *pipelineap
 			PipelineID: pl.ID,
 			Index:      index,
 			Total:      total,
-			Result:     outcome.ExecutionResult,
+			Result:     result,
 			Error:      nil,
 		}
 	}

@@ -15,12 +15,19 @@ type Badge struct {
 type BadgeVariant int
 
 const (
+	// BadgeVariantDefault renders the badge using default styling.
 	BadgeVariantDefault BadgeVariant = iota
+	// BadgeVariantPrimary renders the badge using the primary styling.
 	BadgeVariantPrimary
+	// BadgeVariantSecondary renders the badge using secondary styling.
 	BadgeVariantSecondary
+	// BadgeVariantSuccess renders the badge using success styling.
 	BadgeVariantSuccess
+	// BadgeVariantWarning renders the badge using warning styling.
 	BadgeVariantWarning
+	// BadgeVariantError renders the badge using error styling.
 	BadgeVariantError
+	// BadgeVariantInfo renders the badge using informational styling.
 	BadgeVariantInfo
 )
 

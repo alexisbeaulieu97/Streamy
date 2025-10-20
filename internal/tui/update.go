@@ -3,7 +3,6 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/alexisbeaulieu97/streamy/internal/model"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
 )
 
@@ -15,25 +14,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StepStartMsg:
 		m.ensureStep(msg.ID)
 		step := m.steps[msg.ID]
-		step.Status = model.StatusRunning
+		step.Status = components.StepStatusRunning
 		m.steps[msg.ID] = step
+
 		return m, nil
 	case StepCompleteMsg:
-		id := msg.Result.StepID
-		if id == "" {
+		if msg.StepID == "" {
 			return m, nil
 		}
-		m.ensureStep(id)
-		existing := m.steps[id]
-		previouslyCompleted := existing.Status == model.StatusSuccess || existing.Status == model.StatusSkipped || existing.Status == model.StatusFailed || existing.Status == model.StatusWouldCreate || existing.Status == model.StatusWouldUpdate
-		m.steps[id] = msg.Result
+
+		m.ensureStep(msg.StepID)
+		existing := m.steps[msg.StepID]
+		previouslyCompleted := existing.Status == components.StepStatusSuccess || existing.Status == components.StepStatusSkipped || existing.Status == components.StepStatusFailed || existing.Status == components.StepStatusWouldCreate || existing.Status == components.StepStatusWouldUpdate
+
+		m.steps[msg.StepID] = msg.State
 		if !previouslyCompleted {
 			m.completed++
 			m.markFinishedIfComplete()
 		}
-		if msg.Result.Status == model.StatusFailed {
+
+		if msg.State.Status == components.StepStatusFailed {
 			m.finished = true
 		}
+
 		return m, nil
 	case ValidationMsg:
 		m.validations = append(m.validations, components.ValidationStatus{Passed: msg.Passed, Message: msg.Message})
@@ -42,6 +45,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyCtrlC {
 			m.cancelled = true
 			m.finished = true
+
 			return m, nil
 		}
 	case tea.QuitMsg:

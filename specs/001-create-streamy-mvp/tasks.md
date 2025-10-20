@@ -24,7 +24,7 @@ This document breaks down the Streamy MVP implementation into 83 ordered, depend
   - No code, just directories
 
 - [X] **T003** Install core dependencies
-  - Add: `github.com/spf13/cobra`, `github.com/spf13/viper`, `gopkg.in/yaml.v3`, `github.com/go-playground/validator/v10`
+  - Add: `github.com/spf13/cobra`, `github.com/spf13/viper`, `github.com/goccy/go-yaml`, `github.com/go-playground/validator/v10`
   - Run: `go get` for each dependency
   - File: `go.mod`
 
@@ -115,7 +115,7 @@ This document breaks down the Streamy MVP implementation into 83 ordered, depend
 
 - [X] **T019** Implement YAML parser in `internal/config/parser.go`
   - Function: `ParseConfig(path string) (*Config, error)`
-  - Use `gopkg.in/yaml.v3` for parsing
+  - Use `github.com/goccy/go-yaml` for parsing
   - Return parse errors with line numbers
   - Tests: T008 should now pass
   - File: `internal/config/parser.go`

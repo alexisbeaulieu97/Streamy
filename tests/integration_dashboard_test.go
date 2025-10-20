@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,29 +11,39 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 
-	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/logger"
-	"github.com/alexisbeaulieu97/streamy/internal/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/dashboard"
 )
 
-// setupTestPluginRegistry creates a minimal plugin registry for testing
-func setupTestPluginRegistry(t *testing.T) *plugin.PluginRegistry {
-	t.Helper()
-
-	log, err := logger.New(logger.Options{Level: "error", HumanReadable: false})
-	require.NoError(t, err)
-
-	cfg := &plugin.RegistryConfig{}
-	return plugin.NewPluginRegistry(cfg, log)
+// setupTestDashboard creates a temporary registry and cache with pipelines
+type stubDashboardService struct {
+	verifyResult *registry.ExecutionResult
+	verifyErr    error
+	applyResult  *registry.ExecutionResult
+	applyErr     error
 }
 
-// setupTestDashboard creates a temporary registry and cache with pipelines
-func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses map[string]registry.PipelineStatus) (string, *registry.Registry, *registry.StatusCache, *pipelineapp.Service) {
+func newStubService() *stubDashboardService {
+	return &stubDashboardService{
+		verifyResult: &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied, Success: true},
+		applyResult:  &registry.ExecutionResult{Operation: "apply", Status: registry.StatusSatisfied, Success: true},
+	}
+}
+
+func (s *stubDashboardService) Verify(_ context.Context, _ dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
+	return s.verifyResult, s.verifyErr
+}
+
+func (s *stubDashboardService) Apply(_ context.Context, _ dashboard.ApplyOptions) (*registry.ExecutionResult, error) {
+	return s.applyResult, s.applyErr
+}
+
+func (s *stubDashboardService) StepProgressCmd() tea.Cmd { return nil }
+
+func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses map[string]registry.PipelineStatus) (string, *registry.Registry, *registry.StatusCache, *stubDashboardService) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -42,16 +53,19 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 	// Create registry
 	reg, err := registry.NewRegistry(registryPath)
 	require.NoError(t, err)
+
 	for _, p := range pipelines {
 		err := reg.Add(p)
 		require.NoError(t, err)
 	}
+
 	err = reg.Save()
 	require.NoError(t, err)
 
 	// Create cache with statuses
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
+
 	for id, status := range statuses {
 		_ = cache.Set(id, registry.CachedStatus{
 			Status:  status,
@@ -59,12 +73,14 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 			Summary: "",
 		})
 	}
+
 	err = cache.Save()
 	require.NoError(t, err)
 
-	// Create plugin registry
-	pluginReg := setupTestPluginRegistry(t)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := &stubDashboardService{
+		verifyResult: &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied, Success: true},
+		applyResult:  &registry.ExecutionResult{Operation: "apply", Status: registry.StatusSatisfied, Success: true},
+	}
 
 	return tmpDir, reg, cache, svc
 }
@@ -72,6 +88,7 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 // runModelUpdate runs the model's Update function with a message
 func runModelUpdate(t *testing.T, model dashboard.Model, msg tea.Msg) dashboard.Model {
 	t.Helper()
+
 	newModel, cmd := model.Update(msg)
 
 	// Type assert back to dashboard.Model
@@ -172,9 +189,7 @@ func TestDashboardEmptyState(t *testing.T) {
 	err = cache.Save()
 	require.NoError(t, err)
 
-	// Plugin registry
-	pluginReg := setupTestPluginRegistry(t)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := newStubService()
 
 	// Load pipelines (should be empty)
 	loadedPipelines := reg.List()
@@ -251,16 +266,20 @@ func TestDashboardSortsByPriority(t *testing.T) {
 	// Find positions of pipeline names in the view
 	lines := strings.Split(view, "\n")
 	positions := make(map[string]int)
+
 	for i, line := range lines {
 		if strings.Contains(line, "Pipeline A") {
 			positions["pipeline-a"] = i
 		}
+
 		if strings.Contains(line, "Pipeline B") {
 			positions["pipeline-b"] = i
 		}
+
 		if strings.Contains(line, "Pipeline C") {
 			positions["pipeline-c"] = i
 		}
+
 		if strings.Contains(line, "Pipeline D") {
 			positions["pipeline-d"] = i
 		}
@@ -303,6 +322,7 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 	// Create cache with status
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
+
 	lastRun := time.Now().Add(-30 * time.Minute)
 	_ = cache.Set("test-pipeline", registry.CachedStatus{
 		Status:  registry.StatusSatisfied,
@@ -312,9 +332,7 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 	err = cache.Save()
 	require.NoError(t, err)
 
-	// Plugin registry
-	pluginReg := setupTestPluginRegistry(t)
-	svc := pipelineapp.NewService(pluginReg)
+	svc := newStubService()
 
 	// Load pipelines from registry
 	loadedPipelines := reg.List()
@@ -464,7 +482,9 @@ func TestDashboardJSONFiles(t *testing.T) {
 	// Verify registry JSON is valid
 	registryData, err := os.ReadFile(registryPath)
 	require.NoError(t, err)
-	var registryFile registry.RegistryFile
+
+	var registryFile registry.File
+
 	err = json.Unmarshal(registryData, &registryFile)
 	require.NoError(t, err, "Registry JSON should be valid")
 	assert.Equal(t, "1.0", registryFile.Version)
@@ -473,6 +493,7 @@ func TestDashboardJSONFiles(t *testing.T) {
 	// Create and save cache
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
+
 	_ = cache.Set("test-json", registry.CachedStatus{
 		Status:  registry.StatusSatisfied,
 		LastRun: time.Now(),
@@ -484,7 +505,9 @@ func TestDashboardJSONFiles(t *testing.T) {
 	// Verify cache JSON is valid
 	cacheData, err := os.ReadFile(cachePath)
 	require.NoError(t, err)
+
 	var cacheFile registry.StatusCacheFile
+
 	err = json.Unmarshal(cacheData, &cacheFile)
 	require.NoError(t, err, "Cache JSON should be valid")
 	assert.Equal(t, "1.0", cacheFile.Version)

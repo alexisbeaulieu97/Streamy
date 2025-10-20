@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestCreateBackupDefaultDirectory(t *testing.T) {
@@ -29,14 +29,46 @@ func TestCreateBackupDefaultDirectory(t *testing.T) {
 	require.Equal(t, "backup data", string(data))
 }
 
-func TestCreateBackupCustomDirectory(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "sample.txt")
-	backupDir := filepath.Join(dir, "backups")
-
-	backupPath, err := createBackup(target, backupDir, []byte("custom"), 0o640)
+func TestReadFileStateNonExistent(t *testing.T) {
+	cfg := &LineInFileConfig{File: "/tmp/non-existent-file.txt"}
+	state, err := readFileState(cfg)
 	require.NoError(t, err)
-	require.Equal(t, backupDir, filepath.Dir(backupPath))
+	require.False(t, state.Exists)
+}
+
+func TestSplitJoinLines(t *testing.T) {
+	testCases := []struct {
+		name             string
+		content          string
+		expectedLines    []string
+		expectedTrailing bool
+	}{
+		{"empty", "", []string{}, false},
+		{"single line", "hello", []string{"hello"}, false},
+		{"single line with newline", "hello\n", []string{"hello"}, true},
+		{"multiple lines", "hello\nworld", []string{"hello", "world"}, false},
+		{"multiple lines with newline", "hello\nworld\n", []string{"hello", "world"}, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			lines, trailing := splitLines(tc.content)
+			require.Equal(t, tc.expectedLines, lines)
+			require.Equal(t, tc.expectedTrailing, trailing)
+
+			joined := joinLines(lines, trailing)
+			require.Equal(t, tc.content, joined)
+		})
+	}
+}
+
+func TestExpandPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	path, err := expandPath("~/test")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(home, "test"), path)
 }
 
 func TestEncodeDecodeContent(t *testing.T) {

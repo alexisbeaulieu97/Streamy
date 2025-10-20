@@ -10,16 +10,16 @@ func newRegistryCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 		Aliases: []string{
 			"reg",
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
 
-	cmd.AddCommand(newAddCmd(rootFlags))
-	cmd.AddCommand(newListCmd(rootFlags))
-	cmd.AddCommand(newRemoveCmd(rootFlags))
+	cmd.AddCommand(newAddCmd(rootFlags, app))
+	cmd.AddCommand(newListCmd(rootFlags, app))
+	cmd.AddCommand(newRemoveCmd(rootFlags, app))
 	cmd.AddCommand(newRefreshCmd(rootFlags, app))
-	cmd.AddCommand(newShowCmd(rootFlags))
+	cmd.AddCommand(newShowCmd(rootFlags, app))
 
 	return cmd
 }

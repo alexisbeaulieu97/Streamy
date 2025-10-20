@@ -19,6 +19,7 @@ func NewPaletteShades(colors ...lipgloss.Color) PaletteShades {
 	for i := 0; i < paletteShadeCount && i < len(colors); i++ {
 		shades.colors[i] = colors[i]
 	}
+
 	return shades
 }
 
@@ -29,6 +30,7 @@ func (ps PaletteShades) Color(shade PaletteShade) lipgloss.Color {
 	if index < 0 || index >= paletteShadeCount {
 		return ""
 	}
+
 	return ps.colors[index]
 }
 
@@ -43,6 +45,7 @@ type ColorPalette struct {
 	Cyan   PaletteShades
 }
 
+// Shades returns the shade table for the requested palette family.
 func (cp ColorPalette) Shades(family PaletteFamily) PaletteShades {
 	switch family {
 	case PaletteSlate:
@@ -68,14 +71,23 @@ func (cp ColorPalette) Shades(family PaletteFamily) PaletteShades {
 type SpacingSize int
 
 const (
+	// SpacingSizeNone represents zero spacing.
 	SpacingSizeNone SpacingSize = iota
+	// SpacingSizeExtraSmall represents the extra-small spacing token.
 	SpacingSizeExtraSmall
+	// SpacingSizeSmall represents the small spacing token.
 	SpacingSizeSmall
+	// SpacingSizeMedium represents the medium spacing token.
 	SpacingSizeMedium
+	// SpacingSizeLarge represents the large spacing token.
 	SpacingSizeLarge
+	// SpacingSizeExtraLarge represents the extra-large spacing token.
 	SpacingSizeExtraLarge
+	// SpacingSizeDoubleExtraLarge represents the 2x extra-large spacing token.
 	SpacingSizeDoubleExtraLarge
+	// SpacingSizeTripleExtraLarge represents the 3x extra-large spacing token.
 	SpacingSizeTripleExtraLarge
+	// SpacingSizeQuadExtraLarge represents the 4x extra-large spacing token.
 	SpacingSizeQuadExtraLarge
 )
 
@@ -94,89 +106,168 @@ type SpacingConfig struct {
 type TypographyVariant int
 
 const (
+	// TypographyVariantBase represents the base text style.
 	TypographyVariantBase TypographyVariant = iota
+	// TypographyVariantTitle represents a title style.
 	TypographyVariantTitle
+	// TypographyVariantSubtitle represents a subtitle style.
 	TypographyVariantSubtitle
+	// TypographyVariantBody represents standard body text.
 	TypographyVariantBody
+	// TypographyVariantCode represents monospaced code text.
 	TypographyVariantCode
+	// TypographyVariantEmphasis represents emphasised text.
 	TypographyVariantEmphasis
 
+	// TypographyVariantTextXs represents extra-small text.
 	TypographyVariantTextXs
+	// TypographyVariantTextSm represents small text.
 	TypographyVariantTextSm
+	// TypographyVariantTextBase represents the base text size.
 	TypographyVariantTextBase
+	// TypographyVariantTextLg represents large text.
 	TypographyVariantTextLg
+	// TypographyVariantTextXl represents extra-large text.
 	TypographyVariantTextXl
+	// TypographyVariantText2Xl represents 2x extra-large text.
 	TypographyVariantText2Xl
+	// TypographyVariantText3Xl represents 3x extra-large text.
 	TypographyVariantText3Xl
 
+	// TypographyVariantFontLight represents light font weight.
 	TypographyVariantFontLight
+	// TypographyVariantFontNormal represents normal font weight.
 	TypographyVariantFontNormal
+	// TypographyVariantFontMedium represents medium font weight.
 	TypographyVariantFontMedium
+	// TypographyVariantFontSemibold represents semi-bold font weight.
 	TypographyVariantFontSemibold
+	// TypographyVariantFontBold represents bold font weight.
 	TypographyVariantFontBold
 )
 
+var typographyVariantSelect = map[TypographyVariant]func(TypographyScale) lipgloss.Style{
+	TypographyVariantBase:         func(t TypographyScale) lipgloss.Style { return t.Base },
+	TypographyVariantTitle:        func(t TypographyScale) lipgloss.Style { return t.Title },
+	TypographyVariantSubtitle:     func(t TypographyScale) lipgloss.Style { return t.Subtitle },
+	TypographyVariantBody:         func(t TypographyScale) lipgloss.Style { return t.Body },
+	TypographyVariantCode:         func(t TypographyScale) lipgloss.Style { return t.Code },
+	TypographyVariantEmphasis:     func(t TypographyScale) lipgloss.Style { return t.Emphasis },
+	TypographyVariantTextXs:       func(t TypographyScale) lipgloss.Style { return t.TextXs },
+	TypographyVariantTextSm:       func(t TypographyScale) lipgloss.Style { return t.TextSm },
+	TypographyVariantTextBase:     func(t TypographyScale) lipgloss.Style { return t.TextBase },
+	TypographyVariantTextLg:       func(t TypographyScale) lipgloss.Style { return t.TextLg },
+	TypographyVariantTextXl:       func(t TypographyScale) lipgloss.Style { return t.TextXl },
+	TypographyVariantText2Xl:      func(t TypographyScale) lipgloss.Style { return t.Text2Xl },
+	TypographyVariantText3Xl:      func(t TypographyScale) lipgloss.Style { return t.Text3Xl },
+	TypographyVariantFontLight:    func(t TypographyScale) lipgloss.Style { return t.FontLight },
+	TypographyVariantFontNormal:   func(t TypographyScale) lipgloss.Style { return t.FontNormal },
+	TypographyVariantFontMedium:   func(t TypographyScale) lipgloss.Style { return t.FontMedium },
+	TypographyVariantFontSemibold: func(t TypographyScale) lipgloss.Style { return t.FontSemibold },
+	TypographyVariantFontBold:     func(t TypographyScale) lipgloss.Style { return t.FontBold },
+}
+
+// PaletteFamily enumerates the available named colour families.
 type PaletteFamily int
 
 const (
+	// PaletteSlate contains neutral slate shades.
 	PaletteSlate PaletteFamily = iota
+	// PaletteBlue contains blue shades.
 	PaletteBlue
+	// PaletteGreen contains green shades.
 	PaletteGreen
+	// PaletteRed contains red shades.
 	PaletteRed
+	// PaletteYellow contains yellow shades.
 	PaletteYellow
+	// PalettePurple contains purple shades.
 	PalettePurple
+	// PaletteCyan contains cyan shades.
 	PaletteCyan
 )
 
+// PaletteShade enumerates shade indices for Tailwind-style palettes.
 type PaletteShade int
 
 const (
+	// PaletteShade50 represents the lightest shade.
 	PaletteShade50 PaletteShade = iota
+	// PaletteShade100 represents a very light shade.
 	PaletteShade100
+	// PaletteShade200 represents a light shade.
 	PaletteShade200
+	// PaletteShade300 represents a medium-light shade.
 	PaletteShade300
+	// PaletteShade400 represents a medium shade.
 	PaletteShade400
+	// PaletteShade500 represents a medium-dark shade.
 	PaletteShade500
+	// PaletteShade600 represents a dark shade.
 	PaletteShade600
+	// PaletteShade700 represents a darker shade.
 	PaletteShade700
+	// PaletteShade800 represents a very dark shade.
 	PaletteShade800
+	// PaletteShade900 represents the darkest shade.
 	PaletteShade900
 )
 
+// BorderVariant enumerates reusable border styles.
 type BorderVariant int
 
 const (
+	// BorderVariantNormal applies the standard border style.
 	BorderVariantNormal BorderVariant = iota
+	// BorderVariantThick applies a thicker border.
 	BorderVariantThick
+	// BorderVariantRounded applies rounded borders.
 	BorderVariantRounded
+	// BorderVariantDouble applies a double-line border.
 	BorderVariantDouble
 )
 
+// ButtonVariant enumerates semantic button styles.
 type ButtonVariant int
 
 const (
+	// ButtonVariantPrimary renders a primary action button.
 	ButtonVariantPrimary ButtonVariant = iota
+	// ButtonVariantSecondary renders a secondary action button.
 	ButtonVariantSecondary
+	// ButtonVariantSuccess renders a success button.
 	ButtonVariantSuccess
+	// ButtonVariantError renders an error/destructive button.
 	ButtonVariantError
+	// ButtonVariantWarning renders a warning button.
 	ButtonVariantWarning
+	// ButtonVariantInfo renders an informational button.
 	ButtonVariantInfo
+	// ButtonVariantMuted renders a muted/tertiary button.
 	ButtonVariantMuted
 )
 
+// AlertVariant enumerates semantic alert styles.
 type AlertVariant int
 
 const (
+	// AlertVariantSuccess renders a success alert.
 	AlertVariantSuccess AlertVariant = iota
+	// AlertVariantError renders an error alert.
 	AlertVariantError
+	// AlertVariantWarning renders a warning alert.
 	AlertVariantWarning
+	// AlertVariantInfo renders an informational alert.
 	AlertVariantInfo
 )
 
+// InputState describes the visual state for form inputs.
 type InputState int
 
 const (
+	// InputStateDefault renders the input in its default state.
 	InputStateDefault InputState = iota
+	// InputStateFocus renders the input with focus styling.
 	InputStateFocus
 )
 
@@ -274,6 +365,7 @@ func (t Theme) Normalize() Theme {
 	if t.Variants == nil {
 		t.Variants = NewVariantRegistry()
 	}
+
 	return t
 }
 
@@ -281,9 +373,11 @@ func normalizeSpacingConfig(cfg SpacingConfig) SpacingConfig {
 	if spacingTableIsZero(cfg.Padding) {
 		cfg.Padding = defaultSpacingTable()
 	}
+
 	if spacingTableIsZero(cfg.Margin) {
 		cfg.Margin = defaultSpacingTable()
 	}
+
 	return cfg
 }
 
@@ -293,6 +387,7 @@ func spacingTableIsZero(table spacingTable) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -684,10 +779,12 @@ func LightTheme() Theme {
 // Returns an empty string and false if the shade is invalid.
 func PaletteColor(theme Theme, family PaletteFamily, shade PaletteShade) (lipgloss.Color, bool) {
 	shades := theme.Colors.Shades(family)
+
 	color := shades.Color(shade)
 	if color == "" {
 		return "", false
 	}
+
 	return color, true
 }
 
@@ -722,50 +819,17 @@ func spacingLookup(table spacingTable, size SpacingSize) int {
 	if index < 0 || index >= len(table) {
 		index = int(SpacingSizeMedium)
 	}
+
 	return table[index]
 }
 
 // TypographyStyle returns the specified typography style from the given theme.
 func TypographyStyle(theme Theme, variant TypographyVariant) lipgloss.Style {
-	typo := theme.Typography
-	switch variant {
-	case TypographyVariantTitle:
-		return typo.Title
-	case TypographyVariantSubtitle:
-		return typo.Subtitle
-	case TypographyVariantBody:
-		return typo.Body
-	case TypographyVariantCode:
-		return typo.Code
-	case TypographyVariantEmphasis:
-		return typo.Emphasis
-	case TypographyVariantTextXs:
-		return typo.TextXs
-	case TypographyVariantTextSm:
-		return typo.TextSm
-	case TypographyVariantTextBase:
-		return typo.TextBase
-	case TypographyVariantTextLg:
-		return typo.TextLg
-	case TypographyVariantTextXl:
-		return typo.TextXl
-	case TypographyVariantText2Xl:
-		return typo.Text2Xl
-	case TypographyVariantText3Xl:
-		return typo.Text3Xl
-	case TypographyVariantFontLight:
-		return typo.FontLight
-	case TypographyVariantFontNormal:
-		return typo.FontNormal
-	case TypographyVariantFontMedium:
-		return typo.FontMedium
-	case TypographyVariantFontSemibold:
-		return typo.FontSemibold
-	case TypographyVariantFontBold:
-		return typo.FontBold
-	default:
-		return typo.Base
+	if getter, ok := typographyVariantSelect[variant]; ok {
+		return getter(theme.Typography)
 	}
+
+	return theme.Typography.Base
 }
 
 // InputStyle returns the input style for the given state.
@@ -774,6 +838,7 @@ func InputStyle(theme Theme, state InputState) lipgloss.Style {
 	if state == InputStateFocus {
 		return input.Focus
 	}
+
 	return input.Default
 }
 
@@ -845,6 +910,7 @@ func Border(variant BorderVariant) StyleFunc {
 	}
 }
 
+// Padding applies uniform padding using the theme spacing scale.
 func Padding(size SpacingSize) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		value := spacingLookup(theme.Spacing.Padding, size)
@@ -852,6 +918,7 @@ func Padding(size SpacingSize) StyleFunc {
 	}
 }
 
+// PaddingX applies horizontal padding using the theme spacing scale.
 func PaddingX(size SpacingSize) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		value := spacingLookup(theme.Spacing.Padding, size)
@@ -859,6 +926,7 @@ func PaddingX(size SpacingSize) StyleFunc {
 	}
 }
 
+// PaddingY applies vertical padding using the theme spacing scale.
 func PaddingY(size SpacingSize) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		value := spacingLookup(theme.Spacing.Padding, size)
@@ -866,6 +934,7 @@ func PaddingY(size SpacingSize) StyleFunc {
 	}
 }
 
+// Margin applies uniform margin using the theme spacing scale.
 func Margin(size SpacingSize) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		value := spacingLookup(theme.Spacing.Margin, size)
@@ -873,6 +942,7 @@ func Margin(size SpacingSize) StyleFunc {
 	}
 }
 
+// MarginX applies horizontal margin using the theme spacing scale.
 func MarginX(size SpacingSize) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		value := spacingLookup(theme.Spacing.Margin, size)
@@ -880,6 +950,7 @@ func MarginX(size SpacingSize) StyleFunc {
 	}
 }
 
+// MarginY applies vertical margin using the theme spacing scale.
 func MarginY(size SpacingSize) StyleFunc {
 	return func(base lipgloss.Style, theme Theme) lipgloss.Style {
 		value := spacingLookup(theme.Spacing.Margin, size)
@@ -896,6 +967,7 @@ func Typography(variant TypographyVariant) StyleFunc {
 
 // Predefined style bundles for common component patterns
 
+// CardBaseStyle defines the default styling appliers for a card component.
 func CardBaseStyle() []StyleFunc {
 	return []StyleFunc{
 		Background(PaletteSurface),
@@ -905,6 +977,7 @@ func CardBaseStyle() []StyleFunc {
 	}
 }
 
+// ButtonPrimaryStyle returns styling appliers for a primary button variant.
 func ButtonPrimaryStyle() []StyleFunc {
 	return []StyleFunc{
 		Background(PalettePrimary),
@@ -915,6 +988,7 @@ func ButtonPrimaryStyle() []StyleFunc {
 	}
 }
 
+// ButtonSecondaryStyle returns styling appliers for a secondary button variant.
 func ButtonSecondaryStyle() []StyleFunc {
 	return []StyleFunc{
 		Background(PaletteSecondary),
@@ -925,6 +999,7 @@ func ButtonSecondaryStyle() []StyleFunc {
 	}
 }
 
+// AlertSuccessStyle styles success alert elements.
 func AlertSuccessStyle() []StyleFunc {
 	return []StyleFunc{
 		Background(PaletteSuccess),
@@ -933,6 +1008,7 @@ func AlertSuccessStyle() []StyleFunc {
 	}
 }
 
+// AlertErrorStyle styles error alert elements.
 func AlertErrorStyle() []StyleFunc {
 	return []StyleFunc{
 		Background(PaletteDanger),
@@ -941,6 +1017,7 @@ func AlertErrorStyle() []StyleFunc {
 	}
 }
 
+// AlertWarningStyle styles warning alert elements.
 func AlertWarningStyle() []StyleFunc {
 	return []StyleFunc{
 		Background(PaletteWarning),
@@ -949,6 +1026,7 @@ func AlertWarningStyle() []StyleFunc {
 	}
 }
 
+// AlertInfoStyle styles informational alert elements.
 func AlertInfoStyle() []StyleFunc {
 	return []StyleFunc{
 		Background(PaletteInfo),
@@ -964,6 +1042,7 @@ func BackgroundPalette(theme Theme, family PaletteFamily, shade PaletteShade) li
 	if color, ok := PaletteColor(theme, family, shade); ok {
 		return lipgloss.NewStyle().Background(color)
 	}
+
 	return lipgloss.NewStyle()
 }
 
@@ -972,5 +1051,6 @@ func TextPalette(theme Theme, family PaletteFamily, shade PaletteShade) lipgloss
 	if color, ok := PaletteColor(theme, family, shade); ok {
 		return lipgloss.NewStyle().Foreground(color)
 	}
+
 	return lipgloss.NewStyle()
 }

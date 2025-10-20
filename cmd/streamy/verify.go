@@ -1,21 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
-	"github.com/alexisbeaulieu97/streamy/internal/logger"
-	"github.com/alexisbeaulieu97/streamy/internal/model"
-	streamyerrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	"github.com/alexisbeaulieu97/streamy/internal/pipelineconv"
 )
 
 type verifyOptions struct {
@@ -25,12 +23,18 @@ type verifyOptions struct {
 	Timeout    time.Duration
 }
 
+type outputWriter interface {
+	Printf(format string, args ...interface{})
+	Println(args ...interface{})
+}
+
 var (
-	exitFunc                         = os.Exit
-	stderrWriter           io.Writer = os.Stderr
-	printTableOutputFunc             = printTableOutput
-	printVerboseOutputFunc           = printVerboseOutput
-	printJSONOutputFunc              = printJSONOutput
+	exitFunc                            = os.Exit
+	stderrWriter           io.Writer    = os.Stderr
+	stdoutWriter           outputWriter = newStdoutPrinter(os.Stdout)
+	printTableOutputFunc                = printTableOutput
+	printVerboseOutputFunc              = printVerboseOutput
+	printJSONOutputFunc                 = printJSONOutput
 )
 
 func newVerifyCmd(root *rootFlags, app *AppContext) *cobra.Command {
@@ -40,141 +44,122 @@ func newVerifyCmd(root *rootFlags, app *AppContext) *cobra.Command {
 		Use:   "verify <config-file>",
 		Short: "Verify system state matches configuration without making changes",
 		Long: `Verify performs read-only checks to determine if the system state matches
-the declared configuration. Returns exit code 0 if all steps are satisfied,
-exit code 1 if any changes are needed.`,
+		the declared configuration. Returns exit code 0 if all steps are satisfied,
+		exit code 1 if any changes are needed.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ConfigPath = args[0]
-			opts.Verbose = root.verbose
 
-			return runVerify(app, opts)
+			opts.Verbose = root.verbose
+			if opts.Timeout <= 0 {
+				opts.Timeout = root.timeout
+			}
+
+			return runVerify(cmd.Context(), app, opts)
 		},
 	}
 
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output results in JSON format")
-	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 30*time.Second, "Default timeout per step; accepts Go duration strings (e.g. 60s)")
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 0, "Maximum duration for the verify command; defaults to root timeout")
 
 	return cmd
 }
 
-func runVerify(app *AppContext, opts verifyOptions) error {
-	exitCode, err := runVerifyInternal(app, opts)
+func runVerify(ctx context.Context, app *AppContext, opts verifyOptions) error {
+	var (
+		execCtx context.Context
+		cancel  context.CancelFunc
+	)
+	if opts.Timeout > 0 {
+		execCtx, cancel = context.WithTimeout(ctx, opts.Timeout)
+	} else {
+		execCtx, cancel = context.WithCancel(ctx)
+	}
+	defer cancel()
+
+	exitCode, err := runVerifyInternal(execCtx, app, opts)
 	if err != nil {
 		return err
 	}
+
 	exitFunc(exitCode)
+
 	return nil
 }
 
-func runVerifyInternal(app *AppContext, opts verifyOptions) (int, error) {
-	service := app.Pipeline
+func runVerifyInternal(ctx context.Context, app *AppContext, opts verifyOptions) (int, error) {
+	if ctx == nil {
+		return 3, fmt.Errorf("context is required")
+	}
 
-	prepared, err := service.Prepare(opts.ConfigPath)
+	preparedPipeline, _, err := app.PrepareUseCase.Prepare(ctx, opts.ConfigPath)
 	if err != nil {
-		var parseErr *streamyerrors.ParseError
-		var validationErr *streamyerrors.ValidationError
-		if errors.As(err, &parseErr) {
-			_, _ = fmt.Fprintf(stderrWriter, "Error parsing configuration: %v\n", err)
-			return 2, nil
-		}
-		if errors.As(err, &validationErr) {
-			_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
-			return 2, nil
-		}
-		return 3, err
+		return handleVerifyPrepareError(err)
 	}
 
-	level := "info"
-	if opts.Verbose {
-		level = "debug"
-	}
-
-	log, err := logger.New(logger.Options{Level: level, HumanReadable: !opts.JSON})
-	if err != nil {
-		_, _ = fmt.Fprintf(stderrWriter, "Error creating logger: %v\n", err)
-		return 3, nil
-	}
-
-	ctx := context.Background()
-	perStepTimeout := opts.Timeout
-	if perStepTimeout > 0 {
-		totalTimeout := perStepTimeout * time.Duration(len(prepared.Config.Steps))
-		if len(prepared.Config.Steps) == 0 {
-			totalTimeout = perStepTimeout
-		}
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, totalTimeout)
-		defer cancel()
-	}
-
-	log.WithFields(map[string]any{
-		"config": opts.ConfigPath,
-		"steps":  len(prepared.Config.Steps),
-	}).Info("Starting verification")
-
-	outcome, verifyErr := service.Verify(ctx, pipeline.VerifyRequest{
-		Prepared:       prepared,
-		LoggerOptions:  logger.Options{Level: level, HumanReadable: !opts.JSON},
-		Verbose:        opts.Verbose,
-		PerStepTimeout: perStepTimeout,
-		DefaultTimeout: perStepTimeout,
-	})
-
+	verifiedPipeline, results, verifyErr := app.VerifyUseCase.Verify(ctx, opts.ConfigPath)
 	if verifyErr != nil {
-		var validationErr *streamyerrors.ValidationError
-		if errors.As(verifyErr, &validationErr) {
-			_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", verifyErr)
-			return 2, nil
-		}
-		_, _ = fmt.Fprintf(stderrWriter, "Verification error: %v\n", verifyErr)
-		return 3, nil
+		return handleVerifyExecutionError(verifyErr)
 	}
 
-	if outcome == nil || outcome.Summary == nil {
-		_, _ = fmt.Fprintf(stderrWriter, "Verification error: no summary produced\n")
-		return 3, nil
+	if verifiedPipeline == nil {
+		verifiedPipeline = preparedPipeline
 	}
 
-	summary := outcome.Summary
+	summary := pipelineconv.BuildVerificationSummary(verifiedPipeline, results)
 
-	log.WithFields(map[string]any{
-		"total":     summary.TotalSteps,
-		"satisfied": summary.Satisfied,
-		"missing":   summary.Missing,
-		"drifted":   summary.Drifted,
-		"blocked":   summary.Blocked,
-		"unknown":   summary.Unknown,
-		"duration":  summary.Duration.String(),
-	}).Info("Verification complete")
-
-	if opts.JSON {
+	switch {
+	case opts.JSON:
 		if err := printJSONOutputFunc(summary, opts.ConfigPath); err != nil {
-			log.Error(err, "Failed to generate JSON output")
+			_, _ = fmt.Fprintf(stderrWriter, "Failed to generate JSON output: %v\n", err)
 			return 3, nil
 		}
-	} else if opts.Verbose {
+	case opts.Verbose:
 		printVerboseOutputFunc(summary)
-	} else {
+	default:
 		printTableOutputFunc(summary)
 	}
 
 	return summary.ExitCode(), nil
 }
 
-func printTableOutput(summary *model.VerificationSummary) {
-	// Print header
-	fmt.Println("\nVerification Results:")
-	fmt.Println(strings.Repeat("=", 80))
-	fmt.Printf("%-40s %-12s %-8s %s\n", "Step ID", "Status", "Duration", "Message")
-	fmt.Println(strings.Repeat("-", 80))
+func handleVerifyPrepareError(err error) (int, error) {
+	switch {
+	case pipelineconv.IsParseError(err):
+		_, _ = fmt.Fprintf(stderrWriter, "Error parsing configuration: %v\n", err)
+		return 2, nil
+	case pipelineconv.IsConfigError(err):
+		_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
+		return 2, nil
+	default:
+		_, _ = fmt.Fprintf(stderrWriter, "Error preparing verification: %v\n", err)
+		return 3, nil
+	}
+}
 
-	// Print each result
+func handleVerifyExecutionError(err error) (int, error) {
+	if pipelineconv.IsConfigError(err) {
+		_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
+		return 2, nil
+	}
+
+	_, _ = fmt.Fprintf(stderrWriter, "Verification error: %v\n", err)
+
+	return 3, nil
+}
+
+func printTableOutput(summary *pipelineconv.VerificationSummary) {
+	stdoutWriter.Println("\nVerification Results:")
+	stdoutWriter.Println(strings.Repeat("=", 80))
+	stdoutWriter.Printf("%-40s %-12s %-8s %s\n", "Step ID", "Status", "Duration", "Message")
+	stdoutWriter.Println(strings.Repeat("-", 80))
+
 	for _, result := range summary.Results {
 		symbol := getStatusSymbol(result.Status)
 		duration := fmt.Sprintf("%.2fs", result.Duration.Seconds())
 		message := truncateString(result.Message, 40)
 
-		fmt.Printf("%-40s %-12s %-8s %s\n",
+		stdoutWriter.Printf("%-40s %-12s %-8s %s\n",
 			truncateString(result.StepID, 40),
 			fmt.Sprintf("%s %s", symbol, result.Status),
 			duration,
@@ -182,52 +167,56 @@ func printTableOutput(summary *model.VerificationSummary) {
 		)
 	}
 
-	// Print summary
-	fmt.Println(strings.Repeat("=", 80))
-	fmt.Printf("\nSummary:\n")
-	fmt.Printf("  Total:     %d\n", summary.TotalSteps)
-	fmt.Printf("  ✔ Satisfied: %d\n", summary.Satisfied)
-	fmt.Printf("  ✖ Missing:   %d\n", summary.Missing)
-	fmt.Printf("  ⚠ Drifted:   %d\n", summary.Drifted)
-	fmt.Printf("  🚫 Blocked:  %d\n", summary.Blocked)
-	fmt.Printf("  ? Unknown:  %d\n", summary.Unknown)
-	fmt.Printf("  Duration:  %s\n", summary.Duration.String())
+	stdoutWriter.Println(strings.Repeat("=", 80))
+	stdoutWriter.Println("\nSummary:")
+	stdoutWriter.Printf("  Total:     %d\n", summary.TotalSteps)
+	stdoutWriter.Printf("  ✔ Satisfied: %d\n", summary.Satisfied)
+	stdoutWriter.Printf("  ✖ Missing:   %d\n", summary.Missing)
+	stdoutWriter.Printf("  ⚠ Drifted:   %d\n", summary.Drifted)
+	stdoutWriter.Printf("  🚫 Blocked:  %d\n", summary.Blocked)
+	stdoutWriter.Printf("  ? Unknown:  %d\n", summary.Unknown)
+	stdoutWriter.Printf("  Duration:  %s\n", summary.Duration.String())
 
 	if summary.AllSatisfied() {
-		fmt.Println("\n✅ All steps satisfied - no changes needed")
+		stdoutWriter.Println("\n✅ All steps satisfied - no changes needed")
 	} else {
-		fmt.Println("\n❌ Changes needed - run 'streamy apply' to fix")
+		stdoutWriter.Println("\n❌ Changes needed - run 'streamy apply' to fix")
 	}
 }
 
-func printVerboseOutput(summary *model.VerificationSummary) {
+func printVerboseOutput(summary *pipelineconv.VerificationSummary) {
 	printTableOutput(summary)
 
-	// Print detailed information for drifted/blocked steps
 	hasDetails := false
+
 	for _, result := range summary.Results {
-		if result.Status == model.StatusDrifted && result.Details != "" {
+		if result.Status == pipelineconv.VerificationDrifted && result.Details != "" {
 			if !hasDetails {
-				fmt.Println("\nDetailed Diff Output:")
-				fmt.Println(strings.Repeat("=", 80))
+				stdoutWriter.Println("\nDetailed Diff Output:")
+				stdoutWriter.Println(strings.Repeat("=", 80))
+
 				hasDetails = true
 			}
-			fmt.Printf("\n--- Step: %s ---\n", result.StepID)
-			fmt.Println(result.Details)
+
+			stdoutWriter.Printf("\n--- Step: %s ---\n", result.StepID)
+			stdoutWriter.Println(result.Details)
 		}
-		if result.Status == model.StatusBlocked && result.Error != nil {
+
+		if result.Status == pipelineconv.VerificationBlocked && result.Error != nil {
 			if !hasDetails {
-				fmt.Println("\nError Details:")
-				fmt.Println(strings.Repeat("=", 80))
+				stdoutWriter.Println("\nError Details:")
+				stdoutWriter.Println(strings.Repeat("=", 80))
+
 				hasDetails = true
 			}
-			fmt.Printf("\n--- Step: %s ---\n", result.StepID)
-			fmt.Printf("Error: %v\n", result.Error)
+
+			stdoutWriter.Printf("\n--- Step: %s ---\n", result.StepID)
+			stdoutWriter.Printf("Error: %v\n", result.Error)
 		}
 	}
 }
 
-func printJSONOutput(summary *model.VerificationSummary, configPath string) error {
+func printJSONOutput(summary *pipelineconv.VerificationSummary, configPath string) error {
 	// Convert to JSON-friendly format
 	type JSONResult struct {
 		StepID    string  `json:"step_id"`
@@ -281,29 +270,38 @@ func printJSONOutput(summary *model.VerificationSummary, configPath string) erro
 		if result.Error != nil {
 			jsonResult.Error = result.Error.Error()
 		}
+
 		jsonOutput.Results[i] = jsonResult
 	}
 
-	encoder := json.NewEncoder(os.Stdout)
+	writer, ok := stdoutWriter.(*stdoutPrinter)
+
+	var out io.Writer = os.Stdout
+	if ok {
+		out = writer.writer()
+	}
+
+	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(jsonOutput); err != nil {
-		return err
+		return fmt.Errorf("encode verification JSON output: %w", err)
 	}
+
 	return nil
 }
 
-func getStatusSymbol(status model.VerificationStatus) string {
+func getStatusSymbol(status pipelineconv.VerificationStatus) string {
 	switch status {
-	case model.StatusSatisfied:
+	case pipelineconv.VerificationSatisfied:
 		return "✔"
-	case model.StatusMissing:
+	case pipelineconv.VerificationMissing:
 		return "✖"
-	case model.StatusDrifted:
+	case pipelineconv.VerificationDrifted:
 		return "⚠"
-	case model.StatusBlocked:
+	case pipelineconv.VerificationBlocked:
 		return "🚫"
-	case model.StatusUnknown:
+	case pipelineconv.VerificationUnknown:
 		return "?"
 	default:
 		return "?"
@@ -314,5 +312,36 @@ func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
+
 	return s[:maxLen-3] + "..."
+}
+
+type stdoutPrinter struct {
+	mu sync.Mutex
+	w  io.Writer
+	bw *bufio.Writer
+}
+
+func newStdoutPrinter(w io.Writer) *stdoutPrinter {
+	return &stdoutPrinter{w: w, bw: bufio.NewWriter(w)}
+}
+
+func (p *stdoutPrinter) Printf(format string, args ...interface{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, _ = fmt.Fprintf(p.bw, format, args...)
+	_ = p.bw.Flush()
+}
+
+func (p *stdoutPrinter) Println(args ...interface{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, _ = fmt.Fprintln(p.bw, args...)
+	_ = p.bw.Flush()
+}
+
+func (p *stdoutPrinter) writer() io.Writer {
+	return p.w
 }

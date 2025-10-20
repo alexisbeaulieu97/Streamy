@@ -1,0 +1,108 @@
+package pipeline
+
+import (
+	"fmt"
+	"regexp"
+	"sort"
+)
+
+var stepIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// StepType enumerates supported pipeline step types.
+type StepType string
+
+const (
+	// StepTypePackage installs or removes system packages.
+	StepTypePackage StepType = "package"
+	// StepTypeRepo manages repository checkouts.
+	StepTypeRepo StepType = "repo"
+	// StepTypeSymlink creates or updates symbolic links.
+	StepTypeSymlink StepType = "symlink"
+	// StepTypeCopy copies files or directories to the target machine.
+	StepTypeCopy StepType = "copy"
+	// StepTypeCommand executes shell commands.
+	StepTypeCommand StepType = "command"
+	// StepTypeTemplate renders templated configuration files.
+	StepTypeTemplate StepType = "template"
+	// StepTypeLineInFile enforces specific lines in files.
+	StepTypeLineInFile StepType = "line_in_file"
+)
+
+var validStepTypes = []StepType{
+	StepTypePackage,
+	StepTypeRepo,
+	StepTypeSymlink,
+	StepTypeCopy,
+	StepTypeCommand,
+	StepTypeTemplate,
+	StepTypeLineInFile,
+}
+
+// Step represents a single unit of work in a pipeline.
+type Step struct {
+	ID            string
+	Name          string
+	Type          StepType
+	DependsOn     []string
+	Enabled       bool
+	VerifyTimeout int
+	Config        map[string]interface{}
+}
+
+// Validate ensures the step satisfies all business rules.
+func (s Step) Validate() error {
+	if s.ID == "" {
+		return NewMissingFieldError("id")
+	}
+
+	if !stepIDPattern.MatchString(s.ID) {
+		return NewValidationError("step id must match ^[a-zA-Z0-9_-]+$", map[string]interface{}{"step_id": s.ID})
+	}
+
+	if s.Type == "" {
+		return NewMissingFieldError("type")
+	}
+
+	if !isValidStepType(s.Type) {
+		return NewTypeError(fmt.Sprintf("one of %v", validStepTypes), string(s.Type)).WithContext(map[string]interface{}{"step_id": s.ID})
+	}
+
+	if s.VerifyTimeout < 0 {
+		return NewValidationError("verify timeout must be non-negative", map[string]interface{}{"step_id": s.ID})
+	}
+
+	if s.Enabled && len(s.Config) == 0 {
+		return NewValidationError("enabled step requires configuration", map[string]interface{}{"step_id": s.ID})
+	}
+
+	return nil
+}
+
+// HasDependency returns true if the step depends on the provided identifier.
+func (s Step) HasDependency(id string) bool {
+	for _, dep := range s.DependsOn {
+		if dep == id {
+			return true
+		}
+	}
+
+	return false
+}
+
+// SortedDependencies returns a sorted copy of the dependency list.
+func (s Step) SortedDependencies() []string {
+	deps := append([]string(nil), s.DependsOn...)
+	sort.Strings(deps)
+
+	return deps
+}
+
+func isValidStepType(st StepType) bool {
+	for _, candidate := range validStepTypes {
+		if candidate == st {
+			return true
+		}
+	}
+
+	return false
+}

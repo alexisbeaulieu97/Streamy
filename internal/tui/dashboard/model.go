@@ -8,17 +8,18 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
-	pipelineapp "github.com/alexisbeaulieu97/streamy/internal/app/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
 
 // Model is the main dashboard model
 type Model struct {
 	// Core data
-	pipelines   []registry.Pipeline
-	registry    *registry.Registry
-	statusCache *registry.StatusCache
-	service     *pipelineapp.Service
+	pipelines       []registry.Pipeline
+	registry        *registry.Registry
+	statusCache     *registry.StatusCache
+	service         PipelineService
+	stepProgress    map[string]StepProgress
+	progressRetries map[string]int
 
 	// UI state
 	viewMode     ViewMode
@@ -65,7 +66,7 @@ type Operation struct {
 }
 
 // NewModel creates a new dashboard model
-func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *registry.StatusCache, svc *pipelineapp.Service) Model {
+func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *registry.StatusCache, svc PipelineService) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = spinnerStyle
@@ -75,6 +76,8 @@ func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *regi
 		registry:        reg,
 		statusCache:     cache,
 		service:         svc,
+		stepProgress:    make(map[string]StepProgress),
+		progressRetries: make(map[string]int),
 		viewMode:        ViewList,
 		cursor:          0,
 		loading:         make(map[string]bool),
@@ -105,6 +108,14 @@ func NewModel(pipelines []registry.Pipeline, reg *registry.Registry, cache *regi
 	return m
 }
 
+// StepProgress represents latest step status for a pipeline.
+type StepProgress struct {
+	StepID   string
+	Status   string
+	Message  string
+	Recorded time.Time
+}
+
 // Init initializes the model and returns initial commands
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
@@ -116,7 +127,31 @@ func (m Model) Init() tea.Cmd {
 		cmds = append(cmds, loadInitialStatusCmd(m.pipelines, m.statusCache))
 	}
 
+	if progressCmd := m.nextProgressCmd(""); progressCmd != nil {
+		cmds = append(cmds, progressCmd)
+	}
+
 	return tea.Batch(cmds...)
+}
+
+func (m Model) nextProgressCmd(pipelineID string) tea.Cmd {
+	if m.service == nil {
+		return nil
+	}
+
+	base := m.service.StepProgressCmd()
+	if base == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		msg := base()
+		if _, ok := msg.(StepProgressTimeoutMsg); ok {
+			return StepProgressTimeoutMsg{PipelineID: pipelineID}
+		}
+
+		return msg
+	}
 }
 
 // Helper Methods
@@ -150,6 +185,7 @@ func (m *Model) CountByStatus() map[registry.PipelineStatus]int {
 	for _, p := range m.pipelines {
 		counts[p.Status]++
 	}
+
 	return counts
 }
 
@@ -158,6 +194,7 @@ func (m *Model) GetSelectedPipeline() (registry.Pipeline, bool) {
 	if m.cursor < 0 || m.cursor >= len(m.pipelines) {
 		return registry.Pipeline{}, false
 	}
+
 	return m.pipelines[m.cursor], true
 }
 
@@ -168,6 +205,7 @@ func (m *Model) GetPipelineByID(id string) (registry.Pipeline, int, bool) {
 			return p, i, true
 		}
 	}
+
 	return registry.Pipeline{}, -1, false
 }
 
@@ -177,6 +215,7 @@ func (m *Model) UpdatePipelineStatus(id string, status registry.PipelineStatus, 
 		if m.pipelines[i].ID == id {
 			m.pipelines[i].Status = status
 			m.pipelines[i].LastRun = lastRun
+
 			break
 		}
 	}
@@ -187,6 +226,7 @@ func (m *Model) MoveCursorUp() {
 	if len(m.pipelines) == 0 {
 		return
 	}
+
 	m.cursor--
 	if m.cursor < 0 {
 		m.cursor = len(m.pipelines) - 1
@@ -198,6 +238,7 @@ func (m *Model) MoveCursorDown() {
 	if len(m.pipelines) == 0 {
 		return
 	}
+
 	m.cursor++
 	if m.cursor >= len(m.pipelines) {
 		m.cursor = 0

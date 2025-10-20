@@ -1,3 +1,4 @@
+// Package tui contains the shared TUI message model used across screens.
 package tui
 
 import (
@@ -5,9 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/alexisbeaulieu97/streamy/internal/config"
-	"github.com/alexisbeaulieu97/streamy/internal/engine"
-	"github.com/alexisbeaulieu97/streamy/internal/model"
+	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
 )
 
@@ -19,7 +18,8 @@ type StepStartMsg struct {
 
 // StepCompleteMsg reports that a step has finished execution.
 type StepCompleteMsg struct {
-	Result model.StepResult
+	StepID string
+	State  components.StepState
 }
 
 // ValidationMsg carries the outcome of a validation.
@@ -32,9 +32,9 @@ type tickMsg struct{}
 
 // Model contains the Bubbletea state for Streamy's execution TUI.
 type Model struct {
-	cfg            *config.Config
-	plan           *engine.ExecutionPlan
-	steps          map[string]model.StepResult
+	pipeline       *pipeline.Pipeline
+	plan           *pipeline.ExecutionPlan
+	steps          map[string]components.StepState
 	order          []string
 	validations    []components.ValidationStatus
 	total          int
@@ -44,12 +44,12 @@ type Model struct {
 	nonInteractive bool
 }
 
-// NewModel constructs a new TUI model for the given configuration and plan.
-func NewModel(cfg *config.Config, plan *engine.ExecutionPlan, nonInteractive bool) Model {
+// NewModel constructs a new TUI model for the given pipeline and plan.
+func NewModel(pip *pipeline.Pipeline, plan *pipeline.ExecutionPlan, nonInteractive bool) Model {
 	m := Model{
-		cfg:            cfg,
+		pipeline:       pip,
 		plan:           plan,
-		steps:          make(map[string]model.StepResult),
+		steps:          make(map[string]components.StepState),
 		order:          make([]string, 0),
 		validations:    make([]components.ValidationStatus, 0),
 		nonInteractive: nonInteractive,
@@ -59,7 +59,7 @@ func NewModel(cfg *config.Config, plan *engine.ExecutionPlan, nonInteractive boo
 		for _, level := range plan.Levels {
 			for _, id := range level.StepIDs {
 				if _, exists := m.steps[id]; !exists {
-					m.steps[id] = model.StepResult{StepID: id, Status: model.StatusPending}
+					m.steps[id] = components.StepState{Status: components.StepStatusPending}
 					m.order = append(m.order, id)
 					m.total++
 				}
@@ -94,8 +94,9 @@ func (m *Model) ensureStep(id string) {
 	if id == "" {
 		return
 	}
+
 	if _, exists := m.steps[id]; !exists {
-		m.steps[id] = model.StepResult{StepID: id, Status: model.StatusPending}
+		m.steps[id] = components.StepState{Status: components.StepStatusPending}
 		m.order = append(m.order, id)
 		m.total++
 	}

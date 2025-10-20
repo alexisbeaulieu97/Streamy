@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestStatusCacheNew(t *testing.T) {
@@ -30,7 +30,7 @@ func TestStatusCacheLoadExisting(t *testing.T) {
 	// Copy test fixture
 	testData, err := os.ReadFile("../../testdata/cache/populated-cache.json")
 	require.NoError(t, err)
-	err = os.WriteFile(cachePath, testData, 0644)
+	err = os.WriteFile(cachePath, testData, 0o644)
 	require.NoError(t, err)
 
 	cache, err := NewStatusCache(cachePath)
@@ -171,6 +171,7 @@ func TestStatusCacheConcurrency(t *testing.T) {
 			}
 			_ = cache.Set("pipeline-1", status)
 		}
+
 		done <- true
 	}()
 
@@ -179,6 +180,7 @@ func TestStatusCacheConcurrency(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			cache.Get("pipeline-1")
 		}
+
 		done <- true
 	}()
 

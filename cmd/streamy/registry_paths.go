@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -8,7 +9,7 @@ import (
 func defaultRegistryPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("determine user home directory: %w", err)
 	}
 
 	return filepath.Join(home, ".streamy", "registry.json"), nil
@@ -17,7 +18,7 @@ func defaultRegistryPath() (string, error) {
 func defaultStatusCachePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("determine user home directory: %w", err)
 	}
 
 	return filepath.Join(home, ".streamy", "status-cache.json"), nil

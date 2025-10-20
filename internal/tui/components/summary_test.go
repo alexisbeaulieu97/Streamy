@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestNewSummary(t *testing.T) {
@@ -12,6 +12,7 @@ func TestNewSummary(t *testing.T) {
 
 	t.Run("creates summary with data", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     10,
 			Completed: 5,
@@ -27,6 +28,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders empty summary", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     0,
 			Completed: 0,
@@ -39,6 +41,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders steps progress", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     10,
 			Completed: 5,
@@ -51,6 +54,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders successful completion", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     10,
 			Completed: 10,
@@ -64,6 +68,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders partial completion when finished", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     10,
 			Completed: 7,
@@ -77,6 +82,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders cancelled execution", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     10,
 			Completed: 3,
@@ -90,6 +96,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders passing validations", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     5,
 			Completed: 5,
@@ -108,6 +115,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders failing validations", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     5,
 			Completed: 5,
@@ -126,6 +134,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders mixed validations", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     5,
 			Completed: 5,
@@ -144,6 +153,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders validations without steps", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     0,
 			Completed: 0,
@@ -160,6 +170,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("renders empty validations list", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:       5,
 			Completed:   5,
@@ -173,6 +184,7 @@ func TestSummaryView(t *testing.T) {
 
 	t.Run("multiline output format", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     10,
 			Completed: 10,
@@ -193,6 +205,7 @@ func TestSummaryViewEdgeCases(t *testing.T) {
 
 	t.Run("cancelled execution shows before finished message", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     10,
 			Completed: 5,
@@ -209,6 +222,7 @@ func TestSummaryViewEdgeCases(t *testing.T) {
 
 	t.Run("zero completed with finished flag", func(t *testing.T) {
 		t.Parallel()
+
 		data := SummaryData{
 			Total:     5,
 			Completed: 0,

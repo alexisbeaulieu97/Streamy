@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
@@ -138,7 +138,7 @@ func TestView(t *testing.T) {
 
 	// Test confirm view
 	m.viewMode = ViewConfirm
-	m.confirmAction = "apply"
+	m.confirmAction = actionApply
 	view = m.View()
 	assert.NotEmpty(t, view)
 	assert.Contains(t, view, "Apply Changes")

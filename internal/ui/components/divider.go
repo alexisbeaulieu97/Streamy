@@ -71,6 +71,7 @@ func (d *Divider) ViewWithContext(ctx RenderContext) string {
 		for i := range lines {
 			lines[i] = d.char
 		}
+
 		content = lipgloss.JoinVertical(lipgloss.Left, lines...)
 	}
 
@@ -82,6 +83,7 @@ func (d *Divider) WithChar(char string) *Divider {
 	if char != "" {
 		d.char = char
 	}
+
 	return d
 }
 

@@ -150,14 +150,14 @@ streamy version
 
 ## Architecture Overview
 
-- `internal/config`: YAML parsing and validation.
-- `internal/engine`: DAG, planner, executor, execution context.
-- `internal/plugin` and `internal/plugins/*`: Plugin interface and implementations.
-- `internal/validation`: Post-execution checks.
-- `internal/tui`: Bubbletea model/update/view and UI components.
-- `cmd/streamy`: Cobra CLI wrapper around the engine.
+- **Domain (`internal/domain`)** – Pipeline aggregate, steps, execution plan, results, validation definitions, domain errors.
+- **Ports (`internal/ports`)** – Interfaces for config loading, execution, logging, metrics, tracing, plugins, and events.
+- **Application (`internal/application`)** – Use cases (prepare/apply/verify) and validation service coordinating domain logic via ports.
+- **Infrastructure (`internal/infrastructure`)** – Adapters implementing ports plus built-in plugins (`internal/plugins`). Includes YAML loader, DAG builder/executor, observability, registry.
+- **CLI (`cmd/streamy`)** – Composition root wiring infrastructure adapters into application services; exposes Cobra commands and observability harness.
+- **UI (`internal/tui`)** – Bubbletea models/views for the dashboard.
 
-See [docs/architecture.md](docs/architecture.md) for detailed flow diagrams and package responsibilities.
+See [docs/architecture.md](docs/architecture.md) for diagrams and detailed data flow.
 
 ## Development
 
@@ -170,7 +170,7 @@ Use `go test ./... -run Integration` to focus on integration tests under `tests/
 
 ### Testing
 
-The project maintains **85.5% test coverage** on core business logic (see [docs/testing-strategy.md](docs/testing-strategy.md)):
+The project maintains **85.5% test coverage** on core business logic (see [docs/testing-guide.md](docs/testing-guide.md)):
 
 ```bash
 # Run all tests including integration tests
@@ -187,9 +187,9 @@ CI enforces 80% minimum coverage on `internal/` and `pkg/` packages. The `cmd/` 
 
 ## Extending Streamy
 
-1. Define new step fields in `internal/config/types.go` and extend validation.
-2. Implement a plugin under `internal/plugins/<type>/` and register it.
-3. Add fixtures/tests to `tests/` and documentation to `docs/` + README.
+1. Define new step fields in `internal/infrastructure/config/schema.go` (and companion validation helpers) and extend domain validation as needed.
+2. Implement a plugin under `internal/plugins/<type>/` and register it (see [docs/adding-plugins.md](docs/adding-plugins.md)).
+3. Add fixtures/tests to `tests/` and documentation to `docs/` + README. Consult [docs/testing-guide.md](docs/testing-guide.md) for recommended coverage.
 
 Refer to [docs/plugins.md](docs/plugins.md) for a plugin development checklist.
 
