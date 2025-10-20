@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	cblog "github.com/charmbracelet/log"
@@ -237,7 +238,7 @@ func TestLoggingPublisher_ConcurrentPublish(t *testing.T) {
 	for i := 0; i < numHandlers; i++ {
 		sub, err := publisher.Subscribe("concurrent.test", func(_ context.Context, _ ports.DomainEvent) error {
 			// Simulate some work
-			callCount++
+			atomic.AddInt64(&callCount, 1)
 			return nil
 		})
 		require.NoError(t, err)
@@ -283,7 +284,7 @@ func TestLoggingPublisher_ConcurrentPublish(t *testing.T) {
 
 	// Total expected calls: numGoroutines * numEventsPerGoroutine * numHandlers
 	expectedCalls := int64(numGoroutines * numEventsPerGoroutine * numHandlers)
-	require.Equal(t, expectedCalls, callCount, "all handlers should be called for all events")
+	require.Equal(t, expectedCalls, atomic.LoadInt64(&callCount), "all handlers should be called for all events")
 
 	// Cleanup subscriptions
 	for _, sub := range handlers {

@@ -180,7 +180,12 @@ func TestYAMLLoaderLoadInvalidSchema(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pipeline.yaml")
 
-	yamlContent := `name: demo\nsteps: [ { id: setup, type: command, command: "echo hi", enabled: "not-a-bool" } ]`
+	yamlContent := `name: demo
+steps:
+  - id: setup
+    type: command
+    command: "echo hi"
+    enabled: "not-a-bool"`
 	if err := os.WriteFile(path, []byte(yamlContent), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -191,47 +196,61 @@ func TestYAMLLoaderLoadInvalidSchema(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestYAMLLoaderValidateDirectory(t *testing.T) {
-	dir := t.TempDir()
-	loader := NewYAMLLoader(nil)
-	require.Error(t, loader.Validate(context.Background(), dir))
-}
-
-func TestYAMLLoaderValidateUnsupportedExtension(t *testing.T) {
-	dir := t.TempDir()
-
-	path := filepath.Join(dir, "pipeline.txt")
-	if err := os.WriteFile(path, []byte("name: demo"), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
+func TestYAMLLoaderValidateErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T) string
+	}{
+		{
+			name: "directory",
+			prepare: func(t *testing.T) string {
+				return t.TempDir()
+			},
+		},
+		{
+			name: "unsupported extension",
+			prepare: func(t *testing.T) string {
+				dir := t.TempDir()
+				path := filepath.Join(dir, "pipeline.txt")
+				if err := os.WriteFile(path, []byte("name: demo"), 0o644); err != nil {
+					t.Fatalf("write config: %v", err)
+				}
+				return path
+			},
+		},
+		{
+			name: "empty file",
+			prepare: func(t *testing.T) string {
+				dir := t.TempDir()
+				path := filepath.Join(dir, "pipeline.yaml")
+				if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
+					t.Fatalf("write config: %v", err)
+				}
+				return path
+			},
+		},
+		{
+			name: "invalid yaml",
+			prepare: func(t *testing.T) string {
+				dir := t.TempDir()
+				path := filepath.Join(dir, "pipeline.yaml")
+				yamlContent := `name: demo
+steps: [ { id: setup, type: command, command: "echo hi } `
+				if err := os.WriteFile(path, []byte(yamlContent), 0o644); err != nil {
+					t.Fatalf("write config: %v", err)
+				}
+				return path
+			},
+		},
 	}
 
-	loader := NewYAMLLoader(nil)
-	require.Error(t, loader.Validate(context.Background(), path))
-}
-
-func TestYAMLLoaderValidateEmptyFile(t *testing.T) {
-	dir := t.TempDir()
-
-	path := filepath.Join(dir, "pipeline.yaml")
-	if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			loader := NewYAMLLoader(nil)
+			path := tc.prepare(t)
+			require.Error(t, loader.Validate(context.Background(), path))
+		})
 	}
-
-	loader := NewYAMLLoader(nil)
-	require.Error(t, loader.Validate(context.Background(), path))
-}
-
-func TestYAMLLoaderValidateInvalidYAML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "pipeline.yaml")
-
-	yamlContent := `name: demo\nsteps: [ { id: setup, type: command, command: "echo hi } `
-	if err := os.WriteFile(path, []byte(yamlContent), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	loader := NewYAMLLoader(nil)
-	require.Error(t, loader.Validate(context.Background(), path))
 }
 
 func TestMapValidationReadError(t *testing.T) {
@@ -259,20 +278,12 @@ func TestMapValidationReadError(t *testing.T) {
 }
 
 func TestContextCheck(t *testing.T) {
-	require := func(err error) {
-		if err != nil {
-			t.Fatalf("expected nil error, got %v", err)
-		}
-	}
-
-	require(contextCheck(context.TODO()))
+	require.NoError(t, contextCheck(context.TODO()))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if err := contextCheck(ctx); err == nil {
-		t.Fatal("expected cancellation error from contextCheck")
-	}
+	require.Error(t, contextCheck(ctx))
 }
 
 func TestFlattenFields(t *testing.T) {
