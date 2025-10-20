@@ -187,6 +187,97 @@ func TestMetadata(t *testing.T) {
 	require.Equal(t, domainplugin.TypeCopy, meta.Type)
 }
 
+func TestEvaluateDestinationIsDir(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	require.NoError(t, os.WriteFile(source, []byte("hello"), 0o644))
+	dest := t.TempDir()
+
+	step := domainpipeline.Step{
+		ID:   "copy_file",
+		Type: domainpipeline.StepTypeCopy,
+		Config: map[string]interface{}{
+			"source":      source,
+			"destination": dest,
+		},
+	}
+
+	result, err := New().Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.True(t, result.RequiresAction)
+}
+
+func TestEvaluateFilesAreIdentical(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	require.NoError(t, os.WriteFile(source, []byte("hello"), 0o644))
+	dest := filepath.Join(t.TempDir(), "dest")
+	require.NoError(t, os.WriteFile(dest, []byte("hello"), 0o644))
+
+	step := domainpipeline.Step{
+		ID:   "copy_file",
+		Type: domainpipeline.StepTypeCopy,
+		Config: map[string]interface{}{
+			"source":      source,
+			"destination": dest,
+		},
+	}
+
+	result, err := New().Evaluate(context.Background(), step)
+	require.NoError(t, err)
+	require.False(t, result.RequiresAction)
+}
+
+func TestApplyDirectoryCopy(t *testing.T) {
+	source := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(source, "file1.txt"), []byte("file1"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(source, "file2.txt"), []byte("file2"), 0o644))
+	dest := filepath.Join(t.TempDir(), "dest")
+
+	step := domainpipeline.Step{
+		ID:   "copy_dir",
+		Type: domainpipeline.StepTypeCopy,
+		Config: map[string]interface{}{
+			"source":      source,
+			"destination": dest,
+			"recursive":   true,
+		},
+	}
+
+	plugin := New()
+	_, err := plugin.Apply(context.Background(), nil, step)
+	require.NoError(t, err)
+
+	_, err = os.Stat(filepath.Join(dest, "file1.txt"))
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(dest, "file2.txt"))
+	require.NoError(t, err)
+}
+
+func TestDecodeConfigMissingSource(t *testing.T) {
+	_, err := decodeConfig(domainpipeline.Step{
+		ID: "copy_file",
+		Config: map[string]interface{}{
+			"destination": "/tmp/dest",
+		},
+	})
+	require.Error(t, err)
+}
+
+func TestGetBool(t *testing.T) {
+	trueValues := []string{"true", "1", "yes", "on"}
+	for _, val := range trueValues {
+		result, ok := getBool(map[string]interface{}{"key": val}, "key")
+		require.True(t, ok)
+		require.True(t, result)
+	}
+
+	falseValues := []string{"false", "0", "no", "off"}
+	for _, val := range falseValues {
+		result, ok := getBool(map[string]interface{}{"key": val}, "key")
+		require.True(t, ok)
+		require.False(t, result)
+	}
+}
+
 func TestMissingConfig(t *testing.T) {
 	step := domainpipeline.Step{ID: "missing", Type: domainpipeline.StepTypeCopy}
 	_, err := New().Evaluate(context.Background(), step)

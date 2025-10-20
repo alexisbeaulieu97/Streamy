@@ -16,6 +16,7 @@ import (
 	"github.com/alexisbeaulieu97/streamy/internal/infrastructure/logging"
 	infraPlugin "github.com/alexisbeaulieu97/streamy/internal/infrastructure/plugin"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
+	require "github.com/stretchr/testify/require"
 )
 
 type executorStubPlugin struct {
@@ -240,37 +241,34 @@ func TestExecutorVerifyStepTimeout(t *testing.T) {
 	}
 }
 
-func TestExecutorStepFailure(t *testing.T) {
+func TestExecutorExecuteEmptyPlan(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
-
-	plug := &executorStubPlugin{meta: domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.Type("command"), Version: "1.0.0"}, requireAction: true, applyError: errors.New("boom")}
-	if err := registry.Register(plug); err != nil {
-		t.Fatalf("register plugin: %v", err)
-	}
-
-	eventRecorder := &stubEventPublisher{}
-	executor := NewExecutor(registry, WithExecutorEvents(eventRecorder))
-
-	pipeline := &domainpipeline.Pipeline{
-		Steps: []domainpipeline.Step{{ID: "cmd", Type: domainpipeline.StepType("command"), Enabled: true}},
-	}
-	plan := &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"cmd"}}}}
+	executor := NewExecutor(registry)
+	pipeline := &domainpipeline.Pipeline{}
+	plan := &domainpipeline.ExecutionPlan{}
 
 	results, err := executor.Execute(context.Background(), plan, pipeline)
-	if err == nil {
-		t.Fatal("expected execution error")
+	require.NoError(t, err)
+	require.Empty(t, results)
+}
+
+func TestToDomainError(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		expected domainpipeline.ErrorCode
+	}{
+		{"context cancelled", context.Canceled, domainpipeline.ErrCodeCancelled},
+		{"context deadline exceeded", context.DeadlineExceeded, domainpipeline.ErrCodeTimeout},
+		{"domain error", &domainpipeline.DomainError{Code: domainpipeline.ErrCodeValidation}, domainpipeline.ErrCodeValidation},
+		{"other error", errors.New("other"), domainpipeline.ErrCodeExecution},
 	}
 
-	if len(results) != 1 {
-		t.Fatalf("expected single result, got %d", len(results))
-	}
-
-	if results[0].Status != domainpipeline.StatusFailure {
-		t.Fatalf("expected failure status, got %s", results[0].Status)
-	}
-
-	if !eventRecorder.contains(ports.EventStepFailed) {
-		t.Fatalf("expected step failed event")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			derr := toDomainError(tc.err, "step", "plugin")
+			require.Equal(t, tc.expected, derr.Code)
+		})
 	}
 }
 

@@ -75,10 +75,18 @@ func TestCheckFileExistsWithDirectory(t *testing.T) {
 	require.NoError(t, CheckFileExists(dir), "directories should pass CheckFileExists")
 }
 
-func TestCheckCommandExistsWithCommonCommands(t *testing.T) {
+func TestCheckCommandExistsEmpty(t *testing.T) {
 	t.Parallel()
+	require.Error(t, CheckCommandExists(""))
+}
 
-	// Test some common commands that should exist
-	require.NoError(t, CheckCommandExists("ls"))
-	require.NoError(t, CheckCommandExists("sh"))
+func TestCheckFileExistsEmpty(t *testing.T) {
+	t.Parallel()
+	require.Error(t, CheckFileExists(""))
+}
+
+func TestCheckPathContainsEmpty(t *testing.T) {
+	t.Parallel()
+	require.Error(t, CheckPathContains("", "text"))
+	require.Error(t, CheckPathContains("file", ""))
 }

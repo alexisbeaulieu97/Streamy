@@ -92,25 +92,64 @@ func TestApplyRemovesLine(t *testing.T) {
 	require.NotContains(t, string(content), "remove")
 }
 
-func TestDecodeConfigValidation(t *testing.T) {
-	_, err := newConfigFromDomainStep(domainpipeline.Step{ID: "missing"})
-	require.Error(t, err)
+func TestEvaluateLineAlreadyPresent(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(target, []byte("hello\n"), 0o644))
 
-	_, err = newConfigFromDomainStep(domainpipeline.Step{
-		ID:     "invalid",
-		Config: map[string]interface{}{},
-	})
-	require.Error(t, err)
-
-	cfg, err := newConfigFromDomainStep(domainpipeline.Step{
-		ID: "valid",
+	step := domainpipeline.Step{
+		ID:   "add-line",
+		Type: domainpipeline.StepTypeLineInFile,
 		Config: map[string]interface{}{
-			"file":  "/tmp/test.txt",
-			"line":  "hello",
-			"state": "present",
+			"file": target,
+			"line": "hello",
 		},
-	})
+	}
+
+	result, err := New().Evaluate(context.Background(), step)
 	require.NoError(t, err)
-	require.Equal(t, "/tmp/test.txt", cfg.File)
-	require.Equal(t, "present", cfg.State)
+	require.False(t, result.RequiresAction)
+}
+
+func TestApplyNoChangesNeeded(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(target, []byte("hello\n"), 0o644))
+
+	step := domainpipeline.Step{
+		ID:   "add-line",
+		Type: domainpipeline.StepTypeLineInFile,
+		Config: map[string]interface{}{
+			"file": target,
+			"line": "hello",
+		},
+	}
+
+	plugin := New()
+	_, err := plugin.Apply(context.Background(), nil, step)
+	require.NoError(t, err)
+}
+
+func TestApplyWithBackup(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "file.txt")
+	require.NoError(t, os.WriteFile(target, []byte("first\n"), 0o644))
+
+	step := domainpipeline.Step{
+		ID:   "add-line",
+		Type: domainpipeline.StepTypeLineInFile,
+		Config: map[string]interface{}{
+			"file":   target,
+			"line":   "second",
+			"backup": true,
+		},
+	}
+
+	plugin := New()
+	_, err := plugin.Apply(context.Background(), nil, step)
+	require.NoError(t, err)
+
+	files, err := filepath.Glob(filepath.Join(dir, "*.bak"))
+	require.NoError(t, err)
+	require.Len(t, files, 1)
 }

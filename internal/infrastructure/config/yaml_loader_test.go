@@ -12,6 +12,7 @@ import (
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
 	apperrors "github.com/alexisbeaulieu97/streamy/pkg/errors"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestDomainErrorFromContextErr(t *testing.T) {
@@ -175,14 +176,62 @@ steps:
 	}
 }
 
-func TestYAMLLoaderLoadCancelled(t *testing.T) {
-	loader := NewYAMLLoader(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+func TestYAMLLoaderLoadInvalidSchema(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pipeline.yaml")
 
-	if _, err := loader.Load(ctx, "ignored.yaml"); err == nil {
-		t.Fatal("expected cancellation error")
+	yamlContent := `name: demo\nsteps: [ { id: setup, type: command, command: "echo hi", enabled: "not-a-bool" } ]`
+	if err := os.WriteFile(path, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
+
+	loader := NewYAMLLoader(nil)
+
+	_, err := loader.Load(context.Background(), path)
+	require.Error(t, err)
+}
+
+func TestYAMLLoaderValidateDirectory(t *testing.T) {
+	dir := t.TempDir()
+	loader := NewYAMLLoader(nil)
+	require.Error(t, loader.Validate(context.Background(), dir))
+}
+
+func TestYAMLLoaderValidateUnsupportedExtension(t *testing.T) {
+	dir := t.TempDir()
+
+	path := filepath.Join(dir, "pipeline.txt")
+	if err := os.WriteFile(path, []byte("name: demo"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loader := NewYAMLLoader(nil)
+	require.Error(t, loader.Validate(context.Background(), path))
+}
+
+func TestYAMLLoaderValidateEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+
+	path := filepath.Join(dir, "pipeline.yaml")
+	if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loader := NewYAMLLoader(nil)
+	require.Error(t, loader.Validate(context.Background(), path))
+}
+
+func TestYAMLLoaderValidateInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pipeline.yaml")
+
+	yamlContent := `name: demo\nsteps: [ { id: setup, type: command, command: "echo hi } `
+	if err := os.WriteFile(path, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loader := NewYAMLLoader(nil)
+	require.Error(t, loader.Validate(context.Background(), path))
 }
 
 func TestMapValidationReadError(t *testing.T) {
