@@ -343,6 +343,19 @@ func verifyPipelines(ctx context.Context, logger ports.Logger, cmd *cobra.Comman
 			select {
 			case sem <- struct{}{}:
 			case <-ctx.Done():
+				err := ctx.Err()
+				result := refreshResult{
+					PipelineID: pipeline.ID,
+					Status:     registry.StatusFailed,
+					Err:        err,
+				}
+				results[i] = result
+
+				_, _ = fmt.Fprintf(out, "[%d/%d] %s... %s\n", i+1, len(pipelines), pipeline.ID, formatRefreshResult(result))
+				if logger != nil {
+					logger.With("pipeline_id", pipeline.ID).Error(ctx, "pipeline verification cancelled", "error", err)
+				}
+
 				return
 			}
 

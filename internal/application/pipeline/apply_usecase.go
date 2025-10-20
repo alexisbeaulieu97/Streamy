@@ -140,6 +140,14 @@ func (u *ApplyUseCase) Apply(ctx context.Context, configPath string, dryRun bool
 	}
 
 	if summary != nil {
+		setSpanStatus(span, ports.SpanStatusOK, "pipeline applied successfully")
+		logInfo(ctx, u.logger, "pipeline applied successfully", "config_path", configPath)
+		publishEvent(ctx, u.events, u.logger, ports.EventPipelineCompleted, map[string]interface{}{
+			"config_path": configPath,
+			"pipeline":    pip.Name,
+			"dry_run":     false,
+		})
+
 		return pip, results, summary, nil
 	}
 
