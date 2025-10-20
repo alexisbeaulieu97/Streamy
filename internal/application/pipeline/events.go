@@ -23,6 +23,7 @@ func publishEvent(ctx context.Context, publisher ports.EventPublisher, logger po
 	if publisher == nil {
 		return
 	}
+
 	event := domainEvent{
 		eventType: eventType,
 		payload:   payload,

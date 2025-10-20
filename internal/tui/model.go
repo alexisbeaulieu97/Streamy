@@ -1,3 +1,4 @@
+// Package tui contains the shared TUI message model used across screens.
 package tui
 
 import (
@@ -93,6 +94,7 @@ func (m *Model) ensureStep(id string) {
 	if id == "" {
 		return
 	}
+
 	if _, exists := m.steps[id]; !exists {
 		m.steps[id] = components.StepState{Status: components.StepStatusPending}
 		m.order = append(m.order, id)

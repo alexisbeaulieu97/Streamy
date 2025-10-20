@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	applicationpipeline "github.com/alexisbeaulieu97/streamy/internal/application/pipeline"
 	configinfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/config"
@@ -44,6 +44,7 @@ steps:
 	}
 
 	cmd := &cobra.Command{}
+
 	var output bytes.Buffer
 	cmd.SetOut(&output)
 	cmd.SetErr(&output)
@@ -86,6 +87,7 @@ steps: []`
 	}
 
 	cmd := &cobra.Command{}
+
 	var output bytes.Buffer
 	cmd.SetOut(&output)
 	cmd.SetErr(&output)
@@ -96,6 +98,7 @@ steps: []`
 
 	registryPath, pathErr := defaultRegistryPath()
 	require.NoError(t, pathErr)
+
 	_, statErr := os.Stat(registryPath)
 	require.True(t, os.IsNotExist(statErr), "registry file should not be created on validation failure")
 }

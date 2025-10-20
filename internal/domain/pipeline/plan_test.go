@@ -37,6 +37,7 @@ func TestExecutionPlanValidateMissingStep(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing step error")
 	}
+
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDependency {
 		t.Fatalf("expected dependency domain error, got %v", err)
@@ -62,6 +63,7 @@ func TestExecutionPlanValidateDependencyOrder(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected dependency order error")
 	}
+
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDependency {
 		t.Fatalf("expected dependency domain error, got %v", err)
@@ -86,10 +88,12 @@ func TestExecutionPlanValidateDependencySameLevel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected dependency order error for same-level dependency")
 	}
+
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDependency {
 		t.Fatalf("expected dependency domain error, got %v", err)
 	}
+
 	if domainErr.Context["step_level"] != 0 || domainErr.Context["dependency_level"] != 0 {
 		t.Fatalf("expected level context, got %v", domainErr.Context)
 	}

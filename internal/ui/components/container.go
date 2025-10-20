@@ -137,6 +137,7 @@ func (c *Container) WithCrossAlign(align CrossAxisAlignment) *Container {
 func (c *Container) Add(children ...ui.Renderable) *Container {
 	c.children = append(c.children, children...)
 	c.layout.Add(children...)
+
 	return c
 }
 
@@ -154,6 +155,7 @@ func (c *Container) Layout() *Stack {
 func (c *Container) SetChildren(children []ui.Renderable) *Container {
 	c.children = children
 	c.layout.SetChildren(children)
+
 	return c
 }
 
@@ -162,6 +164,8 @@ func (c *Container) SetLayout(layout *Stack) *Container {
 	if layout == nil {
 		return c
 	}
+
 	c.layout = layout
+
 	return c
 }

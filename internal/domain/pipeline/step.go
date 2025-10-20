@@ -12,12 +12,19 @@ var stepIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 type StepType string
 
 const (
-	StepTypePackage    StepType = "package"
-	StepTypeRepo       StepType = "repo"
-	StepTypeSymlink    StepType = "symlink"
-	StepTypeCopy       StepType = "copy"
-	StepTypeCommand    StepType = "command"
-	StepTypeTemplate   StepType = "template"
+	// StepTypePackage installs or removes system packages.
+	StepTypePackage StepType = "package"
+	// StepTypeRepo manages repository checkouts.
+	StepTypeRepo StepType = "repo"
+	// StepTypeSymlink creates or updates symbolic links.
+	StepTypeSymlink StepType = "symlink"
+	// StepTypeCopy copies files or directories to the target machine.
+	StepTypeCopy StepType = "copy"
+	// StepTypeCommand executes shell commands.
+	StepTypeCommand StepType = "command"
+	// StepTypeTemplate renders templated configuration files.
+	StepTypeTemplate StepType = "template"
+	// StepTypeLineInFile enforces specific lines in files.
 	StepTypeLineInFile StepType = "line_in_file"
 )
 
@@ -47,6 +54,7 @@ func (s Step) Validate() error {
 	if s.ID == "" {
 		return NewMissingFieldError("id")
 	}
+
 	if !stepIDPattern.MatchString(s.ID) {
 		return NewValidationError("step id must match ^[a-zA-Z0-9_-]+$", map[string]interface{}{"step_id": s.ID})
 	}
@@ -54,6 +62,7 @@ func (s Step) Validate() error {
 	if s.Type == "" {
 		return NewMissingFieldError("type")
 	}
+
 	if !isValidStepType(s.Type) {
 		return NewTypeError(fmt.Sprintf("one of %v", validStepTypes), string(s.Type)).WithContext(map[string]interface{}{"step_id": s.ID})
 	}
@@ -76,6 +85,7 @@ func (s Step) HasDependency(id string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -83,6 +93,7 @@ func (s Step) HasDependency(id string) bool {
 func (s Step) SortedDependencies() []string {
 	deps := append([]string(nil), s.DependsOn...)
 	sort.Strings(deps)
+
 	return deps
 }
 
@@ -92,5 +103,6 @@ func isValidStepType(st StepType) bool {
 			return true
 		}
 	}
+
 	return false
 }

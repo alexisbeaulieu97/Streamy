@@ -98,16 +98,20 @@ func TestValidationValidate(t *testing.T) {
 			if tt.wantErr && err == nil {
 				t.Fatalf("expected error, got nil")
 			}
+
 			if !tt.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			if !tt.wantErr {
 				return
 			}
+
 			var domainErr *DomainError
 			if !errors.As(err, &domainErr) {
 				t.Fatalf("expected DomainError, got %T", err)
 			}
+
 			if domainErr.Code != tt.wantCode {
 				t.Fatalf("unexpected code: got %s want %s", domainErr.Code, tt.wantCode)
 			}

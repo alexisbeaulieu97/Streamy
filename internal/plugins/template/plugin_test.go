@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -73,6 +73,7 @@ func TestEvaluateSatisfiedWhenUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "input.tmpl")
 	dest := filepath.Join(dir, "output.txt")
+
 	require.NoError(t, os.WriteFile(source, []byte("static content"), 0o644))
 	require.NoError(t, os.WriteFile(dest, []byte("static content"), 0o644))
 
@@ -95,6 +96,7 @@ func TestEvaluateDriftedContentProducesDiff(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "input.tmpl")
 	dest := filepath.Join(dir, "output.txt")
+
 	require.NoError(t, os.WriteFile(source, []byte("desired\nvalue\n"), 0o644))
 	require.NoError(t, os.WriteFile(dest, []byte("old\nvalue\n"), 0o644))
 

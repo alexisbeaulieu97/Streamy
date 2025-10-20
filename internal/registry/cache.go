@@ -1,3 +1,4 @@
+// Package registry persists and retrieves pipeline registry metadata and status caches.
 package registry
 
 import (
@@ -26,7 +27,7 @@ func NewStatusCache(path string) (*StatusCache, error) {
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -48,7 +49,7 @@ func (c *StatusCache) Load() error {
 
 	data, err := os.ReadFile(c.path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read cache file %q: %w", c.path, err)
 	}
 
 	var file StatusCacheFile
@@ -57,6 +58,7 @@ func (c *StatusCache) Load() error {
 	}
 
 	c.version = file.Version
+
 	c.statuses = file.Statuses
 	if c.statuses == nil {
 		c.statuses = make(map[string]CachedStatus)
@@ -82,14 +84,14 @@ func (c *StatusCache) Save() error {
 
 	// Write to temporary file first
 	tmpPath := c.path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temporary file: %w", err)
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write temporary file %q: %w", tmpPath, err)
 	}
 
 	// Atomic rename
 	if err := os.Rename(tmpPath, c.path); err != nil {
 		_ = os.Remove(tmpPath) // Clean up temp file on failure
-		return fmt.Errorf("failed to rename temporary file: %w", err)
+		return fmt.Errorf("failed to rename temporary file %q to %q: %w", tmpPath, c.path, err)
 	}
 
 	return nil
@@ -101,6 +103,7 @@ func (c *StatusCache) Get(pipelineID string) (CachedStatus, bool) {
 	defer c.mu.RUnlock()
 
 	status, ok := c.statuses[pipelineID]
+
 	return status, ok
 }
 
@@ -110,6 +113,7 @@ func (c *StatusCache) Set(pipelineID string, status CachedStatus) error {
 	defer c.mu.Unlock()
 
 	c.statuses[pipelineID] = status
+
 	return nil
 }
 
@@ -119,6 +123,7 @@ func (c *StatusCache) Invalidate(pipelineID string) error {
 	defer c.mu.Unlock()
 
 	delete(c.statuses, pipelineID)
+
 	return nil
 }
 
@@ -128,5 +133,6 @@ func (c *StatusCache) InvalidateAll() error {
 	defer c.mu.Unlock()
 
 	c.statuses = make(map[string]CachedStatus)
+
 	return nil
 }

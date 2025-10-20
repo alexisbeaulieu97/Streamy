@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	applicationpipeline "github.com/alexisbeaulieu97/streamy/internal/application/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/application/pipeline/testutil"
@@ -24,6 +24,7 @@ func (p *bufferPrinter) Printf(format string, args ...interface{}) {
 	if p == nil {
 		return
 	}
+
 	_, _ = fmt.Fprintf(p.buf, format, args...)
 }
 
@@ -31,11 +32,13 @@ func (p *bufferPrinter) Println(args ...interface{}) {
 	if p == nil {
 		return
 	}
+
 	_, _ = fmt.Fprintln(p.buf, args...)
 }
 
 func withTestWriters(t *testing.T) (*bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
+
 	origStdout := stdoutWriter
 	origStderr := stderrWriter
 
@@ -63,6 +66,7 @@ func (r *verifySummaryRecorder) Summary() *pipelineconv.VerificationSummary {
 
 func withPrintHooks(t *testing.T) *verifySummaryRecorder {
 	t.Helper()
+
 	recorder := &verifySummaryRecorder{}
 	origTable := printTableOutputFunc
 	origVerbose := printVerboseOutputFunc
@@ -92,13 +96,13 @@ func newPreparedApp(t *testing.T, pipeline *domainpipeline.Pipeline, verifyResul
 	t.Helper()
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipeline, nil
 		},
 	}
 
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}}}, nil
 		},
 	}
@@ -111,7 +115,7 @@ func newPreparedApp(t *testing.T, pipeline *domainpipeline.Pipeline, verifyResul
 	prepare := applicationpipeline.NewPrepareUseCase(loader, builder, logger, tracer, events)
 
 	executor := &testutil.MockPluginExecutor{
-		VerifyFunc: func(ctx context.Context, pip *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
+		VerifyFunc: func(_ context.Context, _ *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
 			return verifyResults, verifyErr
 		},
 	}
@@ -151,6 +155,7 @@ func TestRunVerifyInternal_Success(t *testing.T) {
 	if err != nil || exitCode != 0 {
 		t.Fatalf("unexpected result: exit=%d err=%v stderr=%q", exitCode, err, stderrBuf.String())
 	}
+
 	require.NotNil(t, recorder.Summary())
 	require.Equal(t, 1, recorder.Summary().TotalSteps)
 	require.Equal(t, 1, recorder.Summary().Satisfied)
@@ -179,9 +184,10 @@ func TestRunVerifyInternal_JSONOutputError(t *testing.T) {
 	_, stderrBuf := withTestWriters(t)
 
 	origJSON := printJSONOutputFunc
-	printJSONOutputFunc = func(summary *pipelineconv.VerificationSummary, _ string) error {
+	printJSONOutputFunc = func(_ *pipelineconv.VerificationSummary, _ string) error {
 		return errors.New("encode failure")
 	}
+
 	t.Cleanup(func() { printJSONOutputFunc = origJSON })
 
 	exitCode, err := runVerifyInternal(ctx, app, verifyOptions{ConfigPath: "pipeline.yaml", JSON: true})
@@ -193,10 +199,10 @@ func TestRunVerifyInternal_JSONOutputError(t *testing.T) {
 
 func TestRunVerifyInternal_PrepareFailure(t *testing.T) {
 	ctx := context.Background()
-	parseErr := streamyerrors.NewParseError("pipeline.yaml", 0, errors.New("bad yaml"))
+	parseErr := fmt.Errorf("parse fixture: %w", streamyerrors.NewParseError("pipeline.yaml", 0, errors.New("bad yaml")))
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return nil, parseErr
 		},
 	}
@@ -208,7 +214,7 @@ func TestRunVerifyInternal_PrepareFailure(t *testing.T) {
 
 	prepare := applicationpipeline.NewPrepareUseCase(loader, builder, logger, tracer, events)
 	executor := &testutil.MockPluginExecutor{
-		VerifyFunc: func(ctx context.Context, pip *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
+		VerifyFunc: func(_ context.Context, _ *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
 			t.Fatalf("verify should not be invoked on prepare failure")
 			return nil, nil
 		},
@@ -238,12 +244,12 @@ func TestRunVerifyInternal_VerifyFailure(t *testing.T) {
 	}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipeline, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}}}, nil
 		},
 	}
@@ -253,9 +259,9 @@ func TestRunVerifyInternal_VerifyFailure(t *testing.T) {
 	metrics := testutil.NewMockMetricsCollector()
 
 	prepare := applicationpipeline.NewPrepareUseCase(loader, builder, logger, tracer, events)
-	execErr := streamyerrors.NewValidationError("field", "invalid", nil)
+	execErr := fmt.Errorf("validation fixture: %w", streamyerrors.NewValidationError("field", "invalid", nil))
 	executor := &testutil.MockPluginExecutor{
-		VerifyFunc: func(ctx context.Context, pip *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
+		VerifyFunc: func(_ context.Context, _ *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
 			return nil, execErr
 		},
 	}

@@ -7,6 +7,7 @@ func TestStepResultHelpers(t *testing.T) {
 	if !res.IsSuccess() {
 		t.Fatal("expected success")
 	}
+
 	if res.IsFailure() {
 		t.Fatal("did not expect failure")
 	}
@@ -22,6 +23,7 @@ func TestVerificationResultHelpers(t *testing.T) {
 	if !res.IsSatisfied() {
 		t.Fatal("expected satisfied")
 	}
+
 	if res.FormatMessage() != string(VerificationSatisfied) {
 		t.Fatalf("unexpected message: %s", res.FormatMessage())
 	}

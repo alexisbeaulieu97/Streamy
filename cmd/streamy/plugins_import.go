@@ -41,13 +41,16 @@ func RegisterPortsPlugins(ctx context.Context, reg *plugininfra.Registry, log po
 		if ctor.factory == nil {
 			return fmt.Errorf("ports factory missing for plugin %q", ctor.name)
 		}
+
 		plugin := ctor.factory()
 		if plugin == nil {
 			return fmt.Errorf("ports factory for plugin %q returned nil", ctor.name)
 		}
+
 		if err := reg.Register(plugin); err != nil {
 			return fmt.Errorf("register plugin %q: %w", ctor.name, err)
 		}
+
 		meta := plugin.Metadata()
 		if meta.Type != "" {
 			registeredNames = append(registeredNames, string(meta.Type))

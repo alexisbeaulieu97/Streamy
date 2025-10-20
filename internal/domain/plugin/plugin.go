@@ -4,12 +4,19 @@ package plugin
 type Type string
 
 const (
-	TypePackage    Type = "package"
-	TypeRepo       Type = "repo"
-	TypeSymlink    Type = "symlink"
-	TypeCopy       Type = "copy"
-	TypeCommand    Type = "command"
-	TypeTemplate   Type = "template"
+	// TypePackage identifies a package management plugin.
+	TypePackage Type = "package"
+	// TypeRepo identifies a repository management plugin.
+	TypeRepo Type = "repo"
+	// TypeSymlink identifies a symbolic link management plugin.
+	TypeSymlink Type = "symlink"
+	// TypeCopy identifies a file copy plugin.
+	TypeCopy Type = "copy"
+	// TypeCommand identifies a command execution plugin.
+	TypeCommand Type = "command"
+	// TypeTemplate identifies a templating plugin.
+	TypeTemplate Type = "template"
+	// TypeLineInFile identifies a line-in-file plugin.
 	TypeLineInFile Type = "line_in_file"
 )
 
@@ -27,9 +34,12 @@ var supportedTypes = []Type{
 type Status string
 
 const (
-	StatusActive   Status = "active"
+	// StatusActive indicates the plugin is enabled.
+	StatusActive Status = "active"
+	// StatusDisabled indicates the plugin is temporarily disabled.
 	StatusDisabled Status = "disabled"
-	StatusUnknown  Status = "unknown"
+	// StatusUnknown indicates the plugin state could not be determined.
+	StatusUnknown Status = "unknown"
 )
 
 // Plugin defines the contract that domain services expect from plugin implementations.
@@ -44,5 +54,6 @@ func IsSupportedType(t Type) bool {
 			return true
 		}
 	}
+
 	return false
 }

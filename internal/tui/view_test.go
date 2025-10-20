@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
@@ -56,6 +56,7 @@ func TestStatusIcon(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			icon := StatusIcon(tt.status)
 			require.Contains(t, icon, tt.expected)
 		})

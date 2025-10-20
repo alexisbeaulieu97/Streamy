@@ -21,6 +21,7 @@ func (m Model) View() string {
 	sections = append(sections, sectionStyle.Render("Progress"), progress)
 
 	listComp := components.NewStepList(m.order, m.steps)
+
 	entries := listComp.Entries()
 	if len(entries) > 0 {
 		sections = append(sections, sectionStyle.Render("Steps"))
@@ -43,18 +44,23 @@ func (m Model) View() string {
 
 func renderStepEntries(entries []components.StepEntry) string {
 	var lines []string
+
 	for _, entry := range entries {
 		res := entry.Result
 		icon := StatusIcon(res.Status)
+
 		line := fmt.Sprintf(" %s %s", icon, entry.ID)
 		if strings.TrimSpace(res.Message) != "" {
 			line = fmt.Sprintf("%s — %s", line, res.Message)
 		}
+
 		if res.Duration > 0 {
 			line = fmt.Sprintf("%s (%s)", line, res.Duration.Truncate(10*time.Millisecond))
 		}
+
 		lines = append(lines, line)
 	}
+
 	return strings.Join(lines, "\n")
 }
 
@@ -64,6 +70,7 @@ func (m Model) title() string {
 			return name
 		}
 	}
+
 	return "Execution"
 }
 

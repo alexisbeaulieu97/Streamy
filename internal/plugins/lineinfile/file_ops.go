@@ -44,7 +44,7 @@ func readFileState(cfg *LineInFileConfig) (*FileState, error) {
 	if err == nil {
 		state.Path = resolvedPath
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+		return nil, wrapPathError("resolve symlinks", expandedPath, err)
 	}
 
 	info, err := os.Stat(state.Path)
@@ -53,9 +53,11 @@ func readFileState(cfg *LineInFileConfig) (*FileState, error) {
 			state.Exists = false
 			state.Permissions = defaultFileMode
 			state.Lines = []string{}
+
 			return state, nil
 		}
-		return nil, err
+
+		return nil, wrapPathError("stat file", state.Path, err)
 	}
 
 	state.Exists = true
@@ -63,7 +65,7 @@ func readFileState(cfg *LineInFileConfig) (*FileState, error) {
 
 	data, err := os.ReadFile(state.Path)
 	if err != nil {
-		return nil, err
+		return nil, wrapPathError("read file", state.Path, err)
 	}
 
 	decoded, err := decodeContent(data, cfg.Encoding)
@@ -75,6 +77,7 @@ func readFileState(cfg *LineInFileConfig) (*FileState, error) {
 	lines, trailing := splitLines(decoded)
 	state.Lines = lines
 	state.TrailingNewline = trailing
+
 	return state, nil
 }
 
@@ -82,18 +85,24 @@ func splitLines(content string) ([]string, bool) {
 	if content == "" {
 		return []string{}, false
 	}
+
 	trailing := strings.HasSuffix(content, "\n")
+
 	trimmed := content
 	if trailing {
 		trimmed = strings.TrimSuffix(content, "\n")
 	}
+
 	if trimmed == "" {
 		if trailing {
 			return []string{}, true
 		}
+
 		return []string{""}, false
 	}
+
 	lines := strings.Split(trimmed, "\n")
+
 	return lines, trailing
 }
 
@@ -102,13 +111,28 @@ func joinLines(lines []string, trailing bool) string {
 		if trailing {
 			return "\n"
 		}
+
 		return ""
 	}
+
 	joined := strings.Join(lines, "\n")
 	if trailing {
 		return joined + "\n"
 	}
+
 	return joined
+}
+
+func wrapPathError(action, path string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+
+	return fmt.Errorf("%s %q: %w", action, path, err)
 }
 
 func expandPath(path string) (string, error) {
@@ -116,61 +140,74 @@ func expandPath(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("empty path")
 	}
+
 	if strings.HasPrefix(path, "~") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("resolve user home directory for %q: %w", path, err)
 		}
+
 		if path == "~" {
 			path = home
 		} else if strings.HasPrefix(path, "~/") {
 			path = filepath.Join(home, path[2:])
 		}
 	}
+
 	if filepath.IsAbs(path) {
 		return path, nil
 	}
-	return filepath.Abs(path)
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute path for %q: %w", path, err)
+	}
+
+	return absPath, nil
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return wrapPathError("ensure directory", dir, err)
 	}
 
 	tmp, err := os.CreateTemp(dir, ".lineinfile-*")
 	if err != nil {
-		return err
+		return wrapPathError("create temporary file in", dir, err)
 	}
+
 	tmpName := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
-		return err
+
+		return wrapPathError("write temporary file", tmpName, err)
 	}
 
 	if err := tmp.Chmod(perm); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
-		return err
+
+		return wrapPathError("set permissions on temporary file", tmpName, err)
 	}
 
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
-		return err
+
+		return wrapPathError("sync temporary file", tmpName, err)
 	}
 
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return wrapPathError("close temporary file", tmpName, err)
 	}
 
 	if err := os.Rename(tmpName, path); err != nil {
 		_ = os.Remove(tmpName)
-		return err
+		return wrapPathError("replace target file", path, err)
 	}
 
 	return nil
@@ -178,16 +215,18 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 
 func createBackup(path, backupDir string, content []byte, perm os.FileMode) (string, error) {
 	targetDir := filepath.Dir(path)
+
 	if strings.TrimSpace(backupDir) != "" {
 		expanded, err := expandPath(backupDir)
 		if err != nil {
 			return "", err
 		}
+
 		targetDir = expanded
 	}
 
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return "", err
+	if err := os.MkdirAll(targetDir, 0o750); err != nil {
+		return "", wrapPathError("ensure backup directory", targetDir, err)
 	}
 
 	base := filepath.Base(path)
@@ -195,7 +234,7 @@ func createBackup(path, backupDir string, content []byte, perm os.FileMode) (str
 	backupPath := filepath.Join(targetDir, fmt.Sprintf("%s.%s.bak", base, timestamp))
 
 	if err := os.WriteFile(backupPath, content, perm); err != nil {
-		return "", err
+		return "", wrapPathError("write backup file", backupPath, err)
 	}
 
 	return backupPath, nil
@@ -208,26 +247,32 @@ func decodeContent(data []byte, name string) (string, error) {
 	}
 
 	reader := transform.NewReader(bytes.NewReader(data), enc.NewDecoder())
+
 	decoded, err := io.ReadAll(reader)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("decode content with encoding %q: %w", name, err)
 	}
+
 	return string(decoded), nil
 }
 
-func encodeContent(content string, name string) ([]byte, error) {
+func encodeContent(content, name string) ([]byte, error) {
 	enc := encodingByName(name)
 	if enc == nil {
 		return []byte(content), nil
 	}
+
 	var buf bytes.Buffer
+
 	writer := transform.NewWriter(&buf, enc.NewEncoder())
 	if _, err := writer.Write([]byte(content)); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encode content with encoding %q: %w", name, err)
 	}
+
 	if err := writer.Close(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("finalise encoded content with encoding %q: %w", name, err)
 	}
+
 	return buf.Bytes(), nil
 }
 

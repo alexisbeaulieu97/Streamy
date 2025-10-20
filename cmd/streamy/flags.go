@@ -16,10 +16,12 @@ func validateApplyOptions(opts applyOptions) error {
 	if err != nil {
 		return fmt.Errorf("resolve config path: %w", err)
 	}
+
 	info, err := os.Stat(abs)
 	if err != nil {
 		return fmt.Errorf("config file does not exist: %w", err)
 	}
+
 	if info.IsDir() {
 		return fmt.Errorf("config path %s is a directory", abs)
 	}

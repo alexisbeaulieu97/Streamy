@@ -5,7 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
@@ -67,6 +67,7 @@ func TestModelMarksFinished(t *testing.T) {
 
 	updated, cmd := m.Update(tea.QuitMsg{})
 	require.Nil(t, cmd)
+
 	m = updated.(Model)
 	require.True(t, m.finished)
 }
@@ -76,12 +77,14 @@ func TestModelTotalSteps(t *testing.T) {
 
 	t.Run("returns zero for empty model", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		require.Equal(t, 0, m.TotalSteps())
 	})
 
 	t.Run("returns total after processing steps", func(t *testing.T) {
 		t.Parallel()
+
 		pip := &pipeline.Pipeline{}
 		plan := &pipeline.ExecutionPlan{Levels: []pipeline.ExecutionLevel{{StepIDs: []string{"step1", "step2"}}}}
 		m := NewModel(pip, plan, false)
@@ -100,12 +103,14 @@ func TestModelCompletedSteps(t *testing.T) {
 
 	t.Run("returns zero initially", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		require.Equal(t, 0, m.CompletedSteps())
 	})
 
 	t.Run("increments after completing steps", func(t *testing.T) {
 		t.Parallel()
+
 		pip := &pipeline.Pipeline{}
 		plan := &pipeline.ExecutionPlan{Levels: []pipeline.ExecutionLevel{{StepIDs: []string{"step1", "step2"}}}}
 		m := NewModel(pip, plan, false)
@@ -133,12 +138,14 @@ func TestModelIsFinished(t *testing.T) {
 
 	t.Run("returns false initially", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		require.False(t, m.IsFinished())
 	})
 
 	t.Run("returns true after quit", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		updated, _ := m.Update(tea.QuitMsg{})
 		m = updated.(Model)
@@ -151,6 +158,7 @@ func TestModelEnsureStep(t *testing.T) {
 
 	t.Run("adds new step", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		m.ensureStep("new_step")
 
@@ -162,6 +170,7 @@ func TestModelEnsureStep(t *testing.T) {
 
 	t.Run("does not add duplicate step", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		m.ensureStep("step1")
 		m.ensureStep("step1")
@@ -173,6 +182,7 @@ func TestModelEnsureStep(t *testing.T) {
 
 	t.Run("ignores empty step ID", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		m.ensureStep("")
 
@@ -183,6 +193,7 @@ func TestModelEnsureStep(t *testing.T) {
 
 	t.Run("maintains order of multiple steps", func(t *testing.T) {
 		t.Parallel()
+
 		m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 		m.ensureStep("step1")
 		m.ensureStep("step2")

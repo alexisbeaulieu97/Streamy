@@ -1,3 +1,4 @@
+// Package dashboard exposes commands for driving the TUI dashboard state machine.
 package dashboard
 
 import (
@@ -14,23 +15,24 @@ import (
 func loadInitialStatusCmd(pipelines []registry.Pipeline, cache *registry.StatusCache) tea.Cmd {
 	return func() tea.Msg {
 		statuses := make(map[string]registry.CachedStatus)
+
 		for _, p := range pipelines {
 			if cached, ok := cache.Get(p.ID); ok {
 				statuses[p.ID] = cached
 			}
 		}
+
 		return InitialStatusLoadedMsg{Statuses: statuses}
 	}
 }
 
 // verifyCmd runs verification for a pipeline asynchronously
-func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc PipelineService) tea.Cmd {
+func verifyCmd(ctx context.Context, pipelineID, configPath string, svc PipelineService) tea.Cmd {
 	return func() tea.Msg {
 		result, err := svc.Verify(ctx, VerifyOptions{
 			ConfigPath: configPath,
 			Timeout:    30 * time.Second,
 		})
-
 		if err != nil {
 			// Context cancellation
 			if ctx.Err() != nil {
@@ -58,13 +60,12 @@ func verifyCmd(ctx context.Context, pipelineID string, configPath string, svc Pi
 }
 
 // applyCmd runs apply for a pipeline asynchronously
-func applyCmd(ctx context.Context, pipelineID string, configPath string, svc PipelineService) tea.Cmd {
+func applyCmd(ctx context.Context, pipelineID, configPath string, svc PipelineService) tea.Cmd {
 	return func() tea.Msg {
 		result, err := svc.Apply(ctx, ApplyOptions{
 			ConfigPath:      configPath,
 			ContinueOnError: false,
 		})
-
 		if err != nil {
 			// Context cancellation
 			if ctx.Err() != nil {
@@ -92,20 +93,19 @@ func applyCmd(ctx context.Context, pipelineID string, configPath string, svc Pip
 }
 
 // refreshAllCmd runs verification for all pipelines in parallel
-func refreshAllCmd(ctx context.Context, pipelines []registry.Pipeline, _ PipelineService) tea.Cmd {
+func refreshAllCmd(_ context.Context, pipelines []registry.Pipeline, _ PipelineService) tea.Cmd {
 	return func() tea.Msg {
 		return RefreshStartedMsg{Total: len(pipelines)}
 	}
 }
 
 // refreshSingleCmd runs verification for a single pipeline during refresh all
-func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc PipelineService, index int, total int) tea.Cmd {
+func refreshSingleCmd(ctx context.Context, pl registry.Pipeline, svc PipelineService, index, total int) tea.Cmd {
 	return func() tea.Msg {
 		result, err := svc.Verify(ctx, VerifyOptions{
 			ConfigPath: pl.Path,
 			Timeout:    30 * time.Second,
 		})
-
 		if err != nil {
 			if ctx.Err() != nil {
 				return RefreshCancelledMsg{}

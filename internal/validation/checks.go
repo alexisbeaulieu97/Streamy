@@ -1,3 +1,4 @@
+// Package validation provides reusable validation helpers for pipelines.
 package validation
 
 import (
@@ -6,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 )
 
@@ -16,8 +18,9 @@ func CheckCommandExists(command string) error {
 	}
 
 	if _, err := exec.LookPath(command); err != nil {
-		return err
+		return fmt.Errorf("locate command %q: %w", command, err)
 	}
+
 	return nil
 }
 
@@ -27,11 +30,14 @@ func CheckFileExists(path string) error {
 		return fmt.Errorf("path is required")
 	}
 
+	path = filepath.Clean(path)
+
 	if _, err := os.Stat(path); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("path %s does not exist", path)
 		}
-		return err
+
+		return fmt.Errorf("stat path %s: %w", path, err)
 	}
 
 	return nil
@@ -42,18 +48,21 @@ func CheckPathContains(path, text string) error {
 	if path == "" {
 		return fmt.Errorf("file path is required")
 	}
+
 	if text == "" {
 		return fmt.Errorf("text is required")
 	}
 
+	path = filepath.Clean(path)
+
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("read file %s: %w", path, err)
 	}
 
 	pattern, err := regexp.Compile(text)
 	if err != nil {
-		return err
+		return fmt.Errorf("compile pattern %q: %w", text, err)
 	}
 
 	if !pattern.Match(data) {

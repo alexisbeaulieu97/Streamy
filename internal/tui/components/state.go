@@ -5,6 +5,7 @@ import "time"
 // StepStatus represents the lifecycle state of a pipeline step for rendering.
 type StepStatus string
 
+// Step status values used by the TUI to describe step progress.
 const (
 	StepStatusPending     StepStatus = "pending"
 	StepStatusRunning     StepStatus = "running"

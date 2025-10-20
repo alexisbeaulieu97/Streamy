@@ -1,9 +1,10 @@
+// Package tests provides integration harness utilities for Streamy.
 package tests
 
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	applicationpipeline "github.com/alexisbeaulieu97/streamy/internal/application/pipeline"
 	applicationvalidation "github.com/alexisbeaulieu97/streamy/internal/application/validation"
@@ -101,8 +102,10 @@ func registerPlugins(t *testing.T, registry *plugininfra.Registry, plugins ...po
 		if plugin == nil {
 			continue
 		}
+
 		require.NoError(t, registry.Register(plugin))
 	}
+
 	require.NoError(t, registry.ValidateDependencies())
 	require.NoError(t, registry.InitializePlugins())
 }

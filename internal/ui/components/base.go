@@ -32,6 +32,7 @@ func (c CompositeStrategy) Apply(base lipgloss.Style, theme Theme) lipgloss.Styl
 	for _, fn := range c.funcs {
 		base = fn(base, theme)
 	}
+
 	return base
 }
 
@@ -54,6 +55,7 @@ func (b *BaseComponent) ComputeStyle(theme Theme) lipgloss.Style {
 	if b.strategy == nil {
 		return b.style
 	}
+
 	return b.strategy.Apply(b.style, theme)
 }
 
@@ -94,6 +96,7 @@ func (b *BaseComponent) AddAppliers(appliers ...StyleFunc) {
 			for _, applier := range appliers {
 				base = applier(base, theme)
 			}
+
 			return base
 		}
 		b.strategy = NewCompositeStrategy(wrapper)
@@ -195,12 +198,15 @@ func (c Constraints) Constrain(width, height int) (int, int) {
 	if c.MinWidth > 0 && w < c.MinWidth {
 		w = c.MinWidth
 	}
+
 	if c.MaxWidth != -1 && w > c.MaxWidth {
 		w = c.MaxWidth
 	}
+
 	if c.MinHeight > 0 && h < c.MinHeight {
 		h = c.MinHeight
 	}
+
 	if c.MaxHeight != -1 && h > c.MaxHeight {
 		h = c.MaxHeight
 	}
@@ -260,9 +266,13 @@ type ContextualRenderable interface {
 type Alignment int
 
 const (
+	// AlignStart aligns content to the start of the container.
 	AlignStart Alignment = iota
+	// AlignCenter centers content within the container.
 	AlignCenter
+	// AlignEnd aligns content to the end of the container.
 	AlignEnd
+	// AlignStretch stretches content to fill the container.
 	AlignStretch
 )
 
@@ -284,11 +294,17 @@ func (a Alignment) ToLipglossPosition() lipgloss.Position {
 type MainAxisAlignment int
 
 const (
+	// MainStart aligns children at the start of the main axis.
 	MainStart MainAxisAlignment = iota
+	// MainCenter centers children along the main axis.
 	MainCenter
+	// MainEnd aligns children at the end of the main axis.
 	MainEnd
+	// MainSpaceBetween distributes free space evenly between children.
 	MainSpaceBetween
+	// MainSpaceAround distributes space with equal padding around children.
 	MainSpaceAround
+	// MainSpaceEvenly distributes space evenly before, between, and after children.
 	MainSpaceEvenly
 )
 
@@ -296,8 +312,12 @@ const (
 type CrossAxisAlignment int
 
 const (
+	// CrossStart aligns children to the start of the cross axis.
 	CrossStart CrossAxisAlignment = iota
+	// CrossCenter centers children along the cross axis.
 	CrossCenter
+	// CrossEnd aligns children to the end of the cross axis.
 	CrossEnd
+	// CrossStretch stretches children to fill the cross axis.
 	CrossStretch
 )

@@ -1,3 +1,4 @@
+// Package main renders a console showcase of TUI components.
 package main
 
 import (
@@ -15,6 +16,7 @@ func main() {
 
 	// 1. Basic Text Components
 	printLine(writer, "--- Text Components ---")
+
 	text := components.BoldText("Hello, Components!")
 	printLine(writer, text.View())
 
@@ -31,6 +33,7 @@ func main() {
 
 	// 2. Headers
 	printLine(writer, "--- Headers ---")
+
 	h1 := components.NewHeader("Main Title").
 		WithAppliers(components.Typography(components.TypographyVariantTitle))
 	printLine(writer, h1.View())
@@ -42,6 +45,7 @@ func main() {
 
 	// 3. Dividers
 	printLine(writer, "--- Dividers ---")
+
 	divider := components.HorizontalDivider().WithWidth(50)
 	printLine(writer, divider.View())
 
@@ -54,6 +58,7 @@ func main() {
 
 	// 4. Buttons
 	printLine(writer, "--- Buttons ---")
+
 	primaryBtn := components.PrimaryButton("Primary")
 	printLine(writer, primaryBtn.View())
 
@@ -78,6 +83,7 @@ func main() {
 
 	// 5. Badges
 	printLine(writer, "--- Badges ---")
+
 	primaryBadge := components.PrimaryBadge("v1.0.0")
 	printLine(writer, primaryBadge.View())
 
@@ -93,6 +99,7 @@ func main() {
 
 	// 6. Stack Layout (Horizontal)
 	printLine(writer, "--- Horizontal Stack ---")
+
 	hstack := components.HStack(
 		components.PrimaryButton("Left"),
 		components.SecondaryButton("Middle"),
@@ -103,6 +110,7 @@ func main() {
 
 	// 7. Stack Layout (Vertical)
 	printLine(writer, "--- Vertical Stack ---")
+
 	vstack := components.VStack(
 		components.BoldText("First item"),
 		components.NewText("Second item"),
@@ -113,6 +121,7 @@ func main() {
 
 	// 8. Alerts
 	printLine(writer, "--- Alerts ---")
+
 	successAlert := components.SuccessAlert("Operation completed successfully!")
 	printLine(writer, successAlert.View())
 	printLine(writer, "")
@@ -131,6 +140,7 @@ func main() {
 
 	// 9. Cards
 	printLine(writer, "--- Cards ---")
+
 	simpleCard := components.NewCard(
 		components.NewHeader("Simple Card"),
 		components.HorizontalDivider(),
@@ -148,6 +158,7 @@ func main() {
 
 	// 10. Panels
 	printLine(writer, "--- Panels ---")
+
 	panel := components.NewPanel(
 		components.NewText("Panel content"),
 		components.NewText("Panels are lighter than cards"),
@@ -157,6 +168,7 @@ func main() {
 
 	// 11. Container
 	printLine(writer, "--- Custom Container ---")
+
 	container := components.NewContainer(
 		components.BoldText("Custom styled container"),
 		components.HorizontalDivider(),
@@ -173,6 +185,7 @@ func main() {
 
 	// 12. Complex Composition
 	printLine(writer, "--- Complex Example ---")
+
 	complexCard := components.NewCard(
 		components.VStack(
 			components.HStack(
@@ -207,6 +220,7 @@ func main() {
 
 	// 13. Spacers
 	printLine(writer, "--- Spacers ---")
+
 	stackWithSpacers := components.HStack(
 		components.NewText("Left"),
 		components.HorizontalSpacer(10),
@@ -218,6 +232,7 @@ func main() {
 	// 14. Theme Switching
 	printLine(writer, "--- Theme Switching ---")
 	printLine(writer, "Default Theme:")
+
 	themedCard := components.NewCard(
 		components.NewText("Themed content"),
 	).WithTitle("Themed Card")

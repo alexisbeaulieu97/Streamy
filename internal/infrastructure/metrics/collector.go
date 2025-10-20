@@ -1,3 +1,4 @@
+// Package metrics implements an in-memory metrics collector used by Streamy.
 package metrics
 
 import (
@@ -69,6 +70,7 @@ func (c *Collector) IncCounter(_ context.Context, name string, labels map[string
 	if name == "" {
 		return
 	}
+
 	key := labelsKey(labels)
 
 	c.mu.Lock()
@@ -87,6 +89,7 @@ func (c *Collector) IncCounter(_ context.Context, name string, labels map[string
 		}
 		series[key] = entry
 	}
+
 	entry.value++
 }
 
@@ -95,6 +98,7 @@ func (c *Collector) SetGauge(_ context.Context, name string, value float64, labe
 	if name == "" {
 		return
 	}
+
 	key := labelsKey(labels)
 
 	c.mu.Lock()
@@ -113,6 +117,7 @@ func (c *Collector) SetGauge(_ context.Context, name string, value float64, labe
 		}
 		series[key] = entry
 	}
+
 	entry.value = value
 }
 
@@ -121,6 +126,7 @@ func (c *Collector) ObserveHistogram(_ context.Context, name string, value float
 	if name == "" {
 		return
 	}
+
 	key := labelsKey(labels)
 
 	c.mu.Lock()
@@ -144,10 +150,12 @@ func (c *Collector) ObserveHistogram(_ context.Context, name string, value float
 
 	entry.count++
 	entry.sum += value
+
 	entry.last = value
 	if value < entry.min {
 		entry.min = value
 	}
+
 	if value > entry.max {
 		entry.max = value
 	}
@@ -164,6 +172,7 @@ func (c *Collector) Snapshot() Snapshot {
 		for key, entry := range series {
 			copySeries[key] = entry.value
 		}
+
 		counterCopy[name] = copySeries
 	}
 
@@ -173,6 +182,7 @@ func (c *Collector) Snapshot() Snapshot {
 		for key, entry := range series {
 			copySeries[key] = entry.value
 		}
+
 		gaugeCopy[name] = copySeries
 	}
 
@@ -188,6 +198,7 @@ func (c *Collector) Snapshot() Snapshot {
 				Last:  entry.last,
 			}
 		}
+
 		histCopy[name] = copySeries
 	}
 
@@ -202,21 +213,26 @@ func labelsKey(labels map[string]string) string {
 	if len(labels) == 0 {
 		return ""
 	}
+
 	keys := make([]string, 0, len(labels))
 	for key := range labels {
 		keys = append(keys, key)
 	}
+
 	sort.Strings(keys)
 
 	var b strings.Builder
+
 	for idx, key := range keys {
 		if idx > 0 {
 			b.WriteByte(',')
 		}
+
 		b.WriteString(key)
 		b.WriteByte('=')
 		b.WriteString(labels[key])
 	}
+
 	return b.String()
 }
 
@@ -224,10 +240,12 @@ func copyLabels(labels map[string]string) map[string]string {
 	if len(labels) == 0 {
 		return nil
 	}
+
 	result := make(map[string]string, len(labels))
 	for k, v := range labels {
 		result[k] = v
 	}
+
 	return result
 }
 

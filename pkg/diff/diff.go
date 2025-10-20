@@ -1,3 +1,4 @@
+// Package diff provides helpers for generating human-readable diffs.
 package diff
 
 import (
@@ -65,6 +66,7 @@ func GenerateUnifiedDiff(expected, actual []byte, expectedLabel, actualLabel str
 				buf.WriteString(" ")
 				buf.WriteString(line)
 				buf.WriteString("\n")
+
 				expIdx++
 				actIdx++
 			}
@@ -73,6 +75,7 @@ func GenerateUnifiedDiff(expected, actual []byte, expectedLabel, actualLabel str
 				buf.WriteString("-")
 				buf.WriteString(line)
 				buf.WriteString("\n")
+
 				expIdx++
 			}
 		case diffmatchpatch.DiffInsert:
@@ -80,6 +83,7 @@ func GenerateUnifiedDiff(expected, actual []byte, expectedLabel, actualLabel str
 				buf.WriteString("+")
 				buf.WriteString(line)
 				buf.WriteString("\n")
+
 				actIdx++
 			}
 		}
@@ -87,6 +91,7 @@ func GenerateUnifiedDiff(expected, actual []byte, expectedLabel, actualLabel str
 
 	// Check line count and truncate if necessary
 	result := buf.String()
+
 	lines := strings.Split(result, "\n")
 	if len(lines) > maxDiffLines {
 		truncated := strings.Join(lines[:maxDiffLines], "\n")

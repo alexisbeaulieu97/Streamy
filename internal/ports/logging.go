@@ -38,9 +38,11 @@ func GetCorrelationID(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
+
 	if id, ok := ctx.Value(correlationIDKey{}).(string); ok {
 		return id
 	}
+
 	return ""
 }
 

@@ -113,13 +113,16 @@ func TestGeneratePipelineID(t *testing.T) {
 
 	t.Run("nonAlphanumericOnly", func(t *testing.T) {
 		path := filepath.Join("/tmp", "!!!.yaml")
+
 		got := GeneratePipelineID(path)
 		if !strings.HasPrefix(got, "pipeline-") {
 			t.Fatalf("expected fallback prefix for %q, got %q", path, got)
 		}
+
 		if len(got) > pipelineIDMaxLength {
 			t.Fatalf("fallback ID length = %d exceeds max %d", len(got), pipelineIDMaxLength)
 		}
+
 		if err := ValidatePipelineID(got); err != nil {
 			t.Fatalf("fallback ID %q failed validation: %v", got, err)
 		}

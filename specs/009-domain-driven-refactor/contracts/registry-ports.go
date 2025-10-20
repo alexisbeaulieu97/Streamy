@@ -1,4 +1,4 @@
-// Port Interfaces for Application Layer Dependencies
+// Package ports documents port interfaces for application layer dependencies.
 // Package: internal/ports
 //
 // These interfaces define contracts for application-layer infrastructure dependencies
@@ -16,7 +16,8 @@
 //   - plugins.go: Plugin, PluginRegistry
 //   - events.go: EventPublisher, EventHandler, DomainEvent
 //   - registry.go: RegistryStore, ValidationService (this file)
-
+//
+// Package ports documents the registry-facing interfaces for the DDD refactor.
 package ports
 
 import (
@@ -192,10 +193,14 @@ type ExecutionStatus struct {
 type RegistryStatus string
 
 const (
-	StatusSatisfied RegistryStatus = "satisfied" // All steps in desired state
-	StatusDrifted   RegistryStatus = "drifted"   // Some steps need changes
-	StatusFailed    RegistryStatus = "failed"    // Verification/execution failed
-	StatusUnknown   RegistryStatus = "unknown"   // Never verified or too old
+	// StatusSatisfied indicates all pipeline steps match the desired state.
+	StatusSatisfied RegistryStatus = "satisfied"
+	// StatusDrifted indicates some steps require reconciliation.
+	StatusDrifted RegistryStatus = "drifted"
+	// StatusFailed indicates verification or execution failed.
+	StatusFailed RegistryStatus = "failed"
+	// StatusUnknown indicates the status has not been determined recently.
+	StatusUnknown RegistryStatus = "unknown"
 )
 
 // Validation represents a post-execution validation check.

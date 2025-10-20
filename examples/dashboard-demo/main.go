@@ -1,3 +1,4 @@
+// Package main renders a demo dashboard view for documentation purposes.
 package main
 
 import (
@@ -83,8 +84,10 @@ func buildStatRow(label, value string, badgeFunc func(string) *components.Badge)
 }
 
 func buildPipelineItem(name, status, time string) *components.Stack {
-	var statusBadge *components.Badge
-	var icon string
+	var (
+		statusBadge *components.Badge
+		icon        string
+	)
 
 	switch status {
 	case "satisfied":

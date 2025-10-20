@@ -1,3 +1,4 @@
+// Package packageplugin ensures OS packages are installed via package managers.
 package packageplugin
 
 import (
@@ -29,10 +30,10 @@ var runCommand commandRunner = func(ctx context.Context, name string, args ...st
 	}
 
 	if errors.Is(err, context.Canceled) {
-		return res, err
+		return res, fmt.Errorf("run %q cancelled: %w", name, err)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return res, err
+		return res, fmt.Errorf("run %q timed out: %w", name, err)
 	}
 
 	var exitErr *exec.ExitError
@@ -43,10 +44,10 @@ var runCommand commandRunner = func(ctx context.Context, name string, args ...st
 
 	output := internalexec.PrimaryOutput(res)
 	if output != "" {
-		return res, fmt.Errorf("%w: %s", err, output)
+		return res, fmt.Errorf("run %q failed: %w (output: %s)", name, err, output)
 	}
 
-	return res, err
+	return res, fmt.Errorf("run %q failed: %w", name, err)
 }
 
 // Plugin implements package management using the ports.Plugin interface.
@@ -117,8 +118,10 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 			default:
 				return nil, domainpipeline.NewExecutionError("query package state", cmdErr, map[string]interface{}{"step_id": step.ID, "package": name})
 			}
+
 			continue
 		}
+
 		data.InstalledPackages = append(data.InstalledPackages, name)
 	}
 
@@ -132,6 +135,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 	}
 
 	diff := fmt.Sprintf("would install: %s", strings.Join(data.MissingPackages, ", "))
+
 	return &domainpipeline.EvaluationResult{
 		RequiresAction: true,
 		CurrentState:   string(domainpipeline.VerificationFailed),
@@ -174,6 +178,7 @@ func (Plugin) Apply(ctx context.Context, evaluation *domainpipeline.EvaluationRe
 	}
 
 	args := append([]string{"install", "-y"}, data.MissingPackages...)
+
 	if cfg.Update {
 		updateRes, updateErr := runCommand(ctx, "apt-get", "update")
 		if updateErr != nil {
@@ -232,6 +237,7 @@ func ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.Evalua
 	if !ok || data == nil {
 		return nil, domainpipeline.NewInternalError("package evaluation missing internal data", nil, map[string]interface{}{"step_id": step.ID})
 	}
+
 	return data, nil
 }
 
@@ -283,6 +289,7 @@ func toStringSlice(value interface{}) ([]string, error) {
 				return nil, fmt.Errorf("expected string, got %T", item)
 			}
 		}
+
 		return out, nil
 	default:
 		return nil, fmt.Errorf("invalid packages type %T", value)
@@ -294,6 +301,7 @@ func getBool(values map[string]interface{}, key string) bool {
 	if !ok {
 		return false
 	}
+
 	switch v := raw.(type) {
 	case bool:
 		return v

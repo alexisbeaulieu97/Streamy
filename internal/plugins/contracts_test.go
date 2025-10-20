@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -57,12 +57,14 @@ func TestPortsPluginContracts(t *testing.T) {
 
 			_, evalErr := plugin.Evaluate(cancelledCtx, step)
 			require.Error(t, evalErr, "canceled evaluate should error")
+
 			var evalDomainErr *domainpipeline.DomainError
 			require.ErrorAs(t, evalErr, &evalDomainErr)
 			require.Equal(t, domainpipeline.ErrCodeCancelled, evalDomainErr.Code, "evaluate should surface cancellation error")
 
 			_, applyErr := plugin.Apply(cancelledCtx, nil, step)
 			require.Error(t, applyErr, "canceled apply should error")
+
 			var applyDomainErr *domainpipeline.DomainError
 			require.ErrorAs(t, applyErr, &applyDomainErr)
 			require.Equal(t, domainpipeline.ErrCodeCancelled, applyDomainErr.Code, "apply should surface cancellation error")

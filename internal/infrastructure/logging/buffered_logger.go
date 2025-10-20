@@ -1,3 +1,4 @@
+// Package logging provides logging adapters for the infrastructure layer.
 package logging
 
 import (
@@ -47,6 +48,7 @@ func (l *BufferedLogger) log(ctx context.Context, level logLevel, msg string, fi
 	if l == nil || l.buffer == nil {
 		return
 	}
+
 	payload := append(append([]interface{}{}, l.fields...), fields...)
 	l.buffer.add(bufferedEntry{
 		ctx:    ctx,

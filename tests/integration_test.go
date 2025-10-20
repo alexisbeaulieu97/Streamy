@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -22,6 +22,7 @@ func TestIntegrationSimpleExecution(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -32,6 +33,7 @@ func TestIntegrationSimpleExecution(t *testing.T) {
 	require.Zero(t, summary.FailedChecks, "expected all validations to pass")
 
 	require.Len(t, results, len(pipeline.Steps))
+
 	for _, res := range results {
 		require.Truef(t, res.IsSuccess(), "step %s completed with status %s", res.StepID, res.Status)
 	}
@@ -41,6 +43,7 @@ func TestIntegrationComplexPlan(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -58,6 +61,7 @@ func TestIntegrationDryRunSkipsExecution(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -76,6 +80,7 @@ func TestIntegrationIdempotentRuns(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -86,6 +91,7 @@ func TestIntegrationIdempotentRuns(t *testing.T) {
 	_, secondResults, _, err := h.ApplyUseCase.Apply(ctx, fixturePath("simple.yaml"), false)
 	require.NoError(t, err)
 	require.Len(t, secondResults, len(firstResults))
+
 	for _, res := range secondResults {
 		require.Falsef(t, res.IsFailure(), "step %s should not fail on subsequent run", res.StepID)
 	}
@@ -95,6 +101,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -122,6 +129,7 @@ func TestIntegrationValidationFailure(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -149,6 +157,7 @@ func TestIntegrationParseError(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -161,6 +170,7 @@ func TestIntegrationCycleDetection(t *testing.T) {
 	t.Parallel()
 
 	h := newAppHarness(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -264,19 +274,24 @@ func writeConfig(t *testing.T, contents string) string {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o644))
+
 	return path
 }
 
 func waitForGoroutinesToDrop(t *testing.T, baseline int, timeout time.Duration) {
 	t.Helper()
+
 	deadline := time.Now().Add(timeout)
+
 	for {
 		if runtime.NumGoroutine() <= baseline {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf("goroutine leak detected; baseline=%d current=%d", baseline, runtime.NumGoroutine())
 		}
+
 		time.Sleep(50 * time.Millisecond)
 	}
 }
@@ -310,6 +325,7 @@ func (p *sleepPlugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*
 	}
 
 	cfg := parseSleepConfig(step)
+
 	return &domainpipeline.EvaluationResult{
 		RequiresAction: true,
 		CurrentState:   "pending",
@@ -339,8 +355,9 @@ func (p *sleepPlugin) Apply(ctx context.Context, evaluation *domainpipeline.Eval
 	if cfg.TempDir != "" {
 		tempFile = filepath.Join(cfg.TempDir, fmt.Sprintf("%s.tmp", step.ID))
 		if err := os.WriteFile(tempFile, []byte("sleep"), 0o600); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("write temp file %q: %w", tempFile, err)
 		}
+
 		defer func() {
 			_ = os.Remove(tempFile)
 		}()
@@ -351,7 +368,7 @@ func (p *sleepPlugin) Apply(ctx context.Context, evaluation *domainpipeline.Eval
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("sleep operation cancelled: %w", ctx.Err())
 	case <-timer.C:
 	}
 
@@ -396,5 +413,6 @@ func parseSleepConfig(step domainpipeline.Step) sleepConfig {
 	if cfg.Duration <= 0 {
 		cfg.Duration = 5 * time.Second
 	}
+
 	return cfg
 }

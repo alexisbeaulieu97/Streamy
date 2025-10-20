@@ -1,3 +1,4 @@
+// Package copyplugin reconciles files and directories for pipeline steps.
 package copyplugin
 
 import (
@@ -133,6 +134,7 @@ func (p *Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domai
 		}
 
 		diffStr := generateFileDiff(cfg.Source, cfg.Destination)
+
 		return &domainpipeline.EvaluationResult{
 			RequiresAction: true,
 			CurrentState:   string(domainpipeline.VerificationFailed),
@@ -163,7 +165,7 @@ func (p *Plugin) Apply(ctx context.Context, evaluation *domainpipeline.Evaluatio
 		return nil, err
 	}
 
-	data, err := p.ensureEvaluationData(ctx, evaluation, step, cfg)
+	data, err := p.ensureEvaluationData(ctx, evaluation, step)
 	if err != nil {
 		return nil, err
 	}
@@ -180,6 +182,7 @@ func (p *Plugin) Apply(ctx context.Context, evaluation *domainpipeline.Evaluatio
 		if !cfg.Recursive {
 			return failureResult(step.ID, "recursive copy required for directory contents")
 		}
+
 		if err := copyDirectory(ctx, cfg.Source, cfg.Destination, data.preserveMode); err != nil {
 			return failureWithError(step.ID, "copy directory", err)
 		}
@@ -197,7 +200,7 @@ func (p *Plugin) Apply(ctx context.Context, evaluation *domainpipeline.Evaluatio
 	}, nil
 }
 
-func (p *Plugin) ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.EvaluationResult, step domainpipeline.Step, cfg copyConfig) (*evaluationData, error) {
+func (p *Plugin) ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.EvaluationResult, step domainpipeline.Step) (*evaluationData, error) {
 	if evaluation != nil {
 		if data, ok := evaluation.InternalData.(*evaluationData); ok && data != nil {
 			return data, nil
@@ -208,6 +211,7 @@ func (p *Plugin) ensureEvaluationData(ctx context.Context, evaluation *domainpip
 	if err != nil {
 		return nil, err
 	}
+
 	data, ok := evalResult.InternalData.(*evaluationData)
 	if !ok || data == nil {
 		return nil, domainpipeline.NewDomainError(
@@ -217,6 +221,7 @@ func (p *Plugin) ensureEvaluationData(ctx context.Context, evaluation *domainpip
 			map[string]interface{}{"step_id": step.ID, "plugin_type": string(domainplugin.TypeCopy)},
 		)
 	}
+
 	return data, nil
 }
 
@@ -229,6 +234,7 @@ func decodeConfig(step domainpipeline.Step) (copyConfig, error) {
 			map[string]interface{}{"step": step},
 		)
 	}
+
 	if len(step.Config) == 0 {
 		return copyConfig{}, domainpipeline.NewDomainError(
 			domainpipeline.ErrCodeValidation,
@@ -241,7 +247,7 @@ func decodeConfig(step domainpipeline.Step) (copyConfig, error) {
 	cfg := copyConfig{}
 
 	if value, ok := getString(step.Config, "source"); ok && strings.TrimSpace(value) != "" {
-		cfg.Source = value
+		cfg.Source = filepath.Clean(value)
 	} else {
 		return copyConfig{}, domainpipeline.NewDomainError(
 			domainpipeline.ErrCodeValidation,
@@ -252,7 +258,7 @@ func decodeConfig(step domainpipeline.Step) (copyConfig, error) {
 	}
 
 	if value, ok := getString(step.Config, "destination"); ok && strings.TrimSpace(value) != "" {
-		cfg.Destination = value
+		cfg.Destination = filepath.Clean(value)
 	} else {
 		return copyConfig{}, domainpipeline.NewDomainError(
 			domainpipeline.ErrCodeValidation,
@@ -265,9 +271,11 @@ func decodeConfig(step domainpipeline.Step) (copyConfig, error) {
 	if value, ok := getBool(step.Config, "recursive"); ok {
 		cfg.Recursive = value
 	}
+
 	if value, ok := getBool(step.Config, "overwrite"); ok {
 		cfg.Overwrite = value
 	}
+
 	if value, ok := getBool(step.Config, "preserve_mode"); ok {
 		cfg.PreserveMode = value
 		cfg.PreserveModeSet = true
@@ -290,6 +298,7 @@ func gatherEvaluationData(ctx context.Context, stepID string, cfg copyConfig) (*
 		if os.IsNotExist(err) {
 			return data, nil
 		}
+
 		return nil, domainpipeline.NewDomainError(
 			domainpipeline.ErrCodeExecution,
 			"stat source",
@@ -297,6 +306,7 @@ func gatherEvaluationData(ctx context.Context, stepID string, cfg copyConfig) (*
 			map[string]interface{}{"step_id": stepID, "plugin_type": string(domainplugin.TypeCopy), "source": cfg.Source},
 		)
 	}
+
 	data.sourceInfo = srcInfo
 	data.isDirectory = srcInfo.IsDir()
 	data.isFile = !srcInfo.IsDir()
@@ -311,6 +321,7 @@ func gatherEvaluationData(ctx context.Context, stepID string, cfg copyConfig) (*
 				map[string]interface{}{"step_id": stepID, "plugin_type": string(domainplugin.TypeCopy), "destination": cfg.Destination},
 			)
 		}
+
 		data.destinationExists = false
 	} else {
 		data.destinationExists = true
@@ -327,6 +338,7 @@ func gatherEvaluationData(ctx context.Context, stepID string, cfg copyConfig) (*
 				map[string]interface{}{"step_id": stepID, "plugin_type": string(domainplugin.TypeCopy), "source": cfg.Source},
 			)
 		}
+
 		data.sourceHash = hash
 
 		if data.destinationExists && !data.destinationInfo.IsDir() {
@@ -339,6 +351,7 @@ func gatherEvaluationData(ctx context.Context, stepID string, cfg copyConfig) (*
 					map[string]interface{}{"step_id": stepID, "plugin_type": string(domainplugin.TypeCopy), "destination": cfg.Destination},
 				)
 			}
+
 			data.destinationHash = dstHash
 		}
 	}
@@ -348,24 +361,30 @@ func gatherEvaluationData(ctx context.Context, stepID string, cfg copyConfig) (*
 
 func copyDirectory(ctx context.Context, src, dst string, preserveMode bool) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return wrapCopyCtxError("copy directory cancelled", err)
 	}
 
 	srcInfo, err := os.Stat(src)
 	if err != nil {
-		return err
+		return wrapCopyPathError("stat source", src, err)
 	}
 
-	if err := os.MkdirAll(dst, srcInfo.Mode()); err != nil {
-		return err
+	perm := srcInfo.Mode().Perm()
+	if perm > 0o750 {
+		perm = 0o750
 	}
 
-	return filepath.Walk(src, func(path string, info fs.FileInfo, walkErr error) error {
+	if err := os.MkdirAll(dst, perm); err != nil {
+		return wrapCopyPathError("ensure destination directory", dst, err)
+	}
+
+	walkErr := filepath.Walk(src, func(path string, info fs.FileInfo, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			return wrapCopyPathError("walk source", path, walkErr)
 		}
+
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
+			return wrapCopyCtxError("copy directory cancelled", ctxErr)
 		}
 
 		if path == src {
@@ -374,111 +393,208 @@ func copyDirectory(ctx context.Context, src, dst string, preserveMode bool) erro
 
 		relPath, err := filepath.Rel(src, path)
 		if err != nil {
-			return err
+			return wrapCopyPathError("determine relative path", path, err)
 		}
+
 		dstPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {
-			if err := os.MkdirAll(dstPath, info.Mode()); err != nil {
-				return err
+			mode := info.Mode().Perm()
+			if mode > 0o750 {
+				mode = 0o750
 			}
+
+			if err := os.MkdirAll(dstPath, mode); err != nil {
+				return wrapCopyPathError("ensure nested directory", dstPath, err)
+			}
+
 			return nil
 		}
 
 		return copyFile(ctx, path, dstPath, preserveMode, true)
 	})
-}
-
-func copyFile(ctx context.Context, src, dst string, preserveMode bool, overwrite bool) error {
-	if err := ctx.Err(); err != nil {
-		return err
+	if walkErr != nil {
+		return wrapCopyPathError("walk source tree", src, walkErr)
 	}
 
-	if !overwrite {
-		if _, err := os.Stat(dst); err == nil {
-			return fmt.Errorf("destination exists and overwrite is false")
-		}
+	return nil
+}
+
+func copyFile(ctx context.Context, src, dst string, preserveMode, overwrite bool) error {
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
+	if err := ctx.Err(); err != nil {
+		return wrapCopyCtxError("copy file cancelled", err)
+	}
+
+	if err := ensureDestinationWritable(dst, overwrite); err != nil {
+		return err
 	}
 
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return err
+		return wrapCopyPathError("open source", src, err)
 	}
+
 	defer func() { _ = srcFile.Close() }()
 
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := ensureDestinationDirectory(dst); err != nil {
 		return err
 	}
 
-	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	dstFile, err := openDestinationFile(dst)
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = dstFile.Close() }()
 
-	buf := make([]byte, 32*1024)
-	for {
-		if err := ctx.Err(); err != nil {
-			_ = dstFile.Close()
-			_ = os.Remove(dst)
-			return err
-		}
-
-		n, readErr := srcFile.Read(buf)
-		if n > 0 {
-			if _, writeErr := dstFile.Write(buf[:n]); writeErr != nil {
-				return writeErr
-			}
-		}
-		if readErr != nil {
-			if errors.Is(readErr, io.EOF) {
-				break
-			}
-			return readErr
-		}
+	if err := streamFile(ctx, src, dst, srcFile, dstFile); err != nil {
+		return err
 	}
 
 	if preserveMode {
-		if stat, err := os.Stat(src); err == nil {
-			_ = os.Chmod(dst, stat.Mode())
+		if err := mirrorFileMode(src, dst); err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
+func ensureDestinationWritable(dst string, overwrite bool) error {
+	if overwrite {
+		return nil
+	}
+
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("destination exists and overwrite is false")
+	} else if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return wrapCopyPathError("stat destination", dst, err)
+	}
+
+	return nil
+}
+
+func ensureDestinationDirectory(dst string) error {
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return wrapCopyPathError("ensure destination directory", dir, err)
+	}
+
+	return nil
+}
+
+func openDestinationFile(dst string) (*os.File, error) {
+	file, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) // #nosec G304 -- dst is cleaned and rooted by caller
+	if err != nil {
+		return nil, wrapCopyPathError("open destination", dst, err)
+	}
+
+	return file, nil
+}
+
+func streamFile(ctx context.Context, srcPath, dstPath string, srcFile, dstFile *os.File) error {
+	buf := make([]byte, 32*1024)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			_ = dstFile.Close()
+			_ = os.Remove(dstPath)
+
+			return wrapCopyCtxError("copy file cancelled", err)
+		}
+
+		n, readErr := srcFile.Read(buf)
+		if n > 0 {
+			if _, writeErr := dstFile.Write(buf[:n]); writeErr != nil {
+				return wrapCopyPathError("write destination", dstPath, writeErr)
+			}
+		}
+
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+
+			return wrapCopyPathError("read source", srcPath, readErr)
+		}
+	}
+
+	return nil
+}
+
+func mirrorFileMode(src, dst string) error {
+	stat, err := os.Stat(src)
+	if err != nil {
+		return wrapCopyPathError("stat source for mode", src, err)
+	}
+
+	_ = os.Chmod(dst, stat.Mode())
+
+	return nil
+}
+
 func hashFile(ctx context.Context, path string) (string, error) {
+	path = filepath.Clean(path)
+
 	file, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return "", wrapCopyPathError("open file", path, err)
 	}
+
 	defer func() { _ = file.Close() }()
 
 	hasher := sha256.New()
 	buf := make([]byte, 32*1024)
+
 	for {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return "", wrapCopyCtxError("hash file cancelled", err)
 		}
 
 		n, readErr := file.Read(buf)
 		if n > 0 {
 			if _, writeErr := hasher.Write(buf[:n]); writeErr != nil {
-				return "", writeErr
+				return "", fmt.Errorf("hash file write: %w", writeErr)
 			}
 		}
+
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				break
 			}
-			return "", readErr
+
+			return "", wrapCopyPathError("read file", path, readErr)
 		}
 	}
 
 	return fmt.Sprintf("%x", hasher.Sum(nil)), nil
 }
 
+func wrapCopyCtxError(action string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("%s: %w", action, err)
+}
+
+func wrapCopyPathError(action, path string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("%s %q: %w", action, path, err)
+}
+
 func generateFileDiff(src, dst string) string {
+	src = filepath.Clean(src)
+	dst = filepath.Clean(dst)
+
 	srcContent, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Sprintf("cannot read source file: %v", err)
@@ -493,6 +609,7 @@ func generateFileDiff(src, dst string) string {
 	if diffStr == "" {
 		return "files differ"
 	}
+
 	return diffStr
 }
 
@@ -500,10 +617,12 @@ func getString(values map[string]interface{}, key string) (string, bool) {
 	if values == nil {
 		return "", false
 	}
+
 	val, ok := values[key]
 	if !ok {
 		return "", false
 	}
+
 	switch typed := val.(type) {
 	case string:
 		return typed, true
@@ -518,10 +637,12 @@ func getBool(values map[string]interface{}, key string) (bool, bool) {
 	if values == nil {
 		return false, false
 	}
+
 	val, ok := values[key]
 	if !ok {
 		return false, false
 	}
+
 	switch typed := val.(type) {
 	case bool:
 		return typed, true
@@ -556,6 +677,7 @@ func failureResult(stepID, message string) (*domainpipeline.StepResult, error) {
 		nil,
 		map[string]interface{}{"step_id": stepID, "plugin_type": string(domainplugin.TypeCopy)},
 	)
+
 	return &domainpipeline.StepResult{
 		StepID:  stepID,
 		Status:  domainpipeline.StatusFailure,
@@ -571,6 +693,7 @@ func failureWithError(stepID, action string, cause error) (*domainpipeline.StepR
 		cause,
 		map[string]interface{}{"step_id": stepID, "plugin_type": string(domainplugin.TypeCopy)},
 	)
+
 	return &domainpipeline.StepResult{
 		StepID:  stepID,
 		Status:  domainpipeline.StatusFailure,

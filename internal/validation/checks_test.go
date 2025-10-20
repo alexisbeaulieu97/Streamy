@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestCheckCommandExists(t *testing.T) {
@@ -40,6 +40,7 @@ func TestCheckPathContains(t *testing.T) {
 
 	t.Run("returns error when file doesn't exist", func(t *testing.T) {
 		t.Parallel()
+
 		err := CheckPathContains(filepath.Join(dir, "nonexistent.txt"), "text")
 		require.Error(t, err)
 	})

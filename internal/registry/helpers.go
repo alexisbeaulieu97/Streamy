@@ -97,5 +97,6 @@ func trimToLength(value string, length int) string {
 	}
 
 	trimmed := value[:length]
+
 	return strings.Trim(trimmed, "-")
 }

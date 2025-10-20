@@ -10,7 +10,7 @@ func newRegistryCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
 		Aliases: []string{
 			"reg",
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}

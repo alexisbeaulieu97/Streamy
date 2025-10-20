@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/application/pipeline/testutil"
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -24,12 +24,12 @@ func TestPrepareUseCase_Success(t *testing.T) {
 	}
 
 	configLoader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipelineDefinition, nil
 		},
 	}
 	dagBuilder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return &domainpipeline.ExecutionPlan{
 				Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}},
 			}, nil
@@ -58,7 +58,7 @@ func TestPrepareUseCase_LoadFailure(t *testing.T) {
 
 	loadErr := errors.New("load failed")
 	configLoader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return nil, loadErr
 		},
 	}
@@ -89,12 +89,12 @@ func TestPrepareUseCase_DagBuildFailure(t *testing.T) {
 	buildErr := errors.New("cycle detected")
 
 	configLoader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipelineDefinition, nil
 		},
 	}
 	dagBuilder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return nil, buildErr
 		},
 	}
@@ -124,12 +124,12 @@ func TestPrepareUseCase_DagValidationFailure(t *testing.T) {
 	}
 
 	configLoader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipelineDefinition, nil
 		},
 	}
 	dagBuilder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return &domainpipeline.ExecutionPlan{
 				Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{}}},
 			}, nil

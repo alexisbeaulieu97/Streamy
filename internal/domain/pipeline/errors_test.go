@@ -9,12 +9,14 @@ import (
 
 func TestDomainError_Error(t *testing.T) {
 	err := &DomainError{Code: ErrCodeValidation, Message: "invalid"}
+
 	want := "VALIDATION_ERROR: invalid"
 	if err.Error() != want {
 		t.Fatalf("expected %q, got %q", want, err.Error())
 	}
 
 	wrapped := &DomainError{Code: ErrCodeExecution, Message: "failure", Cause: err}
+
 	wantWrapped := "EXECUTION_ERROR: failure: VALIDATION_ERROR: invalid"
 	if wrapped.Error() != wantWrapped {
 		t.Fatalf("expected %q, got %q", wantWrapped, wrapped.Error())
@@ -114,12 +116,15 @@ func TestErrorHelperConstructors(t *testing.T) {
 			if tc.err == nil {
 				t.Fatalf("expected error instance for %s", tc.name)
 			}
+
 			if tc.err.Code != tc.want {
 				t.Fatalf("expected code %s, got %s", tc.want, tc.err.Code)
 			}
+
 			if tc.err.Message != tc.message {
 				t.Fatalf("expected message %q, got %q", tc.message, tc.err.Message)
 			}
+
 			switch tc.want {
 			case ErrCodeExecution, ErrCodePlugin, ErrCodeInternal:
 				if !errors.Is(tc.err, baseCause) {
@@ -138,6 +143,7 @@ func TestErrorHelperConstructors(t *testing.T) {
 	if custom.Code != ErrCodeInternal || custom.Message != "custom" || !errors.Is(custom, baseCause) {
 		t.Fatal("NewDomainError did not populate fields correctly")
 	}
+
 	if custom.Context["x"] != 1 {
 		t.Fatal("expected context propagated")
 	}

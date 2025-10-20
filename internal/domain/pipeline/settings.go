@@ -26,8 +26,10 @@ func (s Settings) ApplyDefaults() Settings {
 	if clone.Parallel <= 0 {
 		clone.Parallel = 4
 	}
+
 	if clone.Timeout <= 0 {
 		clone.Timeout = 300
 	}
+
 	return clone
 }

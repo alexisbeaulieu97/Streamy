@@ -37,15 +37,19 @@ steps:
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
+
 	if pip == nil {
 		t.Fatal("expected pipeline, got nil")
 	}
+
 	if pip.Name != "demo" {
 		t.Fatalf("expected name demo, got %s", pip.Name)
 	}
+
 	if len(pip.Steps) != 1 {
 		t.Fatalf("expected 1 step, got %d", len(pip.Steps))
 	}
+
 	if pip.Steps[0].Config["command"] != "echo hi" {
 		t.Fatalf("expected command config to be preserved")
 	}
@@ -59,6 +63,7 @@ func TestYAMLLoaderLoadMissingFile(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for missing file")
 	}
+
 	assertDomainError(t, err, pipeline.ErrCodeNotFound)
 }
 
@@ -82,12 +87,15 @@ func TestYAMLLoaderLoadParseError(t *testing.T) {
 	if !errors.As(err, &domainErr) {
 		t.Fatalf("expected DomainError, got %T", err)
 	}
+
 	if domainErr.Code != pipeline.ErrCodeConfig {
 		t.Fatalf("expected code %s, got %s", pipeline.ErrCodeConfig, domainErr.Code)
 	}
+
 	if domainErr.Context["path"] != configPath {
 		t.Fatalf("expected path in context, got %+v", domainErr.Context)
 	}
+
 	if _, ok := domainErr.Context["line"]; !ok {
 		t.Fatalf("expected line number in context")
 	}
@@ -121,6 +129,7 @@ steps:
 	if err == nil {
 		t.Fatalf("expected domain validation error")
 	}
+
 	assertDomainError(t, err, pipeline.ErrCodeDuplicate)
 }
 
@@ -133,6 +142,7 @@ func TestYAMLLoaderLoadCancelled(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected cancellation error")
 	}
+
 	assertDomainError(t, err, pipeline.ErrCodeCancelled)
 }
 
@@ -146,6 +156,7 @@ func TestYAMLLoaderLoadCancelledDuringRead(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
+
 	go func() {
 		_, err := loader.Load(ctx, "stream.yaml")
 		done <- err
@@ -154,8 +165,10 @@ func TestYAMLLoaderLoadCancelledDuringRead(t *testing.T) {
 	go func() {
 		// Write initial bytes then cancel before completing the document.
 		_, _ = pw.Write([]byte("version: \"1.0\"\n"))
+
 		time.Sleep(5 * time.Millisecond)
 		cancel()
+
 		_, _ = pw.Write([]byte("name: \"demo\"\nsteps: []\n"))
 		_ = pw.Close()
 	}()
@@ -164,6 +177,7 @@ func TestYAMLLoaderLoadCancelledDuringRead(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected cancellation error")
 	}
+
 	assertDomainError(t, err, pipeline.ErrCodeCancelled)
 }
 
@@ -194,10 +208,12 @@ steps:
 
 func assertDomainError(t *testing.T, err error, code pipeline.ErrorCode) {
 	t.Helper()
+
 	var domainErr *pipeline.DomainError
 	if !errors.As(err, &domainErr) {
 		t.Fatalf("expected DomainError, got %T", err)
 	}
+
 	if domainErr.Code != code {
 		t.Fatalf("expected code %s, got %s", code, domainErr.Code)
 	}

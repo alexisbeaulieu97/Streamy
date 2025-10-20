@@ -1,3 +1,4 @@
+// Package events contains adapters around the domain event system.
 package events
 
 import (
@@ -41,7 +42,9 @@ func (p *LoggingPublisher) Publish(ctx context.Context, event ports.DomainEvent)
 		for key := range payload {
 			keys = append(keys, key)
 		}
+
 		sort.Strings(keys)
+
 		for _, key := range keys {
 			fields = append(fields, key, payload[key])
 		}
@@ -57,6 +60,7 @@ func (p *LoggingPublisher) Publish(ctx context.Context, event ports.DomainEvent)
 		if handler == nil {
 			continue
 		}
+
 		if err := handler(ctx, event); err != nil {
 			p.logger.Warn(ctx, "event handler failed", "event_type", event.EventType(), "error", err)
 		}
@@ -70,6 +74,7 @@ func (p *LoggingPublisher) Subscribe(eventType string, handler ports.EventHandle
 	if p == nil || handler == nil {
 		return noopSubscription{}, nil
 	}
+
 	p.mu.Lock()
 	p.nextID++
 	id := p.nextID
@@ -80,6 +85,7 @@ func (p *LoggingPublisher) Subscribe(eventType string, handler ports.EventHandle
 		cancel: func() {
 			p.mu.Lock()
 			defer p.mu.Unlock()
+
 			handlers := p.subs[eventType]
 			for i, entry := range handlers {
 				if entry.id == id {

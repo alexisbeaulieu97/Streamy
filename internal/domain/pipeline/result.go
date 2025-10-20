@@ -4,9 +4,13 @@ package pipeline
 type ResultStatus string
 
 const (
-	StatusSuccess          ResultStatus = "success"
-	StatusFailure          ResultStatus = "failure"
-	StatusSkipped          ResultStatus = "skipped"
+	// StatusSuccess indicates the step completed successfully.
+	StatusSuccess ResultStatus = "success"
+	// StatusFailure indicates the step failed.
+	StatusFailure ResultStatus = "failure"
+	// StatusSkipped indicates the step was skipped.
+	StatusSkipped ResultStatus = "skipped"
+	// StatusAlreadySatisfied indicates the desired state already matched reality.
 	StatusAlreadySatisfied ResultStatus = "already_satisfied"
 )
 
@@ -37,9 +41,11 @@ func (r StepResult) FormatOutput() string {
 	if r.Error != nil {
 		return r.Error.Error()
 	}
+
 	if r.Output != "" {
 		return r.Output
 	}
+
 	return r.Message
 }
 
@@ -47,9 +53,12 @@ func (r StepResult) FormatOutput() string {
 type VerificationStatus string
 
 const (
+	// VerificationSatisfied indicates the validation passed.
 	VerificationSatisfied VerificationStatus = "satisfied"
-	VerificationFailed    VerificationStatus = "failed"
-	VerificationUnknown   VerificationStatus = "unknown"
+	// VerificationFailed indicates the validation failed.
+	VerificationFailed VerificationStatus = "failed"
+	// VerificationUnknown indicates the validation outcome is undetermined.
+	VerificationUnknown VerificationStatus = "unknown"
 )
 
 // VerificationResult captures the outcome of a validation step.
@@ -71,6 +80,7 @@ func (v VerificationResult) FormatMessage() string {
 	if v.Message != "" {
 		return v.Message
 	}
+
 	return string(v.Status)
 }
 
@@ -87,6 +97,7 @@ type VerificationSummary struct {
 func (s *VerificationSummary) Add(result VerificationResult) {
 	s.Results = append(s.Results, result)
 	s.TotalChecks++
+
 	switch result.Status {
 	case VerificationSatisfied:
 		s.PassedChecks++
@@ -96,6 +107,7 @@ func (s *VerificationSummary) Add(result VerificationResult) {
 			if s.FailureDetails == nil {
 				s.FailureDetails = make([]map[string]interface{}, 0)
 			}
+
 			s.FailureDetails = append(s.FailureDetails, result.Details)
 		}
 	}
@@ -106,6 +118,7 @@ func (s *VerificationSummary) Merge(other VerificationSummary) {
 	s.TotalChecks += other.TotalChecks
 	s.PassedChecks += other.PassedChecks
 	s.FailedChecks += other.FailedChecks
+
 	s.Results = append(s.Results, other.Results...)
 	if len(other.FailureDetails) > 0 {
 		s.FailureDetails = append(s.FailureDetails, other.FailureDetails...)

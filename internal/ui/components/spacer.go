@@ -39,6 +39,7 @@ func (s *Spacer) View() string {
 	if w < 0 {
 		w = 0
 	}
+
 	h := s.height
 	if h < 0 {
 		h = 0
@@ -57,6 +58,7 @@ func (s *Spacer) View() string {
 		for i := range lines {
 			lines[i] = line
 		}
+
 		return lipgloss.JoinVertical(lipgloss.Left, lines...)
 	}
 

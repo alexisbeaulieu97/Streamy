@@ -10,16 +10,17 @@ import (
 )
 
 // RunValidations executes the provided validations and returns their results.
-func RunValidations(ctx context.Context, validations []domain.Validation) ([]ValidationResult, error) {
-	results := make([]ValidationResult, 0, len(validations))
+func RunValidations(ctx context.Context, validations []domain.Validation) ([]Result, error) {
+	results := make([]Result, 0, len(validations))
+
 	var failedMessages []string
 
 	for _, val := range validations {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return results, ctxErr
+			return results, fmt.Errorf("validation cancelled: %w", ctxErr)
 		}
 
-		result := ValidationResult{Validation: val}
+		result := Result{Validation: val}
 
 		if err := val.Validate(); err != nil {
 			result.Passed = false
@@ -27,10 +28,12 @@ func RunValidations(ctx context.Context, validations []domain.Validation) ([]Val
 			result.Error = err
 			failedMessages = append(failedMessages, err.Error())
 			results = append(results, result)
+
 			continue
 		}
 
 		var execErr error
+
 		switch val.Type {
 		case domain.ValidationCommandExists:
 			command, err := stringConfigValue(val.Config, "command")
@@ -48,6 +51,7 @@ func RunValidations(ctx context.Context, validations []domain.Validation) ([]Val
 			}
 		case domain.ValidationPathContains:
 			file, fileErr := stringConfigValue(val.Config, "file")
+
 			text, textErr := stringConfigValue(val.Config, "text")
 			switch {
 			case fileErr != nil:
@@ -86,16 +90,20 @@ func stringConfigValue(cfg map[string]any, key string) (string, error) {
 	if cfg == nil {
 		return "", fmt.Errorf("configuration missing key %q", key)
 	}
+
 	raw, ok := cfg[key]
 	if !ok {
 		return "", fmt.Errorf("configuration missing key %q", key)
 	}
+
 	value, ok := raw.(string)
 	if !ok {
 		return "", fmt.Errorf("configuration key %q must be a string", key)
 	}
+
 	if strings.TrimSpace(value) == "" {
 		return "", fmt.Errorf("configuration key %q must be non-empty", key)
 	}
+
 	return value, nil
 }

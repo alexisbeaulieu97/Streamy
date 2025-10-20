@@ -138,15 +138,18 @@ func (m Model) nextProgressCmd(pipelineID string) tea.Cmd {
 	if m.service == nil {
 		return nil
 	}
+
 	base := m.service.StepProgressCmd()
 	if base == nil {
 		return nil
 	}
+
 	return func() tea.Msg {
 		msg := base()
 		if _, ok := msg.(StepProgressTimeoutMsg); ok {
 			return StepProgressTimeoutMsg{PipelineID: pipelineID}
 		}
+
 		return msg
 	}
 }
@@ -182,6 +185,7 @@ func (m *Model) CountByStatus() map[registry.PipelineStatus]int {
 	for _, p := range m.pipelines {
 		counts[p.Status]++
 	}
+
 	return counts
 }
 
@@ -190,6 +194,7 @@ func (m *Model) GetSelectedPipeline() (registry.Pipeline, bool) {
 	if m.cursor < 0 || m.cursor >= len(m.pipelines) {
 		return registry.Pipeline{}, false
 	}
+
 	return m.pipelines[m.cursor], true
 }
 
@@ -200,6 +205,7 @@ func (m *Model) GetPipelineByID(id string) (registry.Pipeline, int, bool) {
 			return p, i, true
 		}
 	}
+
 	return registry.Pipeline{}, -1, false
 }
 
@@ -209,6 +215,7 @@ func (m *Model) UpdatePipelineStatus(id string, status registry.PipelineStatus, 
 		if m.pipelines[i].ID == id {
 			m.pipelines[i].Status = status
 			m.pipelines[i].LastRun = lastRun
+
 			break
 		}
 	}
@@ -219,6 +226,7 @@ func (m *Model) MoveCursorUp() {
 	if len(m.pipelines) == 0 {
 		return
 	}
+
 	m.cursor--
 	if m.cursor < 0 {
 		m.cursor = len(m.pipelines) - 1
@@ -230,6 +238,7 @@ func (m *Model) MoveCursorDown() {
 	if len(m.pipelines) == 0 {
 		return
 	}
+
 	m.cursor++
 	if m.cursor >= len(m.pipelines) {
 		m.cursor = 0

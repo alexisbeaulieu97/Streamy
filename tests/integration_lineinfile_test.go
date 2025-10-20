@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -158,6 +158,7 @@ func TestIntegration_LineInFile_CompleteShellSetup(t *testing.T) {
 
 	results := applyLineInFile(t, newAppHarness(t), cfgPath, false)
 	require.Len(t, results, 4)
+
 	for _, id := range []string{"add_path", "set_editor", "remove_old_java", "set_java"} {
 		assert.Equal(t, domainpipeline.StatusSuccess, resultByID(t, results, id).Status)
 	}
@@ -200,17 +201,21 @@ func lineInFileStepMap(id string, enabled bool, dependsOn []string, fields map[s
 	if !enabled {
 		step["enabled"] = false
 	}
+
 	if len(dependsOn) > 0 {
 		step["depends_on"] = dependsOn
 	}
+
 	for key, value := range fields {
 		step[key] = value
 	}
+
 	return step
 }
 
 func writeLineInFileConfig(t *testing.T, steps []map[string]interface{}) string {
 	t.Helper()
+
 	cfg := map[string]interface{}{
 		"version": "1.0",
 		"name":    "line-in-file-integration",
@@ -221,27 +226,33 @@ func writeLineInFileConfig(t *testing.T, steps []map[string]interface{}) string 
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, data, 0o644))
+
 	return path
 }
 
 func applyLineInFile(t *testing.T, h *appHarness, configPath string, dryRun bool) []domainpipeline.StepResult {
 	t.Helper()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	_, results, _, err := h.ApplyUseCase.Apply(ctx, configPath, dryRun)
 	require.NoError(t, err)
+
 	return results
 }
 
 func resultByID(t *testing.T, results []domainpipeline.StepResult, id string) domainpipeline.StepResult {
 	t.Helper()
+
 	for _, res := range results {
 		if res.StepID == id {
 			return res
 		}
 	}
+
 	t.Fatalf("result for step %s not found", id)
+
 	return domainpipeline.StepResult{}
 }
 

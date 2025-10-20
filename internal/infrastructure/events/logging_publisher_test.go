@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	cblog "github.com/charmbracelet/log"
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	logginginfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/logging"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
@@ -59,7 +59,8 @@ func TestLoggingPublisherInvokesSubscribers(t *testing.T) {
 	publisher := NewLoggingPublisher(logger)
 
 	var handled bool
-	_, err = publisher.Subscribe(ports.EventPipelineCompleted, func(ctx context.Context, event ports.DomainEvent) error {
+
+	_, err = publisher.Subscribe(ports.EventPipelineCompleted, func(_ context.Context, _ ports.DomainEvent) error {
 		handled = true
 		return nil
 	})

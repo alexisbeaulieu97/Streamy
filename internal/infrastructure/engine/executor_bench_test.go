@@ -29,6 +29,7 @@ func (benchPlugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*dom
 		return nil, domainpipeline.NewCancelledError("benchmark evaluate cancelled", map[string]interface{}{"step_id": step.ID})
 	default:
 	}
+
 	return &domainpipeline.EvaluationResult{
 		RequiresAction: true,
 		CurrentState:   string(domainpipeline.VerificationFailed),
@@ -41,6 +42,7 @@ func (benchPlugin) Apply(ctx context.Context, _ *domainpipeline.EvaluationResult
 		return nil, domainpipeline.NewCancelledError("benchmark apply cancelled", map[string]interface{}{"step_id": step.ID})
 	default:
 	}
+
 	return &domainpipeline.StepResult{
 		StepID:  step.ID,
 		Status:  domainpipeline.StatusSuccess,
@@ -53,6 +55,7 @@ func BenchmarkExecutorPipeline500Steps(b *testing.B) {
 	const stepCount = 500
 
 	pipeline, plan := buildBenchmarkPipeline(stepCount)
+
 	registry := plugininfra.NewRegistry()
 	if err := registry.Register(benchPlugin{}); err != nil {
 		b.Fatalf("register bench plugin: %v", err)
@@ -61,12 +64,15 @@ func BenchmarkExecutorPipeline500Steps(b *testing.B) {
 	exec := NewExecutor(registry, WithExecutorParallelism(32))
 
 	ctx := context.Background()
+
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		results, err := exec.Execute(ctx, plan, pipeline)
 		if err != nil {
 			b.Fatalf("execute: %v", err)
 		}
+
 		if len(results) != stepCount {
 			b.Fatalf("unexpected result count: got %d want %d", len(results), stepCount)
 		}
@@ -79,6 +85,7 @@ func buildBenchmarkPipeline(stepCount int) (*domainpipeline.Pipeline, *domainpip
 
 	for i := 0; i < stepCount; i++ {
 		id := fmt.Sprintf("step_%03d", i)
+
 		step := domainpipeline.Step{
 			ID:      id,
 			Type:    domainpipeline.StepTypeCommand,
@@ -90,6 +97,7 @@ func buildBenchmarkPipeline(stepCount int) (*domainpipeline.Pipeline, *domainpip
 		if i > 0 {
 			step.DependsOn = []string{fmt.Sprintf("step_%03d", i-1)}
 		}
+
 		steps[i] = step
 		levels[i] = domainpipeline.ExecutionLevel{
 			Level:   i,
@@ -108,5 +116,6 @@ func buildBenchmarkPipeline(stepCount int) (*domainpipeline.Pipeline, *domainpip
 		Levels:     levels,
 		TotalSteps: stepCount,
 	}
+
 	return pipeline, plan
 }

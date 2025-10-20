@@ -21,12 +21,15 @@ func TestFormatError_DomainError(t *testing.T) {
 	if !strings.Contains(output, "[EXECUTION_ERROR] plugin execution failed") {
 		t.Fatalf("expected execution header, got %q", output)
 	}
+
 	if !strings.Contains(output, "Suggestion:") {
 		t.Fatalf("expected suggestion in output, got %q", output)
 	}
+
 	if !strings.Contains(output, "step_id: build") {
 		t.Fatalf("expected context details, got %q", output)
 	}
+
 	if !strings.Contains(output, "Cause:") || !strings.Contains(output, base.Error()) {
 		t.Fatalf("expected cause chain, got %q", output)
 	}
@@ -43,9 +46,11 @@ func TestFormatError_AggregateError(t *testing.T) {
 	if !strings.Contains(output, "pipeline execution failed") {
 		t.Fatalf("expected aggregate message, got %q", output)
 	}
+
 	if !strings.Contains(output, "1.") {
 		t.Fatalf("expected enumerated child, got %q", output)
 	}
+
 	if !strings.Contains(output, "[VALIDATION_ERROR] step requires command field") {
 		t.Fatalf("expected formatted domain error, got %q", output)
 	}
@@ -63,16 +68,19 @@ func TestFormatError_ConfigParseError(t *testing.T) {
 	if !strings.Contains(output, "[CONFIG_ERROR] invalid configuration syntax") {
 		t.Fatalf("expected config error header, got %q", output)
 	}
+
 	if !strings.Contains(output, "Suggestion: Fix configuration syntax errors and try again.") {
 		t.Fatalf("expected remediation suggestion, got %q", output)
 	}
 
 	fieldIndex := strings.Index(output, "field: steps[0].type")
 	lineIndex := strings.Index(output, "line: 17")
+
 	pathIndex := strings.Index(output, "path: /tmp/pipeline.yaml")
 	if fieldIndex == -1 || lineIndex == -1 || pathIndex == -1 {
 		t.Fatalf("expected context entries for field, line, and path, got %q", output)
 	}
+
 	if fieldIndex >= lineIndex || lineIndex >= pathIndex {
 		t.Fatalf("expected context to be sorted alphabetically, got %q", output)
 	}
@@ -90,9 +98,11 @@ func TestFormatError_PluginExecutionError(t *testing.T) {
 	if !strings.Contains(output, "[EXECUTION_ERROR] plugin execution failed") {
 		t.Fatalf("expected execution error header, got %q", output)
 	}
+
 	if !strings.Contains(output, "step_id: deploy") || !strings.Contains(output, "plugin_type: command") || !strings.Contains(output, "operation: apply") {
 		t.Fatalf("expected execution context fields, got %q", output)
 	}
+
 	if !strings.Contains(output, "Cause:") || !strings.Contains(output, cause.Error()) {
 		t.Fatalf("expected root cause output, got %q", output)
 	}
@@ -105,6 +115,7 @@ func TestFormatError_DependencyCycle(t *testing.T) {
 	if !strings.Contains(output, "[CIRCULAR_DEPENDENCY] circular dependency detected") {
 		t.Fatalf("expected cycle error header, got %q", output)
 	}
+
 	if !strings.Contains(output, "Context:") || !strings.Contains(output, "path: build -> test -> deploy -> build") {
 		t.Fatalf("expected cycle path context, got %q", output)
 	}
@@ -127,15 +138,19 @@ func TestFormatError_AggregateMultipleErrors(t *testing.T) {
 	if !strings.Contains(output, "1.") || !strings.Contains(output, "2.") {
 		t.Fatalf("expected enumerated errors, got %q", output)
 	}
+
 	if !strings.Contains(output, "[VALIDATION_ERROR] missing command field") {
 		t.Fatalf("expected validation error details, got %q", output)
 	}
+
 	if !strings.Contains(output, "[EXECUTION_ERROR] plugin execution failed") {
 		t.Fatalf("expected execution error details, got %q", output)
 	}
+
 	if !strings.Contains(output, "operation: apply") {
 		t.Fatalf("expected operation context, got %q", output)
 	}
+
 	if strings.Count(output, "Suggestion:") < 2 {
 		t.Fatalf("expected remediation suggestions for both errors, got %q", output)
 	}

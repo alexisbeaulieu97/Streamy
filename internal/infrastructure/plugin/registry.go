@@ -1,3 +1,4 @@
+// Package plugin hosts runtime plugin registry infrastructure.
 package plugin
 
 import (
@@ -30,6 +31,7 @@ func (r *Registry) Register(p ports.Plugin) error {
 	if p == nil {
 		return fmt.Errorf("plugin is nil")
 	}
+
 	meta := p.Metadata()
 	if err := meta.Validate(); err != nil {
 		return fmt.Errorf("plugin metadata invalid: %w", err)
@@ -41,6 +43,7 @@ func (r *Registry) Register(p ports.Plugin) error {
 	if _, exists := r.plugins[meta.Type]; exists {
 		return fmt.Errorf("plugin for type %q already registered", meta.Type)
 	}
+
 	r.plugins[meta.Type] = p
 	r.metadata[meta.Type] = meta
 
@@ -53,6 +56,7 @@ func (r *Registry) RegisterFactory(stepType domainplugin.Type, factory func() (p
 	if stepType == "" {
 		return fmt.Errorf("plugin type is required")
 	}
+
 	if factory == nil {
 		return fmt.Errorf("plugin factory is nil for type %q", stepType)
 	}
@@ -61,6 +65,7 @@ func (r *Registry) RegisterFactory(stepType domainplugin.Type, factory func() (p
 	if err != nil {
 		return fmt.Errorf("construct plugin %q: %w", stepType, err)
 	}
+
 	if plugin == nil {
 		return fmt.Errorf("plugin factory returned nil for type %q", stepType)
 	}
@@ -69,6 +74,7 @@ func (r *Registry) RegisterFactory(stepType domainplugin.Type, factory func() (p
 	if meta.Type == "" {
 		return fmt.Errorf("plugin metadata type is required for %q", stepType)
 	}
+
 	if meta.Type != stepType {
 		return fmt.Errorf("plugin metadata type %q does not match registration type %q", meta.Type, stepType)
 	}
@@ -96,8 +102,10 @@ func (r *Registry) ValidateDependencies() error {
 					},
 				}
 			}
+
 			deps = append(deps, depType)
 		}
+
 		graph[typ] = deps
 	}
 
@@ -106,6 +114,7 @@ func (r *Registry) ValidateDependencies() error {
 		for i, node := range cycle {
 			strCycle[i] = string(node)
 		}
+
 		return &domainpipeline.DomainError{
 			Code:    domainpipeline.ErrCodeCycle,
 			Message: "circular plugin dependency detected",
@@ -127,12 +136,14 @@ func (r *Registry) InitializePlugins() error {
 		for _, dep := range meta.Dependencies {
 			deps = append(deps, domainplugin.Type(dep))
 		}
+
 		graph[typ] = deps
 	}
 
 	if _, err := topologicalOrder(graph); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -142,6 +153,7 @@ func (r *Registry) GetForDependent(dependent string, depType domainplugin.Type) 
 	defer r.mu.RUnlock()
 
 	dependentType := domainplugin.Type(dependent)
+
 	meta, ok := r.metadata[dependentType]
 	if !ok {
 		return nil, &domainpipeline.DomainError{
@@ -164,12 +176,14 @@ func (r *Registry) GetForDependent(dependent string, depType domainplugin.Type) 
 	}
 
 	declared := false
+
 	for _, dep := range meta.Dependencies {
 		if dep == string(depType) {
 			declared = true
 			break
 		}
 	}
+
 	if !declared {
 		return nil, &domainpipeline.DomainError{
 			Code:    domainpipeline.ErrCodeDependency,
@@ -197,6 +211,7 @@ func (r *Registry) Get(stepType domainplugin.Type) (ports.Plugin, error) {
 			Context: map[string]interface{}{"plugin_type": stepType},
 		}
 	}
+
 	return plugin, nil
 }
 
@@ -206,10 +221,12 @@ func (r *Registry) List() []ports.Plugin {
 	defer r.mu.RUnlock()
 
 	result := make([]ports.Plugin, 0, len(r.plugins))
+
 	types := make([]domainplugin.Type, 0, len(r.plugins))
 	for t := range r.plugins {
 		types = append(types, t)
 	}
+
 	sort.Slice(types, func(i, j int) bool {
 		return types[i] < types[j]
 	})
@@ -217,6 +234,7 @@ func (r *Registry) List() []ports.Plugin {
 	for _, t := range types {
 		result = append(result, r.plugins[t])
 	}
+
 	return result
 }
 
@@ -233,9 +251,11 @@ const (
 func detectCycle(graph map[domainplugin.Type][]domainplugin.Type) []domainplugin.Type {
 	state := make(map[domainplugin.Type]visitState, len(graph))
 	stack := make([]domainplugin.Type, 0, len(graph))
+
 	var cycle []domainplugin.Type
 
 	var dfs func(domainplugin.Type) bool
+
 	dfs = func(node domainplugin.Type) bool {
 		state[node] = stateVisiting
 		stack = append(stack, node)
@@ -254,12 +274,14 @@ func detectCycle(graph map[domainplugin.Type][]domainplugin.Type) []domainplugin
 				} else {
 					cycle = []domainplugin.Type{dep}
 				}
+
 				return true
 			}
 		}
 
 		stack = stack[:len(stack)-1]
 		state[node] = stateVisited
+
 		return false
 	}
 
@@ -270,6 +292,7 @@ func detectCycle(graph map[domainplugin.Type][]domainplugin.Type) []domainplugin
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -278,6 +301,7 @@ func topologicalOrder(graph map[domainplugin.Type][]domainplugin.Type) ([]domain
 	for node := range graph {
 		inDegree[node] = 0
 	}
+
 	for node, deps := range graph {
 		inDegree[node] = len(deps)
 		for _, dep := range deps {
@@ -299,6 +323,7 @@ func topologicalOrder(graph map[domainplugin.Type][]domainplugin.Type) ([]domain
 	for len(queue) > 0 {
 		node := queue[0]
 		queue = queue[1:]
+
 		order = append(order, node)
 
 		for dependent, deps := range graph {
@@ -315,10 +340,12 @@ func topologicalOrder(graph map[domainplugin.Type][]domainplugin.Type) ([]domain
 
 	if len(order) != len(inDegree) {
 		cycle := detectCycle(graph)
+
 		strCycle := make([]string, len(cycle))
 		for i, node := range cycle {
 			strCycle[i] = string(node)
 		}
+
 		return nil, &domainpipeline.DomainError{
 			Code:    domainpipeline.ErrCodeCycle,
 			Message: "circular plugin dependency detected",
@@ -335,5 +362,6 @@ func indexOf(stack []domainplugin.Type, target domainplugin.Type) int {
 			return i
 		}
 	}
+
 	return -1
 }

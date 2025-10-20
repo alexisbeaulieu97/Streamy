@@ -39,10 +39,12 @@ func run() int {
 	ctx := logginginfra.WithCorrelationID(baseCtx, correlationID)
 
 	cleanup := newCleanupStack(appLogger.With("component", "shutdown"))
+
 	cleanup.Register("release-signal-handler", func(context.Context) error {
 		stop()
 		return nil
 	})
+
 	cleanup.Register("log-shutdown", func(cleanupCtx context.Context) error {
 		appLogger.Info(cleanupCtx, "streamy shutdown complete", "pid", os.Getpid())
 		return nil
@@ -59,6 +61,7 @@ func run() int {
 	if err := RegisterPortsPlugins(ctx, portsRegistry, appLogger.With("component", "plugin_registry")); err != nil {
 		appLogger.Error(ctx, "failed to register ports plugins", "error", err)
 		fmt.Fprintf(os.Stderr, "failed to register ports plugins: %v\n", err)
+
 		return 1
 	}
 
@@ -105,14 +108,17 @@ func run() int {
 	}
 
 	rootCmd := newRootCmd(app)
+
 	appLogger.Info(ctx, "starting streamy command", "pid", os.Getpid())
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		appLogger.Error(ctx, "streamy command failed", "error", err)
 		fmt.Fprintln(os.Stderr, FormatError(err))
+
 		return 1
 	}
 
 	appLogger.Info(ctx, "streamy command completed", "pid", os.Getpid())
+
 	return 0
 }

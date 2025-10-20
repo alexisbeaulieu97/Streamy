@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/application/pipeline/testutil"
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -29,12 +29,12 @@ func TestApplyUseCase_Success(t *testing.T) {
 	}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pip, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return plan, nil
 		},
 	}
@@ -43,14 +43,14 @@ func TestApplyUseCase_Success(t *testing.T) {
 	prepareUC := NewPrepareUseCase(loader, builder, logger, testutil.NewMockTracer(), eventPublisher)
 
 	executor := &testutil.MockPluginExecutor{
-		ExecuteFunc: func(ctx context.Context, p *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
+		ExecuteFunc: func(_ context.Context, _ *domainpipeline.ExecutionPlan, _ *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 			return []domainpipeline.StepResult{
 				{StepID: "setup", Status: domainpipeline.StatusSuccess},
 			}, nil
 		},
 	}
 	validator := &testutil.MockValidationService{
-		RunFunc: func(ctx context.Context, validations []domainpipeline.Validation) (domainpipeline.VerificationSummary, error) {
+		RunFunc: func(_ context.Context, _ []domainpipeline.Validation) (domainpipeline.VerificationSummary, error) {
 			return domainpipeline.VerificationSummary{
 				TotalChecks:  1,
 				PassedChecks: 1,
@@ -92,12 +92,12 @@ func TestApplyUseCase_ExecutorFailure(t *testing.T) {
 	execErr := errors.New("executor failed")
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pip, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return plan, nil
 		},
 	}
@@ -106,15 +106,16 @@ func TestApplyUseCase_ExecutorFailure(t *testing.T) {
 	prepareUC := NewPrepareUseCase(loader, builder, logger, testutil.NewMockTracer(), events)
 
 	executor := &testutil.MockPluginExecutor{
-		ExecuteFunc: func(ctx context.Context, execPlan *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
+		ExecuteFunc: func(_ context.Context, _ *domainpipeline.ExecutionPlan, _ *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 			results := []domainpipeline.StepResult{
 				{StepID: "setup", Status: domainpipeline.StatusFailure},
 			}
+
 			return results, execErr
 		},
 	}
 	validator := &testutil.MockValidationService{
-		RunFunc: func(ctx context.Context, validations []domainpipeline.Validation) (domainpipeline.VerificationSummary, error) {
+		RunFunc: func(_ context.Context, _ []domainpipeline.Validation) (domainpipeline.VerificationSummary, error) {
 			t.Fatal("validator should not run on execution failure")
 			return domainpipeline.VerificationSummary{}, nil
 		},
@@ -147,12 +148,12 @@ func TestApplyUseCase_ContextCancellation(t *testing.T) {
 	}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pip, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return plan, nil
 		},
 	}
@@ -161,7 +162,7 @@ func TestApplyUseCase_ContextCancellation(t *testing.T) {
 	prepareUC := NewPrepareUseCase(loader, builder, logger, testutil.NewMockTracer(), events)
 
 	executor := &testutil.MockPluginExecutor{
-		ExecuteFunc: func(ctx context.Context, plan *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
+		ExecuteFunc: func(_ context.Context, _ *domainpipeline.ExecutionPlan, _ *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 			return nil, context.Canceled
 		},
 	}
@@ -194,12 +195,12 @@ func TestApplyUseCase_DryRunSkipsValidation(t *testing.T) {
 	}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pip, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return plan, nil
 		},
 	}
@@ -208,7 +209,7 @@ func TestApplyUseCase_DryRunSkipsValidation(t *testing.T) {
 	prepareUC := NewPrepareUseCase(loader, builder, logger, testutil.NewMockTracer(), events)
 
 	executor := &testutil.MockPluginExecutor{
-		ExecuteFunc: func(ctx context.Context, plan *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
+		ExecuteFunc: func(_ context.Context, _ *domainpipeline.ExecutionPlan, _ *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 			return []domainpipeline.StepResult{
 				{StepID: "setup", Status: domainpipeline.StatusSuccess},
 			}, nil
@@ -242,12 +243,12 @@ func TestApplyUseCase_ValidationFailure(t *testing.T) {
 	}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipelineDefinition, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return plan, nil
 		},
 	}
@@ -265,13 +266,14 @@ func TestApplyUseCase_ValidationFailure(t *testing.T) {
 		if event.EventType() == ports.EventValidationFailed {
 			return publishErr
 		}
+
 		return nil
 	}
 
 	prepareUC := NewPrepareUseCase(loader, builder, logger, testutil.NewMockTracer(), events)
 
 	executor := &testutil.MockPluginExecutor{
-		ExecuteFunc: func(ctx context.Context, plan *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
+		ExecuteFunc: func(_ context.Context, _ *domainpipeline.ExecutionPlan, _ *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 			return []domainpipeline.StepResult{
 				{StepID: "setup", Status: domainpipeline.StatusFailure, Error: &domainpipeline.DomainError{Message: "failed"}},
 				{StepID: "noop", Status: domainpipeline.StatusSkipped},
@@ -281,7 +283,7 @@ func TestApplyUseCase_ValidationFailure(t *testing.T) {
 
 	validationErr := errors.New("validation failed")
 	validator := &testutil.MockValidationService{
-		RunFunc: func(ctx context.Context, validations []domainpipeline.Validation) (domainpipeline.VerificationSummary, error) {
+		RunFunc: func(_ context.Context, _ []domainpipeline.Validation) (domainpipeline.VerificationSummary, error) {
 			return domainpipeline.VerificationSummary{
 				TotalChecks:  1,
 				FailedChecks: 1,
@@ -305,12 +307,14 @@ func TestApplyUseCase_ValidationFailure(t *testing.T) {
 	require.True(t, containsEvent(events.Published, ports.EventStepSkipped))
 
 	warnSeen := false
+
 	for _, entry := range logger.Entries() {
 		if entry.Level == "warn" && entry.Msg == "failed to publish domain event" {
 			warnSeen = true
 			break
 		}
 	}
+
 	require.True(t, warnSeen, "expected warning when publish fails")
 }
 
@@ -319,7 +323,7 @@ func TestApplyUseCase_PrepareFailure(t *testing.T) {
 
 	prepareErr := errors.New("prepare failed")
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return nil, prepareErr
 		},
 	}
@@ -351,12 +355,12 @@ func TestApplyUseCase_NoValidatorConfigured(t *testing.T) {
 	plan := &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}}}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipelineDefinition, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return plan, nil
 		},
 	}
@@ -365,7 +369,7 @@ func TestApplyUseCase_NoValidatorConfigured(t *testing.T) {
 
 	prepareUC := NewPrepareUseCase(loader, builder, logger, testutil.NewMockTracer(), events)
 	executor := &testutil.MockPluginExecutor{
-		ExecuteFunc: func(ctx context.Context, plan *domainpipeline.ExecutionPlan, pipeline *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
+		ExecuteFunc: func(_ context.Context, _ *domainpipeline.ExecutionPlan, _ *domainpipeline.Pipeline) ([]domainpipeline.StepResult, error) {
 			return []domainpipeline.StepResult{{StepID: "setup", Status: domainpipeline.StatusSuccess}}, nil
 		},
 	}
@@ -381,12 +385,14 @@ func TestApplyUseCase_NoValidatorConfigured(t *testing.T) {
 	require.True(t, containsEvent(events.Published, ports.EventPipelineCompleted))
 
 	debugSeen := false
+
 	for _, entry := range logger.Entries() {
 		if entry.Level == "debug" && entry.Msg == "no validation service configured" {
 			debugSeen = true
 			break
 		}
 	}
+
 	require.True(t, debugSeen, "expected debug log when validator is nil")
 }
 
@@ -396,5 +402,6 @@ func containsEvent(events []testutil.EventRecord, eventType string) bool {
 			return true
 		}
 	}
+
 	return false
 }

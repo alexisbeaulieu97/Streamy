@@ -35,6 +35,7 @@ func FormatError(err error) string {
 
 	var builder strings.Builder
 	formatError(&builder, err, 0)
+
 	return strings.TrimRight(builder.String(), "\n")
 }
 
@@ -46,16 +47,20 @@ func formatError(builder *strings.Builder, err error, depth int) {
 		if message == "" {
 			message = "multiple errors occurred"
 		}
+
 		builder.WriteString(indent)
 		builder.WriteString(message)
 		builder.WriteString("\n")
+
 		for i, child := range agg.Errors {
 			if child == nil {
 				continue
 			}
+
 			fmt.Fprintf(builder, "%s  %d.\n", indent, i+1)
 			formatError(builder, child, depth+1)
 		}
+
 		return
 	}
 
@@ -65,17 +70,20 @@ func formatError(builder *strings.Builder, err error, depth int) {
 
 	if cerr, ok := err.(*commandError); ok {
 		fmt.Fprintf(builder, "%sFailed to %s: %s\n", indent, cerr.operation, cerr.context)
+
 		if strings.TrimSpace(cerr.suggestion) != "" {
 			builder.WriteString(indent)
 			builder.WriteString("  Suggestion: ")
 			builder.WriteString(cerr.suggestion)
 			builder.WriteString("\n")
 		}
+
 		if cerr.cause != nil {
 			builder.WriteString(indent)
 			builder.WriteString("  Cause:\n")
 			formatError(builder, cerr.cause, depth+2)
 		}
+
 		return
 	}
 
@@ -105,10 +113,12 @@ func formatDomainError(builder *strings.Builder, err error, depth int) bool {
 		for key := range derr.Context {
 			keys = append(keys, key)
 		}
+
 		sort.Strings(keys)
 		builder.WriteString("\n")
 		builder.WriteString(indent)
 		builder.WriteString("  Context:")
+
 		for _, key := range keys {
 			builder.WriteString("\n")
 			builder.WriteString(indent)
@@ -124,10 +134,12 @@ func formatDomainError(builder *strings.Builder, err error, depth int) bool {
 		builder.WriteString(indent)
 		builder.WriteString("  Cause:\n")
 		formatError(builder, derr.Cause, depth+2)
+
 		return true
 	}
 
 	builder.WriteString("\n")
+
 	return true
 }
 
@@ -137,6 +149,7 @@ func formatContextValue(value interface{}) string {
 		if len(v) == 0 {
 			return "[]"
 		}
+
 		return strings.Join(v, " -> ")
 	default:
 		return fmt.Sprint(value)

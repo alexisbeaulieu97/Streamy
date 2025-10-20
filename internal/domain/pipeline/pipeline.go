@@ -21,6 +21,7 @@ func (p Pipeline) Validate() error {
 	if p.Name == "" {
 		return NewMissingFieldError("name")
 	}
+
 	if len(p.Steps) == 0 {
 		return NewValidationError("pipeline requires at least one step", nil)
 	}
@@ -30,9 +31,11 @@ func (p Pipeline) Validate() error {
 		if err := step.Validate(); err != nil {
 			return err
 		}
+
 		if _, ok := seen[step.ID]; ok {
 			return NewDuplicateError(step.ID)
 		}
+
 		seen[step.ID] = struct{}{}
 	}
 
@@ -55,6 +58,7 @@ func (p Pipeline) ValidateDependencies() error {
 			if dep == step.ID {
 				return NewDependencyError("step cannot depend on itself", map[string]interface{}{"step_id": step.ID})
 			}
+
 			if _, ok := lookup[dep]; !ok {
 				return NewDependencyError("dependency not found", map[string]interface{}{"step_id": step.ID, "missing_dependency": dep})
 			}
@@ -63,8 +67,12 @@ func (p Pipeline) ValidateDependencies() error {
 
 	visited := make(map[string]bool, len(p.Steps))
 	stack := make(map[string]bool, len(p.Steps))
-	var path []string
-	var detect func(string) *DomainError
+
+	var (
+		path   []string
+		detect func(string) *DomainError
+	)
+
 	detect = func(id string) *DomainError {
 		visited[id] = true
 		stack[id] = true
@@ -78,12 +86,14 @@ func (p Pipeline) ValidateDependencies() error {
 			} else if stack[dep] {
 				cycle := slices.Clone(path)
 				cycle = append(cycle, dep)
+
 				return NewCycleError(cycle)
 			}
 		}
 
 		stack[id] = false
 		path = path[:len(path)-1]
+
 		return nil
 	}
 
@@ -102,15 +112,15 @@ func (p Pipeline) ValidateDependencies() error {
 func (p Pipeline) GetStep(id string) (*Step, error) {
 	for i := range p.Steps {
 		if p.Steps[i].ID == id {
-			copy := p.Steps[i]
-			return &copy, nil
+			stepCopy := p.Steps[i]
+			return &stepCopy, nil
 		}
 	}
+
 	return nil, NewNotFoundError("step", map[string]interface{}{"step_id": id})
 }
 
-// ExecutionPlan is defined in plan.go; this method satisfies the data-model
-// requirement to expose settings through the domain value object.
+// EffectiveSettings exposes the pipeline settings after applying defaults.
 func (p Pipeline) EffectiveSettings() Settings {
 	return p.Settings.ApplyDefaults()
 }
@@ -123,15 +133,19 @@ func (p Pipeline) Clone() Pipeline {
 		if len(step.DependsOn) > 0 {
 			cloned.DependsOn = slices.Clone(step.DependsOn)
 		}
+
 		if len(step.Config) > 0 {
 			cloned.Config = maps.Clone(step.Config)
 		}
+
 		steps[i] = cloned
 	}
+
 	validations := make([]Validation, len(p.Validations))
 	for i, val := range p.Validations {
 		validations[i] = Validation{Type: val.Type, Config: maps.Clone(val.Config)}
 	}
+
 	return Pipeline{
 		Version:     p.Version,
 		Name:        p.Name,
@@ -149,5 +163,6 @@ func (p Pipeline) MustStep(id string) Step {
 	if err != nil {
 		panic(fmt.Sprintf("step %s not found", id))
 	}
+
 	return *step
 }

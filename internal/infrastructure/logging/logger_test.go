@@ -14,6 +14,7 @@ import (
 
 func TestLoggerIncludesCorrelationIDAndLayer(t *testing.T) {
 	var buf bytes.Buffer
+
 	logger, err := New(Options{
 		Writer:     &buf,
 		Level:      "debug",
@@ -42,15 +43,19 @@ func TestLoggerIncludesCorrelationIDAndLayer(t *testing.T) {
 	if payload["layer"] != "infrastructure" {
 		t.Fatalf("expected layer to be infrastructure, got %v", payload["layer"])
 	}
+
 	if payload["component"] != "yaml_loader" {
 		t.Fatalf("expected component field, got %v", payload["component"])
 	}
+
 	if payload["correlation_id"] != "abc123" {
 		t.Fatalf("expected correlation_id to be abc123, got %v", payload["correlation_id"])
 	}
+
 	if payload["path"] != "/tmp/config.yaml" {
 		t.Fatalf("expected path to be recorded, got %v", payload["path"])
 	}
+
 	if payload["msg"] != "loaded config" {
 		t.Fatalf("expected message to be recorded, got %v", payload["msg"])
 	}
@@ -58,6 +63,7 @@ func TestLoggerIncludesCorrelationIDAndLayer(t *testing.T) {
 
 func TestLoggerWithAddsFields(t *testing.T) {
 	var buf bytes.Buffer
+
 	logger, err := New(Options{
 		Writer:    &buf,
 		Formatter: cblog.JSONFormatter,
@@ -70,6 +76,7 @@ func TestLoggerWithAddsFields(t *testing.T) {
 	child.Warn(context.Background(), "step failed", "step_id", "build")
 
 	line := strings.TrimSpace(buf.String())
+
 	payload := make(map[string]interface{})
 	if err := json.Unmarshal([]byte(line), &payload); err != nil {
 		t.Fatalf("failed to parse log line: %v", err)
@@ -78,9 +85,11 @@ func TestLoggerWithAddsFields(t *testing.T) {
 	if payload["component"] != "executor" {
 		t.Fatalf("expected component=executor, got %v", payload["component"])
 	}
+
 	if payload["step_id"] != "build" {
 		t.Fatalf("expected step_id build, got %v", payload["step_id"])
 	}
+
 	if payload["layer"] != "infrastructure" {
 		t.Fatalf("expected default layer infrastructure, got %v", payload["layer"])
 	}
@@ -88,6 +97,7 @@ func TestLoggerWithAddsFields(t *testing.T) {
 
 func TestNoOpLogger(t *testing.T) {
 	var buf bytes.Buffer
+
 	logger, err := New(Options{
 		Writer:    &buf,
 		Formatter: cblog.JSONFormatter,
@@ -110,6 +120,7 @@ func TestNoOpLogger(t *testing.T) {
 
 	// Base logger still writes.
 	logger.Info(context.Background(), "emitted")
+
 	if buf.Len() == 0 {
 		t.Fatal("expected base logger to write output")
 	}
@@ -124,6 +135,7 @@ func TestBufferedLoggerStoresAndFlushes(t *testing.T) {
 	bufLogger.With("component", "worker").Error(ctx, "failed", "attempt", 1)
 
 	var output bytes.Buffer
+
 	delegate, err := New(Options{Writer: &output, Formatter: cblog.JSONFormatter})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -140,6 +152,7 @@ func TestBufferedLoggerStoresAndFlushes(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
 		t.Fatalf("failed to parse first log line: %v", err)
 	}
+
 	if first["msg"] != "booting" || first["component"] != "bootstrap" {
 		t.Fatalf("unexpected first event payload: %+v", first)
 	}
@@ -148,9 +161,11 @@ func TestBufferedLoggerStoresAndFlushes(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
 		t.Fatalf("failed to parse second log line: %v", err)
 	}
+
 	if second["msg"] != "failed" || second["component"] != "worker" {
 		t.Fatalf("unexpected second event payload: %+v", second)
 	}
+
 	if second["correlation_id"] != "buffered" {
 		t.Fatalf("expected correlation id to be preserved, got %v", second["correlation_id"])
 	}
@@ -158,6 +173,7 @@ func TestBufferedLoggerStoresAndFlushes(t *testing.T) {
 
 func TestLoggerIncludesErrorChain(t *testing.T) {
 	var buf bytes.Buffer
+
 	logger, err := New(Options{
 		Writer:    &buf,
 		Formatter: cblog.JSONFormatter,
@@ -191,12 +207,14 @@ func TestLoggerIncludesErrorChain(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected error_chain field to be present, got %T", payload["error_chain"])
 	}
+
 	gotChain := make([]string, len(rawChain))
 	for i, v := range rawChain {
 		msg, ok := v.(string)
 		if !ok {
 			t.Fatalf("expected chain entry to be string, got %T", v)
 		}
+
 		gotChain[i] = msg
 	}
 
@@ -218,10 +236,12 @@ func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
 	for i := range a {
 		if a[i] != b[i] {
 			return false
 		}
 	}
+
 	return true
 }

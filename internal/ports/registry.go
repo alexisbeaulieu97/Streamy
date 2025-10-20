@@ -45,10 +45,14 @@ type ExecutionStatus struct {
 type RegistryStatus string
 
 const (
+	// RegistryStatusSatisfied indicates the pipeline is in the desired state.
 	RegistryStatusSatisfied RegistryStatus = "satisfied"
-	RegistryStatusDrifted   RegistryStatus = "drifted"
-	RegistryStatusFailed    RegistryStatus = "failed"
-	RegistryStatusUnknown   RegistryStatus = "unknown"
+	// RegistryStatusDrifted indicates the pipeline has diverged from the desired state.
+	RegistryStatusDrifted RegistryStatus = "drifted"
+	// RegistryStatusFailed indicates the pipeline failed verification or execution.
+	RegistryStatusFailed RegistryStatus = "failed"
+	// RegistryStatusUnknown indicates the pipeline has not been verified recently.
+	RegistryStatusUnknown RegistryStatus = "unknown"
 )
 
 // ValidationService runs post-execution validation checks. Implementations

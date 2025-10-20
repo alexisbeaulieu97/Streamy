@@ -25,6 +25,7 @@ func (a *AppContext) CommandContext(cmd *cobra.Command, component string) (conte
 	if cmd != nil && cmd.Context() != nil {
 		ctx = cmd.Context()
 	}
+
 	return ctx, a.LoggerFor(component)
 }
 
@@ -33,6 +34,7 @@ func (a *AppContext) LoggerFor(component string) ports.Logger {
 	if a == nil || a.Logger == nil {
 		return nil
 	}
+
 	return a.Logger.With("component", component)
 }
 
@@ -41,5 +43,6 @@ func (a *AppContext) EventPublisher() ports.EventPublisher {
 	if a == nil {
 		return nil
 	}
+
 	return a.Events
 }

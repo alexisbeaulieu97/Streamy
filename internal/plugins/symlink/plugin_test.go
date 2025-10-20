@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -41,6 +41,7 @@ func TestApplyCreatesSymlink(t *testing.T) {
 
 	source := filepath.Join(sourceDir, "file.txt")
 	require.NoError(t, os.WriteFile(source, []byte("hello"), 0o644))
+
 	target := filepath.Join(targetDir, "link.txt")
 
 	step := domainpipeline.Step{
@@ -73,6 +74,7 @@ func TestEvaluateSatisfiedSymlink(t *testing.T) {
 
 	source := filepath.Join(sourceDir, "file.txt")
 	target := filepath.Join(targetDir, "link.txt")
+
 	require.NoError(t, os.WriteFile(source, []byte("hello"), 0o644))
 	require.NoError(t, os.Symlink(source, target))
 
@@ -118,6 +120,7 @@ func TestApplyForcedReplacement(t *testing.T) {
 
 	source := filepath.Join(sourceDir, "file.txt")
 	require.NoError(t, os.WriteFile(source, []byte("hello"), 0o644))
+
 	target := filepath.Join(targetDir, "link.txt")
 
 	require.NoError(t, os.WriteFile(target, []byte("existing"), 0o644))

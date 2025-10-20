@@ -5,7 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/components"
@@ -40,6 +40,7 @@ func TestUpdateHandlesTeaMessages(t *testing.T) {
 	m := NewModel(&pipeline.Pipeline{}, &pipeline.ExecutionPlan{}, false)
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	require.Nil(t, cmd)
+
 	m = updated.(Model)
 	require.True(t, m.cancelled)
 }

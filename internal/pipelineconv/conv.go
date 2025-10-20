@@ -1,3 +1,4 @@
+// Package pipelineconv converts domain pipeline data into CLI-friendly structures.
 package pipelineconv
 
 import (
@@ -29,11 +30,16 @@ const (
 type VerificationStatus string
 
 const (
+	// VerificationSatisfied indicates the step is up to date.
 	VerificationSatisfied VerificationStatus = "satisfied"
-	VerificationMissing   VerificationStatus = "missing"
-	VerificationDrifted   VerificationStatus = "drifted"
-	VerificationBlocked   VerificationStatus = "blocked"
-	VerificationUnknown   VerificationStatus = "unknown"
+	// VerificationMissing indicates the step has not been executed yet.
+	VerificationMissing VerificationStatus = "missing"
+	// VerificationDrifted indicates the step is out of sync with desired state.
+	VerificationDrifted VerificationStatus = "drifted"
+	// VerificationBlocked indicates verification cannot proceed due to a dependency.
+	VerificationBlocked VerificationStatus = "blocked"
+	// VerificationUnknown captures unexpected verification outcomes.
+	VerificationUnknown VerificationStatus = "unknown"
 )
 
 // VerificationResult represents the outcome of verifying a single step for CLI output.
@@ -70,6 +76,7 @@ func (s *VerificationSummary) ExitCode() int {
 	if s.AllSatisfied() {
 		return 0
 	}
+
 	return 1
 }
 
@@ -86,10 +93,12 @@ func BuildVerificationSummary(pipeline *domainpipeline.Pipeline, results []domai
 
 	for _, res := range results {
 		status := mapVerificationStatus(res)
+
 		message := res.Message
 		if strings.TrimSpace(message) == "" {
 			message = defaultVerificationMsg
 		}
+
 		details := formatVerificationDetails(res.Details)
 		vr := &VerificationResult{
 			StepID:    res.StepID,
@@ -160,9 +169,11 @@ func SummaryToExecutionResult(summary *VerificationSummary, configPath string) *
 			}
 			failed = append(failed, res.StepID)
 		}
+
 		if res.Status == VerificationMissing || res.Status == VerificationDrifted || res.Status == VerificationBlocked || res.Status == VerificationUnknown {
 			failed = append(failed, res.StepID)
 		}
+
 		execResult.StepResults = append(execResult.StepResults, stepRes)
 	}
 
@@ -170,6 +181,7 @@ func SummaryToExecutionResult(summary *VerificationSummary, configPath string) *
 	if len(execResult.FailedSteps) > 0 {
 		execResult.Success = false
 		execResult.Status = registry.StatusDrifted
+
 		execResult.Summary = fmt.Sprintf("%d steps need changes", len(execResult.FailedSteps))
 		if execResult.Error == nil {
 			execResult.Error = &registry.ErrorDetail{
@@ -189,12 +201,15 @@ func pipelineStatusFromSummary(summary *VerificationSummary) registry.PipelineSt
 	if summary == nil {
 		return registry.StatusFailed
 	}
+
 	if summary.AllSatisfied() {
 		return registry.StatusSatisfied
 	}
+
 	if summary.Missing > 0 || summary.Drifted > 0 {
 		return registry.StatusDrifted
 	}
+
 	return registry.StatusFailed
 }
 
@@ -230,12 +245,15 @@ func legacyStateFromDetails(details map[string]interface{}) string {
 	if details == nil {
 		return ""
 	}
+
 	if state, ok := details["current_state"].(string); ok {
 		return state
 	}
+
 	if state, ok := details["status"].(string); ok {
 		return state
 	}
+
 	return ""
 }
 
@@ -243,10 +261,12 @@ func formatVerificationDetails(details map[string]interface{}) string {
 	if len(details) == 0 {
 		return ""
 	}
+
 	data, err := json.MarshalIndent(details, "", "  ")
 	if err != nil {
 		return fmt.Sprintf("%v", details)
 	}
+
 	return string(data)
 }
 
@@ -302,8 +322,10 @@ func ConvertApplyResults(results []domainpipeline.StepResult, configPath string,
 		CompletedAt: time.Now().UTC(),
 	}
 
-	var totalDuration time.Duration
-	var failed []string
+	var (
+		totalDuration time.Duration
+		failed        []string
+	)
 
 	for _, res := range results {
 		stepResult := ConvertStepResult(res, dryRun)
@@ -312,6 +334,7 @@ func ConvertApplyResults(results []domainpipeline.StepResult, configPath string,
 		if stepResult.Error != nil || stepResult.Status == stepStatusFailed {
 			failed = append(failed, res.StepID)
 		}
+
 		execResult.StepResults = append(execResult.StepResults, stepResult)
 	}
 
@@ -355,13 +378,16 @@ func ConvertApplyResults(results []domainpipeline.StepResult, configPath string,
 // ToStepState converts a domain step result into a TUI step state.
 func ToStepState(res domainpipeline.StepResult, dryRun bool) components.StepState {
 	status := mapStepStateStatus(res.Status)
+
 	changed := res.Changed
 	if dryRun && changed {
 		status = components.StepStatusWouldUpdate
 	}
+
 	if res.Status == domainpipeline.StatusSkipped && dryRun && changed {
 		status = components.StepStatusWouldCreate
 	}
+
 	return components.StepState{
 		Status:   status,
 		Message:  res.FormatOutput(),
@@ -395,13 +421,16 @@ func IsConfigError(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	if IsParseError(err) {
 		return true
 	}
+
 	var validationErr *streamyerrors.ValidationError
 	if errors.As(err, &validationErr) {
 		return true
 	}
+
 	var domainErr *domainpipeline.DomainError
 	if errors.As(err, &domainErr) {
 		switch domainErr.Code {
@@ -414,6 +443,7 @@ func IsConfigError(err error) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -421,15 +451,20 @@ func dedupeStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}
+
 	seen := make(map[string]struct{}, len(values))
+
 	result := make([]string, 0, len(values))
 	for _, v := range values {
 		if _, ok := seen[v]; ok {
 			continue
 		}
+
 		seen[v] = struct{}{}
 		result = append(result, v)
 	}
+
 	sort.Strings(result)
+
 	return result
 }

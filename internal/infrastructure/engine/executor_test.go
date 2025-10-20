@@ -35,9 +35,11 @@ func (s *executorStubPlugin) Evaluate(ctx context.Context, step domainpipeline.S
 			return nil, err
 		}
 	}
+
 	if s.evaluateError != nil {
 		return nil, s.evaluateError
 	}
+
 	return &domainpipeline.EvaluationResult{RequiresAction: s.requireAction, Diff: "diff"}, nil
 }
 
@@ -47,14 +49,17 @@ func (s *executorStubPlugin) Apply(ctx context.Context, eval *domainpipeline.Eva
 			return nil, err
 		}
 	}
+
 	if s.applyError != nil {
 		return nil, s.applyError
 	}
+
 	return &domainpipeline.StepResult{StepID: step.ID, Status: domainpipeline.StatusSuccess, Changed: eval.RequiresAction}, nil
 }
 
 func TestExecutorExecuteSuccess(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
+
 	plug := &executorStubPlugin{meta: domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.Type("command"), Version: "1.0.0"}, requireAction: true}
 	if err := registry.Register(plug); err != nil {
 		t.Fatalf("register plugin: %v", err)
@@ -80,12 +85,15 @@ func TestExecutorExecuteSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected execute err: %v", err)
 	}
+
 	if len(results) != 1 {
 		t.Fatalf("expected one result, got %d", len(results))
 	}
+
 	if results[0].Status != domainpipeline.StatusSuccess {
 		t.Fatalf("expected success status, got %s", results[0].Status)
 	}
+
 	if !eventRecorder.contains(ports.EventStepStarted) || !eventRecorder.contains(ports.EventStepCompleted) {
 		t.Fatalf("expected step started and completed events, got %#v", eventRecorder.events)
 	}
@@ -93,6 +101,7 @@ func TestExecutorExecuteSuccess(t *testing.T) {
 
 func TestExecutorExecuteDryRun(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
+
 	plug := &executorStubPlugin{meta: domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.Type("command"), Version: "1.0.0"}, requireAction: true}
 	if err := registry.Register(plug); err != nil {
 		t.Fatalf("register plugin: %v", err)
@@ -110,12 +119,15 @@ func TestExecutorExecuteDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute error: %v", err)
 	}
+
 	if len(results) != 1 {
 		t.Fatalf("expected result count 1, got %d", len(results))
 	}
+
 	if !results[0].Changed {
 		t.Fatalf("expected dry-run to mark changed")
 	}
+
 	if !eventRecorder.contains(ports.EventStepCompleted) {
 		t.Fatalf("expected step completed event during dry run")
 	}
@@ -123,6 +135,7 @@ func TestExecutorExecuteDryRun(t *testing.T) {
 
 func TestExecutorExecuteStepTimeout(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
+
 	plug := &executorStubPlugin{
 		meta:          domainplugin.Metadata{ID: "command", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"},
 		requireAction: true,
@@ -145,20 +158,25 @@ func TestExecutorExecuteStepTimeout(t *testing.T) {
 	}
 
 	plan := &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"slow"}}}}
+
 	results, err := NewExecutor(registry, WithExecutorLogger(logging.NewNoOpLogger())).Execute(context.Background(), plan, pipeline)
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
+
 	var derr *domainpipeline.DomainError
 	if !errors.As(err, &derr) || derr.Code != domainpipeline.ErrCodeTimeout {
 		t.Fatalf("expected timeout domain error, got %v", err)
 	}
+
 	if len(results) != 1 {
 		t.Fatalf("expected single result, got %d", len(results))
 	}
+
 	if results[0].Error == nil {
 		t.Fatal("expected step result to include timeout error")
 	}
+
 	var resErr *domainpipeline.DomainError
 	if !errors.As(results[0].Error, &resErr) || resErr.Code != domainpipeline.ErrCodeTimeout {
 		t.Fatalf("expected timeout domain error, got %+v", results[0].Error)
@@ -167,10 +185,12 @@ func TestExecutorExecuteStepTimeout(t *testing.T) {
 
 func TestExecutorVerify(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
+
 	plug := &executorStubPlugin{meta: domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.Type("command"), Version: "1.0.0"}, requireAction: false}
 	if err := registry.Register(plug); err != nil {
 		t.Fatalf("register plugin: %v", err)
 	}
+
 	executor := NewExecutor(registry)
 
 	pipeline := &domainpipeline.Pipeline{
@@ -181,9 +201,11 @@ func TestExecutorVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify err: %v", err)
 	}
+
 	if len(results) != 1 {
 		t.Fatalf("expected one verification result, got %d", len(results))
 	}
+
 	if results[0].Status != domainpipeline.VerificationSatisfied {
 		t.Fatalf("expected satisfied status, got %s", results[0].Status)
 	}
@@ -191,6 +213,7 @@ func TestExecutorVerify(t *testing.T) {
 
 func TestExecutorVerifyStepTimeout(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
+
 	plug := &executorStubPlugin{
 		meta: domainplugin.Metadata{ID: "command", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"},
 		onEvaluate: func(ctx context.Context, _ domainpipeline.Step) error {
@@ -210,6 +233,7 @@ func TestExecutorVerifyStepTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
+
 	var derr *domainpipeline.DomainError
 	if !errors.As(err, &derr) || derr.Code != domainpipeline.ErrCodeTimeout {
 		t.Fatalf("expected timeout domain error, got %v", err)
@@ -218,10 +242,12 @@ func TestExecutorVerifyStepTimeout(t *testing.T) {
 
 func TestExecutorStepFailure(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
+
 	plug := &executorStubPlugin{meta: domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.Type("command"), Version: "1.0.0"}, requireAction: true, applyError: errors.New("boom")}
 	if err := registry.Register(plug); err != nil {
 		t.Fatalf("register plugin: %v", err)
 	}
+
 	eventRecorder := &stubEventPublisher{}
 	executor := NewExecutor(registry, WithExecutorEvents(eventRecorder))
 
@@ -234,12 +260,15 @@ func TestExecutorStepFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected execution error")
 	}
+
 	if len(results) != 1 {
 		t.Fatalf("expected single result, got %d", len(results))
 	}
+
 	if results[0].Status != domainpipeline.StatusFailure {
 		t.Fatalf("expected failure status, got %s", results[0].Status)
 	}
+
 	if !eventRecorder.contains(ports.EventStepFailed) {
 		t.Fatalf("expected step failed event")
 	}
@@ -257,14 +286,18 @@ func TestExecutorCancellationBetweenLevels(t *testing.T) {
 			if step.ID == "first-step" {
 				cancel()
 			}
+
 			return nil
 		},
 	}
+
 	var secondEvaluations int32
+
 	pluginImpl.onEvaluate = func(_ context.Context, step domainpipeline.Step) error {
 		if step.ID == "second-step" {
 			atomic.AddInt32(&secondEvaluations, 1)
 		}
+
 		return nil
 	}
 
@@ -296,13 +329,16 @@ func TestExecutorCancellationBetweenLevels(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected cancellation error")
 	}
+
 	var domainErr *domainpipeline.DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != domainpipeline.ErrCodeCancelled {
 		t.Fatalf("expected cancellation domain error, got %v", err)
 	}
+
 	if len(results) == 0 {
 		t.Fatalf("expected at least one step result")
 	}
+
 	if atomic.LoadInt32(&secondEvaluations) != 0 {
 		t.Fatalf("expected second level plugin not to evaluate")
 	}
@@ -310,11 +346,12 @@ func TestExecutorCancellationBetweenLevels(t *testing.T) {
 
 func TestExecutorExecuteCancellationCleanup(t *testing.T) {
 	registry := infraPlugin.NewRegistry()
+
 	plug := &executorStubPlugin{
 		meta:          domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"},
 		requireAction: true,
 		// Delay Apply so that cancellation happens while goroutine is active.
-		onApply: func(ctx context.Context, step domainpipeline.Step) error {
+		onApply: func(ctx context.Context, _ domainpipeline.Step) error {
 			<-ctx.Done()
 			return ctx.Err()
 		},
@@ -335,8 +372,10 @@ func TestExecutorExecuteCancellationCleanup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	startG := runtime.NumGoroutine()
 	resultCh := make(chan struct{})
+
 	go func() {
 		_, _ = executor.Execute(ctx, plan, pipeline)
+
 		close(resultCh)
 	}()
 
@@ -356,39 +395,12 @@ func TestExecutorCancellationLongRunningPipeline(t *testing.T) {
 	startedCh := make(chan string, 4)
 	tempDir := t.TempDir()
 
-	var tempFilesMu sync.Mutex
-	var tempFiles []string
+	var (
+		tempFilesMu sync.Mutex
+		tempFiles   []string
+	)
 
-	plug := &executorStubPlugin{
-		meta:          domainplugin.Metadata{ID: "command", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"},
-		requireAction: true,
-		onApply: func(ctx context.Context, step domainpipeline.Step) error {
-			tmpFile, err := os.CreateTemp(tempDir, fmt.Sprintf("%s-*", step.ID))
-			if err != nil {
-				return err
-			}
-			if err := tmpFile.Close(); err != nil {
-				return err
-			}
-			defer func() { _ = os.Remove(tmpFile.Name()) }()
-
-			tempFilesMu.Lock()
-			tempFiles = append(tempFiles, tmpFile.Name())
-			tempFilesMu.Unlock()
-
-			select {
-			case startedCh <- step.ID:
-			default:
-			}
-
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(5 * time.Second):
-				return nil
-			}
-		},
-	}
+	plug := createLongRunningPlugin(tempDir, startedCh, &tempFiles, &tempFilesMu)
 	if err := registry.Register(plug); err != nil {
 		t.Fatalf("register plugin: %v", err)
 	}
@@ -416,47 +428,115 @@ func TestExecutorCancellationLongRunningPipeline(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	resultCh := make(chan error, 1)
+
 	go func() {
 		_, err := executor.Execute(ctx, plan, pipeline)
 		resultCh <- err
 	}()
 
-	for i := 0; i < len(plan.Levels[0].StepIDs); i++ {
-		select {
-		case <-startedCh:
-		case <-time.After(1 * time.Second):
-			t.Fatalf("timed out waiting for step %d to start", i)
-		}
-	}
+	waitForStepsToStart(startedCh, len(plan.Levels[0].StepIDs), time.Second, t)
 
 	cancel()
 
-	var execErr error
-	select {
-	case execErr = <-resultCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("executor did not return within 5 seconds of cancellation")
-	}
+	execErr := awaitCancellationResult(resultCh, 5*time.Second, t)
 
-	if execErr == nil {
-		t.Fatal("expected cancellation error")
-	}
-	var domainErr *domainpipeline.DomainError
-	if !errors.As(execErr, &domainErr) || domainErr.Code != domainpipeline.ErrCodeCancelled {
-		t.Fatalf("expected cancellation domain error, got %v", execErr)
-	}
+	assertCancellationError(execErr, t)
 
 	waitForGoroutinesToSettleWithin(startG, 5*time.Second, t)
 
-	tempFilesMu.Lock()
-	defer tempFilesMu.Unlock()
-	if len(tempFiles) == 0 {
+	assertTempFilesCleaned(tempDir, &tempFilesMu, tempFiles, t)
+}
+
+func createLongRunningPlugin(tempDir string, startedCh chan<- string, files *[]string, mu *sync.Mutex) *executorStubPlugin {
+	return &executorStubPlugin{
+		meta:          domainplugin.Metadata{ID: "command", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"},
+		requireAction: true,
+		onApply: func(ctx context.Context, step domainpipeline.Step) error {
+			tmpFile, err := os.CreateTemp(tempDir, fmt.Sprintf("%s-*", step.ID))
+			if err != nil {
+				return fmt.Errorf("create temp file for step %s: %w", step.ID, err)
+			}
+
+			if err := tmpFile.Close(); err != nil {
+				return fmt.Errorf("close temp file for step %s: %w", step.ID, err)
+			}
+
+			defer func() { _ = os.Remove(tmpFile.Name()) }()
+
+			mu.Lock()
+
+			*files = append(*files, tmpFile.Name())
+
+			mu.Unlock()
+
+			select {
+			case startedCh <- step.ID:
+			default:
+			}
+
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("step %s cancelled: %w", step.ID, ctx.Err())
+			case <-time.After(5 * time.Second):
+				return nil
+			}
+		},
+	}
+}
+
+func waitForStepsToStart(started <-chan string, count int, timeout time.Duration, t *testing.T) {
+	t.Helper()
+
+	for i := 0; i < count; i++ {
+		select {
+		case <-started:
+		case <-time.After(timeout):
+			t.Fatalf("timed out waiting for step %d to start", i)
+		}
+	}
+}
+
+func awaitCancellationResult(results <-chan error, timeout time.Duration, t *testing.T) error {
+	t.Helper()
+
+	select {
+	case err := <-results:
+		return err
+	case <-time.After(timeout):
+		t.Fatal("executor did not return within cancellation timeout")
+	}
+
+	return nil
+}
+
+func assertCancellationError(err error, t *testing.T) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatal("expected cancellation error")
+	}
+
+	var domainErr *domainpipeline.DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != domainpipeline.ErrCodeCancelled {
+		t.Fatalf("expected cancellation domain error, got %v", err)
+	}
+}
+
+func assertTempFilesCleaned(tempDir string, mu *sync.Mutex, files []string, t *testing.T) {
+	t.Helper()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(files) == 0 {
 		t.Fatal("expected temp files to be created during execution")
 	}
+
 	entries, err := os.ReadDir(tempDir)
 	if err != nil {
 		t.Fatalf("read temp dir: %v", err)
 	}
+
 	if len(entries) != 0 {
 		t.Fatalf("expected temp files to be cleaned up, found %d leftovers", len(entries))
 	}
@@ -469,15 +549,19 @@ func waitForGoroutinesToSettle(initial int, t *testing.T) {
 
 func waitForGoroutinesToSettleWithin(initial int, timeout time.Duration, t *testing.T) {
 	t.Helper()
+
 	deadline := time.Now().Add(timeout)
+
 	for {
 		current := runtime.NumGoroutine()
 		if current <= initial {
 			return
 		}
+
 		if time.Now().After(deadline) {
 			t.Fatalf("goroutines did not settle: initial=%d current=%d", initial, current)
 		}
+
 		time.Sleep(5 * time.Millisecond)
 	}
 }
@@ -492,7 +576,9 @@ type stubEventPublisher struct {
 func (s *stubEventPublisher) Publish(_ context.Context, event ports.DomainEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.events = append(s.events, event)
+
 	return nil
 }
 
@@ -503,11 +589,13 @@ func (s *stubEventPublisher) Subscribe(string, ports.EventHandler) (ports.Subscr
 func (s *stubEventPublisher) contains(eventType string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	for _, evt := range s.events {
 		if evt.EventType() == eventType {
 			return true
 		}
 	}
+
 	return false
 }
 

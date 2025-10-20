@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/application/pipeline/testutil"
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"

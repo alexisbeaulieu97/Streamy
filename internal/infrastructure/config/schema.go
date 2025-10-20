@@ -1,6 +1,8 @@
+// Package config provides YAML parsing and validation utilities.
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -37,6 +39,7 @@ func (c *fileConfig) toPipeline() (*domain.Pipeline, error) {
 			if err != nil {
 				return nil, err
 			}
+
 			pipeline.Steps = append(pipeline.Steps, domainStep)
 		}
 	}
@@ -48,12 +51,13 @@ func (c *fileConfig) toPipeline() (*domain.Pipeline, error) {
 			if err != nil {
 				return nil, err
 			}
+
 			pipeline.Validations = append(pipeline.Validations, domainValidation)
 		}
 	}
 
 	if err := pipeline.Validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validate pipeline %q: %w", pipeline.Name, err)
 	}
 
 	return pipeline, nil
@@ -89,23 +93,26 @@ func (s *stepConfig) UnmarshalYAML(value *yaml.Node) error {
 
 	var base baseStep
 	if err := value.Decode(&base); err != nil {
-		return err
+		return fmt.Errorf("decode step config: %w", err)
 	}
 
 	s.ID = strings.TrimSpace(base.ID)
 	s.Name = strings.TrimSpace(base.Name)
 	s.Type = strings.TrimSpace(base.Type)
+
 	s.DependsOn = append([]string(nil), base.DependsOn...)
 	if base.Enabled != nil {
 		s.Enabled = *base.Enabled
 	} else {
 		s.Enabled = true
 	}
+
 	if base.VerifyTimeout != nil {
 		s.VerifyTimeout = *base.VerifyTimeout
 	}
 
 	s.rawConfig = extractRawConfig(value)
+
 	return nil
 }
 
@@ -120,8 +127,9 @@ func (s stepConfig) toDomain() (domain.Step, error) {
 		Config:        cloneMap(s.rawConfig),
 	}
 	if err := step.Validate(); err != nil {
-		return domain.Step{}, err
+		return domain.Step{}, fmt.Errorf("validate step %q: %w", step.ID, err)
 	}
+
 	return step, nil
 }
 
@@ -137,11 +145,12 @@ func (v *validationConfig) UnmarshalYAML(value *yaml.Node) error {
 
 	var raw rawValidation
 	if err := value.Decode(&raw); err != nil {
-		return err
+		return fmt.Errorf("decode validation config: %w", err)
 	}
 
 	v.Type = strings.TrimSpace(raw.Type)
 	v.Config = extractValidationConfig(value)
+
 	return nil
 }
 
@@ -151,8 +160,9 @@ func (v validationConfig) toDomain() (domain.Validation, error) {
 		Config: cloneMap(v.Config),
 	}
 	if err := validation.Validate(); err != nil {
-		return domain.Validation{}, err
+		return domain.Validation{}, fmt.Errorf("validate validation %q: %w", validation.Type, err)
 	}
+
 	return validation, nil
 }
 
@@ -207,9 +217,11 @@ func cloneMap(src map[string]any) map[string]any {
 	if len(src) == 0 {
 		return map[string]any{}
 	}
+
 	out := make(map[string]any, len(src))
 	for k, v := range src {
 		out[k] = v
 	}
+
 	return out
 }

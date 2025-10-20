@@ -46,6 +46,7 @@ func New(opts Options) (*Logger, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse log level: %w", err)
 		}
+
 		level = parsed
 	}
 
@@ -58,10 +59,11 @@ func New(opts Options) (*Logger, error) {
 		Fields:          mapToFields(opts.Fields),
 	})
 
-	fields := make([]interface{}, 0, 6)
+	var fields []interface{}
 	if opts.Component != "" {
 		fields = append(fields, "component", opts.Component)
 	}
+
 	layer := opts.Layer
 	if layer == "" {
 		layer = "infrastructure"
@@ -99,9 +101,11 @@ func (l *Logger) With(fields ...interface{}) ports.Logger {
 	if l == nil {
 		return &NoOpLogger{}
 	}
-	next := make([]interface{}, len(l.fields))
-	copy(next, l.fields)
+
+	next := make([]interface{}, 0, len(l.fields)+len(fields))
+	next = append(next, l.fields...)
 	next = append(next, fields...)
+
 	return &Logger{
 		logger: l.logger,
 		fields: next,
@@ -113,12 +117,14 @@ func (l *Logger) log(ctx context.Context, level cblog.Level, msg string, fields 
 	if l == nil || l.logger == nil {
 		return
 	}
+
 	extras := map[string]interface{}{
 		"layer": l.layer,
 	}
 	if id := ports.GetCorrelationID(ctx); id != "" {
 		extras["correlation_id"] = id
 	}
+
 	payload := mergeFields(l.fields, fields, extras)
 
 	switch level {
@@ -137,20 +143,23 @@ func mapToFields(input map[string]interface{}) []interface{} {
 	if len(input) == 0 {
 		return nil
 	}
+
 	keys := make([]string, 0, len(input))
 	for k := range input {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
 
 	res := make([]interface{}, 0, len(input)*2)
 	for _, k := range keys {
 		res = append(res, k, input[k])
 	}
+
 	return res
 }
 
-func mergeFields(base []interface{}, additions []interface{}, extras map[string]interface{}) []interface{} {
+func mergeFields(base, additions []interface{}, extras map[string]interface{}) []interface{} {
 	store := make(map[string]interface{})
 	order := make([]string, 0)
 
@@ -158,9 +167,11 @@ func mergeFields(base []interface{}, additions []interface{}, extras map[string]
 		if key == "" {
 			return
 		}
+
 		if _, exists := store[key]; !exists {
 			order = append(order, key)
 		}
+
 		store[key] = value
 	}
 
@@ -170,33 +181,40 @@ func mergeFields(base []interface{}, additions []interface{}, extras map[string]
 			if !ok {
 				continue
 			}
+
 			addPair(key, values[i+1])
 		}
 	}
 
 	process(base)
 	process(additions)
+
 	if len(extras) > 0 {
 		extraKeys := make([]string, 0, len(extras))
 		for key, value := range extras {
 			if value == nil {
 				continue
 			}
+
 			if s, ok := value.(string); ok && s == "" {
 				continue
 			}
+
 			extraKeys = append(extraKeys, key)
 		}
+
 		sort.Strings(extraKeys)
+
 		for _, key := range extraKeys {
 			addPair(key, extras[key])
 		}
 	}
 
 	if rawErr, ok := store["error"]; ok {
-		if errVal, ok := toError(rawErr); ok {
+		if errVal := toError(rawErr); errVal != nil {
 			chain := flattenErrorChain(errVal)
 			addPair("error", errVal.Error())
+
 			if len(chain) > 0 {
 				addPair("error_chain", chain)
 				addPair("error_cause", chain[len(chain)-1])
@@ -208,17 +226,18 @@ func mergeFields(base []interface{}, additions []interface{}, extras map[string]
 	for _, key := range order {
 		result = append(result, key, store[key])
 	}
+
 	return result
 }
 
-func toError(value interface{}) (error, bool) {
+func toError(value interface{}) error {
 	switch v := value.(type) {
 	case error:
-		return v, true
+		return v
 	case fmt.Stringer:
-		return errors.New(v.String()), true
+		return errors.New(v.String())
 	default:
-		return nil, false
+		return nil
 	}
 }
 
@@ -228,27 +247,36 @@ func flattenErrorChain(err error) []string {
 	}
 
 	seen := map[string]struct{}{}
-	var chain []string
-	var walk func(error)
+
+	var (
+		chain []string
+		walk  func(error)
+	)
+
 	walk = func(e error) {
 		if e == nil {
 			return
 		}
+
 		msg := e.Error()
 		if _, exists := seen[msg]; !exists {
 			seen[msg] = struct{}{}
 			chain = append(chain, msg)
 		}
+
 		if unwrapper, ok := e.(interface{ Unwrap() []error }); ok {
 			for _, inner := range unwrapper.Unwrap() {
 				walk(inner)
 			}
+
 			return
 		}
+
 		walk(errors.Unwrap(e))
 	}
 
 	walk(err)
+
 	return chain
 }
 

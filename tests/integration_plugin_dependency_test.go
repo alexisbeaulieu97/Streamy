@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -90,6 +90,7 @@ func TestRegistryDetectsCycles(t *testing.T) {
 
 	err := reg.ValidateDependencies()
 	require.Error(t, err)
+
 	var domainErr *domainpipeline.DomainError
 	require.ErrorAs(t, err, &domainErr)
 	require.Equal(t, domainpipeline.ErrCodeCycle, domainErr.Code)
@@ -117,6 +118,7 @@ func TestRegistryUndeclaredAccess(t *testing.T) {
 
 	_, err := reg.GetForDependent(string(domainplugin.TypeTemplate), domainplugin.TypeLineInFile)
 	require.Error(t, err)
+
 	var domainErr *domainpipeline.DomainError
 	require.ErrorAs(t, err, &domainErr)
 	require.Equal(t, domainpipeline.ErrCodeDependency, domainErr.Code)
@@ -140,6 +142,7 @@ func (p *stubPlugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*d
 	if p.evaluate != nil {
 		return p.evaluate(ctx, step)
 	}
+
 	return &domainpipeline.EvaluationResult{
 		RequiresAction: true,
 		CurrentState:   "pending",
@@ -151,6 +154,7 @@ func (p *stubPlugin) Apply(ctx context.Context, eval *domainpipeline.EvaluationR
 	if p.apply != nil {
 		return p.apply(ctx, eval, step)
 	}
+
 	return &domainpipeline.StepResult{
 		StepID: step.ID,
 		Status: domainpipeline.StatusSuccess,

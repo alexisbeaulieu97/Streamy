@@ -1,3 +1,4 @@
+// Package components provides reusable TUI building blocks.
 package components
 
 import (
@@ -18,6 +19,7 @@ type Progress struct {
 func NewProgress(total int) Progress {
 	bar := progress.New(progress.WithDefaultGradient())
 	bar.Width = 30
+
 	return Progress{bar: bar, total: total}
 }
 
@@ -27,6 +29,8 @@ func (p Progress) View(completed int) string {
 	if p.total > 0 {
 		ratio = math.Min(1.0, float64(completed)/float64(p.total))
 	}
+
 	label := lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d/%d", completed, p.total))
+
 	return lipgloss.JoinHorizontal(lipgloss.Left, label, " ", p.bar.ViewAs(ratio))
 }

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestRunStreaming_Success(t *testing.T) {
@@ -47,6 +47,7 @@ func TestRunStreaming_WithStdoutPipe(t *testing.T) {
 
 	// Test with custom stdout pipe
 	var stdoutBuf bytes.Buffer
+
 	cmd := exec.Command("echo", "piped output")
 	cmd.Stdout = &stdoutBuf
 
@@ -64,6 +65,7 @@ func TestRunStreaming_WithStderrPipe(t *testing.T) {
 
 	// Test with custom stderr pipe
 	var stderrBuf bytes.Buffer
+
 	cmd := exec.Command("sh", "-c", "echo 'error message' >&2; exit 1")
 	cmd.Stderr = &stderrBuf
 
@@ -81,6 +83,7 @@ func TestRunStreaming_WithBothPipes(t *testing.T) {
 
 	// Test with both stdout and stderr pipes
 	var stdoutBuf, stderrBuf bytes.Buffer
+
 	cmd := exec.Command("sh", "-c", "echo 'normal output'; echo 'error message' >&2; exit 1")
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
@@ -113,6 +116,7 @@ func TestRunStreaming_WithContext(t *testing.T) {
 	} else {
 		assert.Contains(t, err.Error(), "context")
 	}
+
 	assert.Empty(t, result.Stdout) // No output due to cancellation
 }
 

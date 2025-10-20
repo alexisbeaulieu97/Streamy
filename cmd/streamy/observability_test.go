@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	cblog "github.com/charmbracelet/log"
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	applicationpipeline "github.com/alexisbeaulieu97/streamy/internal/application/pipeline"
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -29,11 +29,13 @@ type syncBufferWriter struct {
 func (w *syncBufferWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.buf.Write(p)
+
+	return w.buf.Write(p) //nolint:wrapcheck // test helper forwards writes to an in-memory buffer
 }
 
 func TestVerifyCommandStructuredLogging(t *testing.T) {
 	var logBuf bytes.Buffer
+
 	writer := &syncBufferWriter{buf: &logBuf}
 	logger, err := logginginfra.New(logginginfra.Options{
 		Writer:    writer,
@@ -109,6 +111,7 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 
 	originalExit := exitFunc
 	exitFunc = func(int) {}
+
 	t.Cleanup(func() { exitFunc = originalExit })
 
 	ctx := logginginfra.WithCorrelationID(context.Background(), "cli-corr-id")
@@ -128,6 +131,7 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 	}
 
 	require.NotEmpty(t, eventPublisher.events)
+
 	for _, event := range eventPublisher.events {
 		require.Equal(t, "cli-corr-id", event.correlationID)
 		require.NotEmpty(t, event.eventType)
@@ -136,6 +140,7 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 
 func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 	var logBuf bytes.Buffer
+
 	logger, err := logginginfra.New(logginginfra.Options{
 		Writer:    &logBuf,
 		Formatter: cblog.JSONFormatter,
@@ -207,6 +212,7 @@ func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 
 	originalExit := exitFunc
 	exitFunc = func(int) {}
+
 	t.Cleanup(func() { exitFunc = originalExit })
 
 	ctx := logginginfra.WithCorrelationID(context.Background(), "cli-corr-id")
@@ -215,30 +221,39 @@ func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 	logLines := filterLines(logBuf.String())
 	require.NotEmpty(t, logLines)
 
-	var errorSeen bool
-	var observedChain []string
-	var observedCause string
+	var (
+		errorSeen     bool
+		observedChain []string
+		observedCause string
+	)
+
 	for _, line := range logLines {
 		var payload map[string]interface{}
 		require.NoError(t, json.Unmarshal([]byte(line), &payload))
 		require.Equal(t, "cli-corr-id", payload["correlation_id"])
 		require.NotEmpty(t, payload["layer"])
+
 		if strings.Contains(line, "boom") {
 			errorSeen = true
+
 			if msg, ok := payload["msg"].(string); ok && msg == "pipeline verification failed" {
 				rawChain, ok := payload["error_chain"].([]interface{})
 				require.True(t, ok, "expected error_chain field in payload")
+
 				for _, entry := range rawChain {
 					str, ok := entry.(string)
 					require.True(t, ok, "expected string in error_chain")
+
 					observedChain = append(observedChain, str)
 				}
+
 				if cause, ok := payload["error_cause"].(string); ok {
 					observedCause = cause
 				}
 			}
 		}
 	}
+
 	require.True(t, errorSeen, "expected error log containing boom")
 	require.Equal(t, []string{
 		verifyErr.Error(),
@@ -248,6 +263,7 @@ func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 	require.Equal(t, rootErr.Error(), observedCause)
 
 	require.True(t, eventPublisher.contains(ports.EventValidationFailed))
+
 	for _, event := range eventPublisher.events {
 		require.Equal(t, "cli-corr-id", event.correlationID)
 	}
@@ -255,12 +271,14 @@ func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 
 func filterLines(output string) []string {
 	raw := strings.Split(output, "\n")
+
 	lines := make([]string, 0, len(raw))
 	for _, line := range raw {
 		if trimmed := strings.TrimSpace(line); trimmed != "" {
 			lines = append(lines, trimmed)
 		}
 	}
+
 	return lines
 }
 
@@ -280,21 +298,26 @@ func (e *eventsRecordingPublisher) Publish(ctx context.Context, event ports.Doma
 	if event == nil {
 		return nil
 	}
+
 	payload := map[string]interface{}{}
 	if raw, ok := event.Payload().(map[string]interface{}); ok {
 		payload = raw
 	}
+
 	record := eventRecord{
 		eventType:     event.EventType(),
 		payload:       payload,
 		correlationID: ports.GetCorrelationID(ctx),
 	}
+
 	e.mu.Lock()
 	e.events = append(e.events, record)
 	e.mu.Unlock()
+
 	if e.logger != nil {
 		e.logger.Info(ctx, "test event", "event_type", record.eventType)
 	}
+
 	return nil
 }
 
@@ -305,11 +328,13 @@ func (*eventsRecordingPublisher) Subscribe(string, ports.EventHandler) (ports.Su
 func (e *eventsRecordingPublisher) contains(eventType string) bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+
 	for _, evt := range e.events {
 		if evt.eventType == eventType {
 			return true
 		}
 	}
+
 	return false
 }
 

@@ -3,7 +3,7 @@ package lineinfileplugin
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestReplaceLinesStrategies(t *testing.T) {

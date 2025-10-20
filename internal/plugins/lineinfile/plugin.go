@@ -62,10 +62,11 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 		return nil, convertError(step.ID, err)
 	}
 
-	eval, err := convertEvaluationResult(step.ID, result)
+	eval, err := convertEvaluationResult(result)
 	if err != nil {
 		return nil, convertError(step.ID, err)
 	}
+
 	return eval, nil
 }
 
@@ -83,84 +84,138 @@ func (Plugin) Apply(ctx context.Context, evaluation *domainpipeline.EvaluationRe
 		return nil, convertError(step.ID, err)
 	}
 
-	var data *lineInFileEvaluationData
+	data, convertedEval, evalErr := ensureLineEvaluation(ctx, step, cfg, evaluation)
+	if evalErr != nil {
+		return nil, evalErr
+	}
+
+	evaluation = convertedEval
+
+	if skipLineChange(evaluation, data) {
+		return buildNoChangeResult(step.ID), nil
+	}
+
+	if backupErr := createLineInFileBackup(step.ID, cfg, data); backupErr != nil {
+		return nil, convertError(step.ID, backupErr)
+	}
+
+	if writeErr := writeUpdatedLineContent(step.ID, cfg, data); writeErr != nil {
+		return nil, convertError(step.ID, writeErr)
+	}
+
+	return buildLineChangeResult(step.ID, data), nil
+}
+
+func ensureLineEvaluation(ctx context.Context, step domainpipeline.Step, cfg *LineInFileConfig, evaluation *domainpipeline.EvaluationResult) (*lineInFileEvaluationData, *domainpipeline.EvaluationResult, error) {
 	if evaluation != nil {
 		if typed, ok := evaluation.InternalData.(*lineInFileEvaluationData); ok && typed != nil {
-			data = typed
+			return typed, evaluation, nil
 		}
-	}
-	if data == nil {
-		fallbackEval, evalErr := evaluateLineInFile(ctx, step.ID, cfg)
-		if evalErr != nil {
-			return nil, convertError(step.ID, evalErr)
-		}
-		converted, convErr := convertEvaluationResult(step.ID, fallbackEval)
-		if convErr != nil {
-			return nil, convertError(step.ID, convErr)
-		}
-		var ok bool
-		data, ok = converted.InternalData.(*lineInFileEvaluationData)
-		if !ok || data == nil {
-			return nil, domainpipeline.NewInternalError("line_in_file evaluation missing internal data", nil, map[string]interface{}{
-				"step_id":     step.ID,
-				"plugin_type": string(domainplugin.TypeLineInFile),
-			})
-		}
-		evaluation = converted
 	}
 
+	fallbackEval, err := evaluateLineInFile(ctx, step.ID, cfg)
+	if err != nil {
+		return nil, nil, convertError(step.ID, err)
+	}
+
+	converted, convErr := convertEvaluationResult(fallbackEval)
+	if convErr != nil {
+		return nil, nil, convertError(step.ID, convErr)
+	}
+
+	data, ok := converted.InternalData.(*lineInFileEvaluationData)
+	if !ok || data == nil {
+		return nil, nil, domainpipeline.NewInternalError("line_in_file evaluation missing internal data", nil, map[string]interface{}{
+			"step_id":     step.ID,
+			"plugin_type": string(domainplugin.TypeLineInFile),
+		})
+	}
+
+	return data, converted, nil
+}
+
+func skipLineChange(evaluation *domainpipeline.EvaluationResult, data *lineInFileEvaluationData) bool {
 	if evaluation != nil && !evaluation.RequiresAction {
-		return &domainpipeline.StepResult{
-			StepID:  step.ID,
-			Status:  domainpipeline.StatusAlreadySatisfied,
-			Message: "no changes needed",
-		}, nil
+		return true
 	}
 
-	if !data.Changed {
-		return &domainpipeline.StepResult{
-			StepID:  step.ID,
-			Status:  domainpipeline.StatusAlreadySatisfied,
-			Message: "no changes needed",
-		}, nil
+	if data == nil {
+		return true
+	}
+
+	return !data.Changed
+}
+
+func buildNoChangeResult(stepID string) *domainpipeline.StepResult {
+	return &domainpipeline.StepResult{
+		StepID:  stepID,
+		Status:  domainpipeline.StatusAlreadySatisfied,
+		Message: "no changes needed",
+	}
+}
+
+func createLineInFileBackup(stepID string, cfg *LineInFileConfig, data *lineInFileEvaluationData) error {
+	if !cfg.Backup || data == nil || data.State == nil || !data.State.Exists {
+		return nil
+	}
+
+	originalBytes, err := encodeContent(data.CurrentContent, cfg.Encoding)
+	if err != nil {
+		//nolint:wrapcheck // propagate execution error for caller to convert
+		return streamyerrors.NewExecutionError(stepID, fmt.Errorf("failed to encode backup content: %w", err))
+	}
+
+	if _, err := createBackup(data.State.Path, cfg.BackupDir, originalBytes, data.State.Permissions); err != nil {
+		//nolint:wrapcheck // propagate execution error for caller to convert
+		return streamyerrors.NewExecutionError(stepID, fmt.Errorf("failed to create backup: %w", err))
+	}
+
+	return nil
+}
+
+func writeUpdatedLineContent(stepID string, cfg *LineInFileConfig, data *lineInFileEvaluationData) error {
+	if data == nil || data.State == nil {
+		//nolint:wrapcheck // propagate execution error for caller to convert
+		return streamyerrors.NewExecutionError(stepID, fmt.Errorf("missing file state"))
 	}
 
 	newContent := joinLines(data.UpdatedLines, data.TrailingNewline)
 
-	if cfg.Backup && data.State.Exists {
-		originalBytes, encodeErr := encodeContent(data.CurrentContent, cfg.Encoding)
-		if encodeErr != nil {
-			return nil, convertError(step.ID, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to encode backup content: %w", encodeErr)))
-		}
-		if _, err := createBackup(data.State.Path, cfg.BackupDir, originalBytes, data.State.Permissions); err != nil {
-			return nil, convertError(step.ID, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to create backup: %w", err)))
-		}
-	}
-
 	encoded, encodeErr := encodeContent(newContent, cfg.Encoding)
 	if encodeErr != nil {
-		return nil, convertError(step.ID, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to encode content: %w", encodeErr)))
+		//nolint:wrapcheck // propagate execution error for caller to convert
+		return streamyerrors.NewExecutionError(stepID, fmt.Errorf("failed to encode content: %w", encodeErr))
 	}
 
 	if err := writeFileAtomic(data.State.Path, encoded, data.State.Permissions); err != nil {
-		return nil, convertError(step.ID, streamyerrors.NewExecutionError(step.ID, fmt.Errorf("failed to write file: %w", err)))
+		//nolint:wrapcheck // propagate execution error for caller to convert
+		return streamyerrors.NewExecutionError(stepID, fmt.Errorf("failed to write file: %w", err))
 	}
 
+	return nil
+}
+
+func buildLineChangeResult(stepID string, data *lineInFileEvaluationData) *domainpipeline.StepResult {
 	diff := ""
-	if data.ChangeSet != nil {
+	if data != nil && data.ChangeSet != nil {
 		diff = data.ChangeSet.Diff
 	}
 
+	action := "none"
+	if data != nil && data.Action != "" {
+		action = data.Action
+	}
+
 	return &domainpipeline.StepResult{
-		StepID:  step.ID,
+		StepID:  stepID,
 		Status:  domainpipeline.StatusSuccess,
-		Message: fmt.Sprintf("line action completed: %s", data.Action),
+		Message: fmt.Sprintf("line action completed: %s", action),
 		Changed: true,
 		Diff:    diff,
-	}, nil
+	}
 }
 
-func convertEvaluationResult(stepID string, result *evaluationResult) (*domainpipeline.EvaluationResult, error) {
+func convertEvaluationResult(result *evaluationResult) (*domainpipeline.EvaluationResult, error) {
 	if result == nil {
 		return &domainpipeline.EvaluationResult{
 			RequiresAction: false,
@@ -183,12 +238,13 @@ func convertEvaluationResult(stepID string, result *evaluationResult) (*domainpi
 		currentState = string(domainpipeline.VerificationFailed)
 		message = fmt.Sprintf("line action needed: %s", result.action)
 		requiresAction = true
+
 		if result.changeSet != nil {
 			diff = result.changeSet.Diff
 		}
 	}
 
-	if !result.changed && result.action == "none" && !result.state.Exists {
+	if !result.changed && result.action == actionNone && !result.state.Exists {
 		requiresAction = true
 	}
 
@@ -224,6 +280,7 @@ func convertError(stepID string, err error) error {
 	if errors.Is(err, context.Canceled) {
 		return domainpipeline.NewCancelledError("operation cancelled", ctxDetails)
 	}
+
 	if errors.Is(err, context.DeadlineExceeded) {
 		return domainpipeline.NewTimeoutError("operation timed out", err, ctxDetails)
 	}
@@ -234,9 +291,11 @@ func convertError(stepID string, err error) error {
 		for k, v := range ctxDetails {
 			ctx[k] = v
 		}
+
 		if valErr.Field != "" {
 			ctx["field"] = valErr.Field
 		}
+
 		return domainpipeline.NewDomainError(domainpipeline.ErrCodeValidation, valErr.Message, valErr.Err, ctx)
 	}
 
@@ -262,60 +321,39 @@ type evaluationResult struct {
 
 func evaluateLineInFile(ctx context.Context, stepID string, cfg *LineInFileConfig) (*evaluationResult, error) {
 	if err := ctx.Err(); err != nil {
+		//nolint:wrapcheck // propagate execution error from helper
 		return nil, streamyerrors.NewExecutionError(stepID, err)
 	}
 
 	state, err := readFileState(cfg)
 	if err != nil {
+		//nolint:wrapcheck // propagate execution error from helper
 		return nil, streamyerrors.NewExecutionError(stepID, fmt.Errorf("failed to read file: %w", err))
 	}
 
 	lines := append([]string{}, state.Lines...)
 	trailing := state.TrailingNewline
-	action := "none"
+	action := actionNone
 	changed := false
 
 	switch cfg.State {
 	case statePresent:
-		if cfg.pattern == nil {
-			var appended bool
-			lines, appended = appendLineIfMissing(lines, cfg.Line)
-			if appended {
-				changed = true
-				action = "append"
-				trailing = true
-			}
-		} else {
-			matches := findMatches(lines, cfg.pattern)
-			if matches.MatchCount == 0 {
-				lines = append(lines, cfg.Line)
-				changed = true
-				action = "append"
-				trailing = true
-			} else {
-				updated, replaced, replaceErr := replaceLines(lines, matches, cfg.Line, cfg.OnMultipleMatches)
-				if replaceErr != nil {
-					if cfg.OnMultipleMatches == onMultiplePrompt {
-						return nil, streamyerrors.NewExecutionError(stepID, fmt.Errorf("on_multiple_matches=prompt requires interactive session"))
-					}
-					return nil, streamyerrors.NewExecutionError(stepID, replaceErr)
-				}
-				if replaced {
-					lines = updated
-					changed = true
-					action = "replace"
-				}
-			}
+		updatedLines, updatedTrailing, updatedAction, updatedChanged, presentErr := applyPresentState(lines, trailing, cfg, stepID)
+		if presentErr != nil {
+			//nolint:wrapcheck // propagate execution error from helper
+			return nil, presentErr
 		}
+
+		lines = updatedLines
+		trailing = updatedTrailing
+		action = updatedAction
+		changed = updatedChanged
 	case stateAbsent:
-		matches := findMatches(lines, cfg.pattern)
-		updated, removed := removeMatchedLines(lines, matches)
-		if removed {
-			lines = updated
-			changed = true
-			action = "remove"
-			trailing = len(lines) > 0 && trailing
-		}
+		updatedLines, updatedTrailing, updatedAction, updatedChanged := applyAbsentState(lines, trailing, cfg)
+		lines = updatedLines
+		trailing = updatedTrailing
+		action = updatedAction
+		changed = updatedChanged
 	}
 
 	if len(lines) == 0 {
@@ -346,4 +384,50 @@ func evaluateLineInFile(ctx context.Context, stepID string, cfg *LineInFileConfi
 		original:  originalContent,
 		changeSet: changeSet,
 	}, nil
+}
+
+func applyPresentState(lines []string, trailing bool, cfg *LineInFileConfig, stepID string) ([]string, bool, string, bool, error) {
+	if cfg.pattern == nil {
+		updated, appended := appendLineIfMissing(lines, cfg.Line)
+		if appended {
+			return updated, true, "append", true, nil
+		}
+
+		return lines, trailing, actionNone, false, nil
+	}
+
+	matches := findMatches(lines, cfg.pattern)
+	if matches.MatchCount == 0 {
+		return append(lines, cfg.Line), true, "append", true, nil
+	}
+
+	updated, replaced, replaceErr := replaceLines(lines, matches, cfg.Line, cfg.OnMultipleMatches)
+	if replaceErr != nil {
+		if cfg.OnMultipleMatches == onMultiplePrompt {
+			//nolint:wrapcheck // propagate execution error for caller to convert
+			return nil, false, "", false, streamyerrors.NewExecutionError(stepID, fmt.Errorf("on_multiple_matches=prompt requires interactive session"))
+		}
+
+		//nolint:wrapcheck // propagate execution error for caller to convert
+		return nil, false, "", false, streamyerrors.NewExecutionError(stepID, replaceErr)
+	}
+
+	if replaced {
+		return updated, trailing, "replace", true, nil
+	}
+
+	return lines, trailing, actionNone, false, nil
+}
+
+func applyAbsentState(lines []string, trailing bool, cfg *LineInFileConfig) ([]string, bool, string, bool) {
+	matches := findMatches(lines, cfg.pattern)
+
+	updated, removed := removeMatchedLines(lines, matches)
+	if !removed {
+		return lines, trailing, actionNone, false
+	}
+
+	trailing = len(updated) > 0 && trailing
+
+	return updated, trailing, "remove", true
 }

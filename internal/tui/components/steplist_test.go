@@ -3,7 +3,7 @@ package components
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestNewStepList(t *testing.T) {
@@ -11,12 +11,14 @@ func TestNewStepList(t *testing.T) {
 
 	t.Run("creates empty step list", func(t *testing.T) {
 		t.Parallel()
+
 		sl := NewStepList([]string{}, map[string]StepState{})
 		require.Empty(t, sl.entries)
 	})
 
 	t.Run("creates step list with single step", func(t *testing.T) {
 		t.Parallel()
+
 		order := []string{"step1"}
 		steps := map[string]StepState{
 			"step1": {Status: StepStatusPending},
@@ -30,6 +32,7 @@ func TestNewStepList(t *testing.T) {
 
 	t.Run("creates step list with multiple steps in order", func(t *testing.T) {
 		t.Parallel()
+
 		order := []string{"step1", "step2", "step3"}
 		steps := map[string]StepState{
 			"step1": {Status: StepStatusSuccess},
@@ -49,6 +52,7 @@ func TestNewStepList(t *testing.T) {
 
 	t.Run("respects provided order", func(t *testing.T) {
 		t.Parallel()
+
 		order := []string{"step3", "step1", "step2"}
 		steps := map[string]StepState{
 			"step1": {Status: StepStatusSuccess},
@@ -65,6 +69,7 @@ func TestNewStepList(t *testing.T) {
 
 	t.Run("handles steps with various statuses", func(t *testing.T) {
 		t.Parallel()
+
 		order := []string{"pending", "running", "success", "failed", "skipped"}
 		steps := map[string]StepState{
 			"pending": {Status: StepStatusPending},
@@ -84,6 +89,7 @@ func TestStepListEntries(t *testing.T) {
 
 	t.Run("returns empty slice for empty list", func(t *testing.T) {
 		t.Parallel()
+
 		sl := NewStepList([]string{}, map[string]StepState{})
 		entries := sl.Entries()
 		require.Empty(t, entries)
@@ -91,6 +97,7 @@ func TestStepListEntries(t *testing.T) {
 
 	t.Run("returns copy of entries", func(t *testing.T) {
 		t.Parallel()
+
 		order := []string{"step1", "step2"}
 		steps := map[string]StepState{
 			"step1": {Status: StepStatusSuccess},
@@ -106,6 +113,7 @@ func TestStepListEntries(t *testing.T) {
 
 	t.Run("returns independent copy", func(t *testing.T) {
 		t.Parallel()
+
 		order := []string{"step1"}
 		steps := map[string]StepState{
 			"step1": {Status: StepStatusSuccess},
@@ -122,6 +130,7 @@ func TestStepListEntries(t *testing.T) {
 
 	t.Run("preserves entry details", func(t *testing.T) {
 		t.Parallel()
+
 		order := []string{"step1"}
 		steps := map[string]StepState{
 			"step1": {

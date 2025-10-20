@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/application/pipeline/testutil"
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -22,12 +22,12 @@ func TestVerifyUseCase_Success(t *testing.T) {
 	plan := &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}}}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipelineDefinition, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return plan, nil
 		},
 	}
@@ -36,7 +36,7 @@ func TestVerifyUseCase_Success(t *testing.T) {
 
 	prepareUC := NewPrepareUseCase(loader, builder, logger, testutil.NewMockTracer(), events)
 	executor := &testutil.MockPluginExecutor{
-		VerifyFunc: func(ctx context.Context, pipeline *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
+		VerifyFunc: func(_ context.Context, _ *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
 			return []domainpipeline.VerificationResult{{StepID: "setup", Status: domainpipeline.VerificationSatisfied}}, nil
 		},
 	}
@@ -54,7 +54,7 @@ func TestVerifyUseCase_PrepareFailure(t *testing.T) {
 
 	prepareErr := errors.New("prepare failed")
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return nil, prepareErr
 		},
 	}
@@ -83,12 +83,12 @@ func TestVerifyUseCase_ExecutorFailure(t *testing.T) {
 	}
 
 	loader := &testutil.MockConfigLoader{
-		LoadFunc: func(ctx context.Context, path string) (*domainpipeline.Pipeline, error) {
+		LoadFunc: func(_ context.Context, _ string) (*domainpipeline.Pipeline, error) {
 			return pipelineDefinition, nil
 		},
 	}
 	builder := &testutil.MockDAGBuilder{
-		BuildFunc: func(ctx context.Context, steps []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
+		BuildFunc: func(_ context.Context, _ []domainpipeline.Step) (*domainpipeline.ExecutionPlan, error) {
 			return &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}}}, nil
 		},
 	}
@@ -98,7 +98,7 @@ func TestVerifyUseCase_ExecutorFailure(t *testing.T) {
 
 	execErr := errors.New("verification failed")
 	executor := &testutil.MockPluginExecutor{
-		VerifyFunc: func(ctx context.Context, pipeline *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
+		VerifyFunc: func(_ context.Context, _ *domainpipeline.Pipeline) ([]domainpipeline.VerificationResult, error) {
 			return nil, execErr
 		},
 	}

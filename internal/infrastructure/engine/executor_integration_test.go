@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	configinfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/config"
@@ -49,19 +49,23 @@ func TestExecutorSwapProducesIdenticalResults(t *testing.T) {
 
 func loadTestPipeline(t *testing.T, configPath string) *domainpipeline.Pipeline {
 	t.Helper()
+
 	loader := configinfra.NewYAMLLoader(logginginfra.NewNoOpLogger())
 	absPath := filepath.Join("..", "..", "..", configPath)
 	pipeline, err := loader.Load(context.Background(), absPath)
 	require.NoError(t, err)
+
 	return pipeline
 }
 
 func buildTestPlan(t *testing.T, pipeline *domainpipeline.Pipeline) *domainpipeline.ExecutionPlan {
 	t.Helper()
+
 	builder := NewDAGBuilder()
 	plan, err := builder.Build(context.Background(), pipeline.Steps)
 	require.NoError(t, err)
 	require.NoError(t, plan.Validate(*pipeline))
+
 	return plan
 }
 
@@ -71,5 +75,6 @@ func normalizeStepResults(results []domainpipeline.StepResult) []domainpipeline.
 		res.Duration = 0
 		normalized[i] = res
 	}
+
 	return normalized
 }

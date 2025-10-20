@@ -1,3 +1,4 @@
+// Package errors defines shared error types used across Streamy.
 package errors
 
 import (
@@ -18,6 +19,7 @@ func NewParseError(path string, line int, err error) error {
 	if err != nil {
 		message = err.Error()
 	}
+
 	return &ParseError{Path: path, Line: line, Message: message, Err: err}
 }
 
@@ -29,6 +31,7 @@ func (e *ParseError) Error() string {
 	if e.Line > 0 {
 		return fmt.Sprintf("parse error: %s:%d: %s", e.Path, e.Line, e.Message)
 	}
+
 	return fmt.Sprintf("parse error: %s: %s", e.Path, e.Message)
 }
 
@@ -37,6 +40,7 @@ func (e *ParseError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
+
 	return e.Err
 }
 
@@ -56,9 +60,11 @@ func (e *ValidationError) Error() string {
 	if e == nil {
 		return ""
 	}
+
 	if e.Field != "" {
 		return fmt.Sprintf("validation error: %s: %s", e.Field, e.Message)
 	}
+
 	return fmt.Sprintf("validation error: %s", e.Message)
 }
 
@@ -67,6 +73,7 @@ func (e *ValidationError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
+
 	return e.Err
 }
 
@@ -85,9 +92,11 @@ func (e *ExecutionError) Error() string {
 	if e == nil {
 		return ""
 	}
+
 	if e.StepID != "" {
 		return fmt.Sprintf("execution error on step %s: %v", e.StepID, e.Err)
 	}
+
 	return fmt.Sprintf("execution error: %v", e.Err)
 }
 
@@ -96,6 +105,7 @@ func (e *ExecutionError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
+
 	return e.Err
 }
 
@@ -112,6 +122,7 @@ func NewPluginError(plugin string, err error) error {
 	if err != nil {
 		message = err.Error()
 	}
+
 	return &PluginError{Plugin: plugin, Message: message, Err: err}
 }
 
@@ -119,9 +130,11 @@ func (e *PluginError) Error() string {
 	if e == nil {
 		return ""
 	}
+
 	if e.Plugin != "" {
 		return fmt.Sprintf("plugin error [%s]: %s", e.Plugin, e.Message)
 	}
+
 	return fmt.Sprintf("plugin error: %s", e.Message)
 }
 
@@ -130,5 +143,6 @@ func (e *PluginError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
+
 	return e.Err
 }

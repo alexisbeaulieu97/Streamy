@@ -17,6 +17,7 @@ func NewStepList(order []string, steps map[string]StepState) StepList {
 	for _, id := range order {
 		entries = append(entries, StepEntry{ID: id, Result: steps[id]})
 	}
+
 	return StepList{entries: entries}
 }
 
@@ -24,5 +25,6 @@ func NewStepList(order []string, steps map[string]StepState) StepList {
 func (s StepList) Entries() []StepEntry {
 	clone := make([]StepEntry, len(s.entries))
 	copy(clone, s.entries)
+
 	return clone
 }

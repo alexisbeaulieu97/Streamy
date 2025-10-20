@@ -1,3 +1,4 @@
+// Package tracing offers lightweight span instrumentation for pipelines.
 package tracing
 
 import (
@@ -39,6 +40,7 @@ func (t *Tracer) StartSpan(ctx context.Context, name string, attributes ...inter
 	if correlationID := ports.GetCorrelationID(ctx); correlationID != "" {
 		span.attributes["correlation_id"] = correlationID
 	}
+
 	span.applyAttributes(attributes)
 
 	return context.WithValue(ctx, spanContextKey{}, span), span
@@ -72,6 +74,7 @@ func (s *span) SetAttribute(key string, value interface{}) {
 	if key == "" {
 		return
 	}
+
 	s.mu.Lock()
 	s.attributes[key] = value
 	s.mu.Unlock()
@@ -86,10 +89,12 @@ func (s *span) SetStatus(status ports.SpanStatus, message string) {
 
 func (s *span) End() {
 	s.mu.Lock()
+
 	if s.completed {
 		s.mu.Unlock()
 		return
 	}
+
 	s.completed = true
 	duration := time.Since(s.start)
 	status := s.status
@@ -102,6 +107,7 @@ func (s *span) End() {
 		for key := range attributes {
 			keys = append(keys, key)
 		}
+
 		sort.Strings(keys)
 
 		logFields := []interface{}{
@@ -111,12 +117,15 @@ func (s *span) End() {
 		for _, key := range keys {
 			logFields = append(logFields, key, attributes[key])
 		}
+
 		if status != "" {
 			logFields = append(logFields, "status", string(status))
 		}
+
 		if message != "" {
 			logFields = append(logFields, "status_message", message)
 		}
+
 		s.logger.Debug(s.ctx, "span completed", logFields...)
 	}
 }
@@ -125,22 +134,26 @@ func (s *span) copyAttributesLocked() map[string]interface{} {
 	if len(s.attributes) == 0 {
 		return nil
 	}
-	copy := make(map[string]interface{}, len(s.attributes))
+
+	cloned := make(map[string]interface{}, len(s.attributes))
 	for k, v := range s.attributes {
-		copy[k] = v
+		cloned[k] = v
 	}
-	return copy
+
+	return cloned
 }
 
 func (s *span) applyAttributes(attributes []interface{}) {
 	if len(attributes) == 0 {
 		return
 	}
+
 	for i := 0; i+1 < len(attributes); i += 2 {
 		key, ok := attributes[i].(string)
 		if !ok || key == "" {
 			continue
 		}
+
 		s.attributes[key] = attributes[i+1]
 	}
 }
@@ -158,6 +171,7 @@ func (*NoOpTracer) StartSpan(ctx context.Context, _ string, _ ...interface{}) (c
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	return ctx, noopSpan{}
 }
 

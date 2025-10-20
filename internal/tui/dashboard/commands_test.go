@@ -3,13 +3,14 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 )
@@ -26,14 +27,15 @@ func (s *stubPipelineService) Verify(ctx context.Context, opts VerifyOptions) (*
 		// simulate timeout handling by respecting context deadline
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("verify cancelled: %w", ctx.Err())
 		case <-time.After(time.Millisecond):
 		}
 	}
+
 	return s.verifyResult, s.verifyErr
 }
 
-func (s *stubPipelineService) Apply(ctx context.Context, opts ApplyOptions) (*registry.ExecutionResult, error) {
+func (s *stubPipelineService) Apply(_ context.Context, _ ApplyOptions) (*registry.ExecutionResult, error) {
 	return s.applyResult, s.applyErr
 }
 

@@ -45,6 +45,8 @@ type Span interface {
 type SpanStatus string
 
 const (
-	SpanStatusOK    SpanStatus = "ok"
+	// SpanStatusOK marks the span as successful.
+	SpanStatusOK SpanStatus = "ok"
+	// SpanStatusError marks the span as unsuccessful.
 	SpanStatusError SpanStatus = "error"
 )

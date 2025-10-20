@@ -1,3 +1,4 @@
+// Package commandplugin executes shell commands for the pipeline engine.
 package commandplugin
 
 import (
@@ -100,8 +101,10 @@ func (p *Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domai
 		}, nil
 	}
 
-	args := append(shellArgs, cfg.Check)
-	cmd := exec.CommandContext(ctx, shell, args...) //nolint:gosec // shell determined above
+	cmdArgs := append([]string{}, shellArgs...)
+	cmdArgs = append(cmdArgs, cfg.Check)
+	cmd := exec.CommandContext(ctx, shell, cmdArgs...) //nolint:gosec // shell determined above
+
 	cmd.Env = data.CheckEnv
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
@@ -175,8 +178,10 @@ func (p *Plugin) Apply(ctx context.Context, evaluation *domainpipeline.Evaluatio
 		}, nil
 	}
 
-	args := append(data.ShellArgs, cfg.Command)
-	cmd := exec.CommandContext(ctx, data.Shell, args...) //nolint:gosec // shell determined earlier
+	cmdArgs := append([]string{}, data.ShellArgs...)
+	cmdArgs = append(cmdArgs, cfg.Command)
+	cmd := exec.CommandContext(ctx, data.Shell, cmdArgs...) //nolint:gosec // shell determined earlier
+
 	cmd.Env = data.CommandEnv
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
@@ -197,6 +202,7 @@ func (p *Plugin) Apply(ctx context.Context, evaluation *domainpipeline.Evaluatio
 		if message == "" {
 			message = err.Error()
 		}
+
 		return nil, domainpipeline.NewDomainError(
 			domainpipeline.ErrCodeExecution,
 			"command failed",
@@ -224,6 +230,7 @@ func (p *Plugin) ensureEvaluationData(ctx context.Context, evaluation *domainpip
 	if err != nil {
 		return nil, err
 	}
+
 	typed, ok := evalResult.InternalData.(*evaluationData)
 	if !ok || typed == nil {
 		return nil, domainpipeline.NewDomainError(
@@ -233,6 +240,7 @@ func (p *Plugin) ensureEvaluationData(ctx context.Context, evaluation *domainpip
 			map[string]interface{}{"step_id": step.ID, "plugin_type": string(domainplugin.TypeCommand)},
 		)
 	}
+
 	return typed, nil
 }
 
@@ -245,6 +253,7 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 			map[string]interface{}{"step": step},
 		)
 	}
+
 	if len(step.Config) == 0 {
 		return stepConfig{}, domainpipeline.NewDomainError(
 			domainpipeline.ErrCodeValidation,
@@ -270,9 +279,11 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 	if check, ok := getString(step.Config, "check"); ok {
 		cfg.Check = check
 	}
+
 	if shell, ok := getString(step.Config, "shell"); ok {
 		cfg.Shell = shell
 	}
+
 	if workdir, ok := getString(step.Config, "workdir"); ok {
 		cfg.WorkDir = workdir
 	}
@@ -282,6 +293,7 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 			if v == nil {
 				continue
 			}
+
 			cfg.Env[k] = fmt.Sprint(v)
 		}
 	} else if env, ok := step.Config["env"].(map[string]string); ok {
@@ -297,10 +309,12 @@ func getString(values map[string]interface{}, key string) (string, bool) {
 	if values == nil {
 		return "", false
 	}
+
 	val, ok := values[key]
 	if !ok {
 		return "", false
 	}
+
 	switch typed := val.(type) {
 	case string:
 		return typed, true
@@ -316,6 +330,7 @@ func buildEnv(custom map[string]string) []string {
 	for k, v := range custom {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
+
 	return env
 }
 
@@ -323,14 +338,18 @@ func determineShell(explicit string) (string, []string, error) {
 	if explicit != "" {
 		return explicit, []string{"-c"}, nil
 	}
+
 	if runtime.GOOS == "windows" {
 		return "cmd", []string{"/C"}, nil
 	}
+
 	if path, err := exec.LookPath("bash"); err == nil {
 		return path, []string{"-c"}, nil
 	}
+
 	if path, err := exec.LookPath("sh"); err == nil {
 		return path, []string{"-c"}, nil
 	}
+
 	return "", nil, fmt.Errorf("no suitable shell found")
 }

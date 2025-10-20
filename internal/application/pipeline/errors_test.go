@@ -21,6 +21,7 @@ func TestAggregateError_ErrorAndUnwrap(t *testing.T) {
 	if !strings.Contains(msg, "pipeline execution failed") {
 		t.Fatalf("expected message to contain summary, got %q", msg)
 	}
+
 	if !strings.Contains(msg, "1. ") || !strings.Contains(msg, "2. ") {
 		t.Fatalf("expected enumeration of errors, got %q", msg)
 	}
@@ -28,6 +29,7 @@ func TestAggregateError_ErrorAndUnwrap(t *testing.T) {
 	if !errors.Is(agg, base) {
 		t.Fatal("expected aggregated error to unwrap to base cause")
 	}
+
 	if !errors.Is(agg, derr) {
 		t.Fatal("expected aggregated error to unwrap to domain error")
 	}
@@ -45,6 +47,7 @@ func TestWrapPipelineErrorAddsHint(t *testing.T) {
 	if !errors.Is(wrapped, base) {
 		t.Fatal("expected wrapped error to contain original error")
 	}
+
 	if !strings.Contains(wrapped.Error(), "Hint:") {
 		t.Fatalf("expected hint in error message, got %q", wrapped.Error())
 	}
@@ -57,6 +60,7 @@ func TestWrapExecutionErrorAggregatesStepErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "pipeline execution failed") {
 		t.Fatalf("expected aggregated message, got %q", err.Error())
 	}
+
 	if !errors.Is(err, stepErr) {
 		t.Fatal("expected aggregated error to include step error")
 	}

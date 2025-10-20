@@ -1,3 +1,4 @@
+// Package plugin defines metadata shared across plugin implementations.
 package plugin
 
 import "fmt"
@@ -18,14 +19,18 @@ func (m Metadata) Validate() error {
 	if m.ID == "" {
 		return fmt.Errorf("plugin id is required")
 	}
+
 	if m.Type == "" || !IsSupportedType(m.Type) {
 		return fmt.Errorf("unsupported plugin type %q", m.Type)
 	}
+
 	if m.Name == "" {
 		return fmt.Errorf("plugin name is required")
 	}
+
 	if m.Version == "" {
 		return fmt.Errorf("plugin version is required")
 	}
+
 	return nil
 }

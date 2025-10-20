@@ -1,9 +1,11 @@
+// Package repoplugin reconciles git repositories for pipeline steps.
 package repoplugin
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -61,50 +63,81 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 		return nil, err
 	}
 
-	data := &evaluationData{
+	data := newEvaluationData(cfg)
+
+	repo, evalResult, inspectErr := inspectDestination(cfg, data, step.ID)
+	if inspectErr != nil {
+		return nil, inspectErr
+	}
+
+	if evalResult != nil {
+		return evalResult, nil
+	}
+
+	collectRepoMetadata(repo, data)
+
+	if drift := detectRepoDrift(cfg, data); drift != nil {
+		return drift, nil
+	}
+
+	return repoSatisfied(cfg, data), nil
+}
+
+func newEvaluationData(cfg stepConfig) *evaluationData {
+	return &evaluationData{
 		ExpectedURL:  cfg.URL,
 		Destination:  cfg.Destination,
 		Branch:       cfg.Branch,
 		Depth:        cfg.Depth,
 		CloneOptions: buildCloneOptions(cfg),
 	}
+}
 
+func inspectDestination(cfg stepConfig, data *evaluationData, stepID string) (*git.Repository, *domainpipeline.EvaluationResult, error) {
 	info, statErr := os.Stat(cfg.Destination)
 	switch {
 	case errors.Is(statErr, os.ErrNotExist):
 		data.RepoExists = false
+		return nil, repoMissing(cfg.URL, data), nil
 	case statErr != nil:
-		return nil, domainpipeline.NewExecutionError("inspect destination", statErr, map[string]interface{}{
-			"step_id":     step.ID,
+		return nil, nil, domainpipeline.NewExecutionError("inspect destination", statErr, map[string]interface{}{
+			"step_id":     stepID,
 			"destination": cfg.Destination,
 		})
 	default:
 		if !info.IsDir() {
-			// Treat non-directory as drift that requires cleanup.
 			data.RepoExists = true
 			data.IsGitRepo = false
-			return repoDrifted(step.ID, "destination exists but is not a directory", data), nil
-		}
-		data.RepoExists = true
-	}
 
-	if !data.RepoExists {
-		return repoMissing(step.ID, cfg.URL, data), nil
+			return nil, repoDrifted("destination exists but is not a directory", data), nil
+		}
+
+		data.RepoExists = true
 	}
 
 	repo, openErr := git.PlainOpen(cfg.Destination)
 	if openErr != nil {
 		if errors.Is(openErr, git.ErrRepositoryNotExists) {
 			data.IsGitRepo = false
-			return repoDrifted(step.ID, fmt.Sprintf("directory %s exists but is not a git repository", cfg.Destination), data), nil
+
+			return nil, repoDrifted(fmt.Sprintf("directory %s exists but is not a git repository", cfg.Destination), data), nil
 		}
-		return nil, domainpipeline.NewExecutionError("open git repository", openErr, map[string]interface{}{
-			"step_id":     step.ID,
+
+		return nil, nil, domainpipeline.NewExecutionError("open git repository", openErr, map[string]interface{}{
+			"step_id":     stepID,
 			"destination": cfg.Destination,
 		})
 	}
 
 	data.IsGitRepo = true
+
+	return repo, nil, nil
+}
+
+func collectRepoMetadata(repo *git.Repository, data *evaluationData) {
+	if repo == nil {
+		return
+	}
 
 	if remote, err := repo.Remote("origin"); err == nil {
 		if urls := remote.Config().URLs; len(urls) > 0 {
@@ -112,26 +145,30 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 		}
 	}
 
-	if head, err := repo.Head(); err == nil {
-		if head.Name().IsBranch() {
-			data.CurrentHead = head.Name().Short()
-		}
+	if head, err := repo.Head(); err == nil && head.Name().IsBranch() {
+		data.CurrentHead = head.Name().Short()
 	}
+}
 
+func detectRepoDrift(cfg stepConfig, data *evaluationData) *domainpipeline.EvaluationResult {
 	if data.ActualURL != "" && !urlsEqual(data.ActualURL, cfg.URL) {
-		return repoDrifted(step.ID, fmt.Sprintf("remote URL is %s (expected %s)", data.ActualURL, cfg.URL), data), nil
+		return repoDrifted(fmt.Sprintf("remote URL is %s (expected %s)", data.ActualURL, cfg.URL), data)
 	}
 
 	if cfg.Branch != "" && data.CurrentHead != "" && data.CurrentHead != cfg.Branch {
-		return repoDrifted(step.ID, fmt.Sprintf("current branch is %s (expected %s)", data.CurrentHead, cfg.Branch), data), nil
+		return repoDrifted(fmt.Sprintf("current branch is %s (expected %s)", data.CurrentHead, cfg.Branch), data)
 	}
 
+	return nil
+}
+
+func repoSatisfied(cfg stepConfig, data *evaluationData) *domainpipeline.EvaluationResult {
 	return &domainpipeline.EvaluationResult{
 		RequiresAction: false,
 		CurrentState:   string(domainpipeline.VerificationSatisfied),
 		DesiredState:   fmt.Sprintf("git repository exists at %s", cfg.Destination),
 		InternalData:   data,
-	}, nil
+	}
 }
 
 // Apply reconciles the repository by cloning when evaluation reported drift/missing state.
@@ -150,52 +187,98 @@ func (Plugin) Apply(ctx context.Context, evaluation *domainpipeline.EvaluationRe
 		return nil, err
 	}
 
-	if evaluation != nil && !evaluation.RequiresAction {
-		return &domainpipeline.StepResult{
-			StepID:  step.ID,
-			Status:  domainpipeline.StatusAlreadySatisfied,
-			Message: "repository already up to date",
-		}, nil
+	resetNeeded := shouldResetRepository(cfg, data)
+	if evaluation != nil && !evaluation.RequiresAction && !resetNeeded {
+		return repoAlreadySatisfied(step.ID), nil
 	}
 
-	if !data.RepoExists || !data.IsGitRepo || data.ActualURL != "" && !urlsEqual(data.ActualURL, cfg.URL) ||
-		(cfg.Branch != "" && data.CurrentHead != "" && data.CurrentHead != cfg.Branch) {
-		if err := os.RemoveAll(cfg.Destination); err != nil {
-			return nil, domainpipeline.NewExecutionError("remove repository destination", err, map[string]interface{}{
-				"step_id":     step.ID,
-				"destination": cfg.Destination,
-			})
-		}
-		if err := os.MkdirAll(filepath.Dir(cfg.Destination), 0o755); err != nil {
-			return nil, domainpipeline.NewExecutionError("create parent directory", err, map[string]interface{}{
-				"step_id":     step.ID,
-				"parent_dir":  filepath.Dir(cfg.Destination),
-				"destination": cfg.Destination,
-			})
+	if resetNeeded {
+		if resetErr := resetRepositoryDestination(cfg.Destination, step.ID); resetErr != nil {
+			return nil, resetErr
 		}
 	}
 
-	if _, err := git.PlainCloneContext(ctx, cfg.Destination, false, data.CloneOptions); err != nil {
+	if cloneErr := cloneRepository(ctx, cfg, data.CloneOptions, step.ID); cloneErr != nil {
+		return nil, cloneErr
+	}
+
+	return repoCloned(step.ID, cfg.URL), nil
+}
+
+func shouldResetRepository(cfg stepConfig, data *evaluationData) bool {
+	if data == nil {
+		return true
+	}
+
+	if !data.RepoExists || !data.IsGitRepo {
+		return true
+	}
+
+	if data.ActualURL != "" && !urlsEqual(data.ActualURL, cfg.URL) {
+		return true
+	}
+
+	if cfg.Branch != "" && data.CurrentHead != "" && data.CurrentHead != cfg.Branch {
+		return true
+	}
+
+	return false
+}
+
+func resetRepositoryDestination(destination, stepID string) error {
+	if err := os.RemoveAll(destination); err != nil {
+		return domainpipeline.NewExecutionError("remove repository destination", err, map[string]interface{}{
+			"step_id":     stepID,
+			"destination": destination,
+		})
+	}
+
+	parent := filepath.Dir(destination)
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		return domainpipeline.NewExecutionError("create parent directory", err, map[string]interface{}{
+			"step_id":     stepID,
+			"parent_dir":  parent,
+			"destination": destination,
+		})
+	}
+
+	return nil
+}
+
+func cloneRepository(ctx context.Context, cfg stepConfig, options *git.CloneOptions, stepID string) error {
+	if _, err := git.PlainCloneContext(ctx, cfg.Destination, false, options); err != nil {
 		switch {
 		case errors.Is(err, context.Canceled):
-			return nil, domainpipeline.NewCancelledError("clone cancelled", map[string]interface{}{"step_id": step.ID})
+			return domainpipeline.NewCancelledError("clone cancelled", map[string]interface{}{"step_id": stepID})
 		case errors.Is(err, context.DeadlineExceeded):
-			return nil, domainpipeline.NewTimeoutError("clone timed out", err, map[string]interface{}{"step_id": step.ID})
+			return domainpipeline.NewTimeoutError("clone timed out", err, map[string]interface{}{"step_id": stepID})
 		default:
-			return nil, domainpipeline.NewExecutionError("clone repository", err, map[string]interface{}{
-				"step_id":     step.ID,
+			return domainpipeline.NewExecutionError("clone repository", err, map[string]interface{}{
+				"step_id":     stepID,
 				"url":         cfg.URL,
 				"destination": cfg.Destination,
 			})
 		}
 	}
 
+	return nil
+}
+
+func repoAlreadySatisfied(stepID string) *domainpipeline.StepResult {
 	return &domainpipeline.StepResult{
-		StepID:  step.ID,
+		StepID:  stepID,
+		Status:  domainpipeline.StatusAlreadySatisfied,
+		Message: "repository already up to date",
+	}
+}
+
+func repoCloned(stepID, url string) *domainpipeline.StepResult {
+	return &domainpipeline.StepResult{
+		StepID:  stepID,
 		Status:  domainpipeline.StatusSuccess,
-		Message: fmt.Sprintf("cloned %s", cfg.URL),
+		Message: fmt.Sprintf("cloned %s", url),
 		Changed: true,
-	}, nil
+	}
 }
 
 func ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.EvaluationResult, step domainpipeline.Step) (*evaluationData, error) {
@@ -209,10 +292,12 @@ func ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.Evalua
 	if err != nil {
 		return nil, err
 	}
+
 	data, ok := eval.InternalData.(*evaluationData)
 	if !ok || data == nil {
 		return nil, domainpipeline.NewInternalError("repo evaluation missing internal data", nil, map[string]interface{}{"step_id": step.ID})
 	}
+
 	return data, nil
 }
 
@@ -227,6 +312,7 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 	if strings.TrimSpace(step.ID) == "" {
 		return stepConfig{}, domainpipeline.NewValidationError("repo step missing id", map[string]interface{}{"step": step})
 	}
+
 	if step.Config == nil {
 		return stepConfig{}, domainpipeline.NewValidationError("repo configuration missing", map[string]interface{}{"step_id": step.ID})
 	}
@@ -237,12 +323,14 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 	if !ok || strings.TrimSpace(url) == "" {
 		return stepConfig{}, domainpipeline.NewValidationError("repo url is required", map[string]interface{}{"step_id": step.ID})
 	}
+
 	cfg.URL = strings.TrimSpace(url)
 
 	dest, ok := getString(step.Config, "destination")
 	if !ok || strings.TrimSpace(dest) == "" {
 		return stepConfig{}, domainpipeline.NewValidationError("repo destination is required", map[string]interface{}{"step_id": step.ID})
 	}
+
 	cfg.Destination = strings.TrimSpace(dest)
 
 	if branch, ok := getString(step.Config, "branch"); ok {
@@ -257,6 +345,7 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 				"depth":   depth,
 			})
 		}
+
 		cfg.Depth = parsed
 	}
 
@@ -276,14 +365,17 @@ func applyEnvOverrides(cfg *stepConfig) {
 	if path := strings.TrimSpace(os.Getenv("STREAMY_REPO_PATH")); path != "" {
 		cfg.Destination = path
 	}
+
 	if branch := strings.TrimSpace(os.Getenv("STREAMY_REPO_BRANCH")); branch != "" {
 		cfg.Branch = branch
 	}
+
 	if depthStr := strings.TrimSpace(os.Getenv("STREAMY_REPO_DEPTH")); depthStr != "" {
 		if parsed, err := strconv.Atoi(depthStr); err == nil {
 			cfg.Depth = parsed
 		}
 	}
+
 	if url := strings.TrimSpace(os.Getenv("STREAMY_REPO_URL")); url != "" {
 		cfg.URL = url
 	}
@@ -292,18 +384,51 @@ func applyEnvOverrides(cfg *stepConfig) {
 func parseDepth(value interface{}) (int, error) {
 	switch v := value.(type) {
 	case int:
+		if v < 0 {
+			return 0, fmt.Errorf("depth cannot be negative: %d", v)
+		}
+
 		return v, nil
 	case int32:
+		if v < 0 {
+			return 0, fmt.Errorf("depth cannot be negative: %d", v)
+		}
+
 		return int(v), nil
 	case int64:
+		if v < 0 {
+			return 0, fmt.Errorf("depth cannot be negative: %d", v)
+		}
+
 		return int(v), nil
 	case float64:
+		if v < 0 {
+			return 0, fmt.Errorf("depth cannot be negative: %f", v)
+		}
+
+		frac, _ := math.Modf(v)
+		if frac != 0 {
+			return 0, fmt.Errorf("depth must be a whole number: %f", v)
+		}
+
 		return int(v), nil
 	case string:
 		if strings.TrimSpace(v) == "" {
 			return 0, nil
 		}
-		return strconv.Atoi(strings.TrimSpace(v))
+
+		trimmed := strings.TrimSpace(v)
+
+		parsed, err := strconv.Atoi(trimmed)
+		if err != nil {
+			return 0, fmt.Errorf("parse depth %q: %w", trimmed, err)
+		}
+
+		if parsed < 0 {
+			return 0, fmt.Errorf("depth cannot be negative: %d", parsed)
+		}
+
+		return parsed, nil
 	default:
 		return 0, fmt.Errorf("invalid depth type %T", value)
 	}
@@ -313,10 +438,12 @@ func getString(values map[string]interface{}, key string) (string, bool) {
 	if values == nil {
 		return "", false
 	}
+
 	raw, ok := values[key]
 	if !ok {
 		return "", false
 	}
+
 	switch v := raw.(type) {
 	case string:
 		return v, true
@@ -334,14 +461,16 @@ func buildCloneOptions(cfg stepConfig) *git.CloneOptions {
 	if cfg.Depth > 0 {
 		opts.Depth = cfg.Depth
 	}
+
 	if cfg.Branch != "" {
 		opts.ReferenceName = plumbing.NewBranchReferenceName(cfg.Branch)
 		opts.SingleBranch = true
 	}
+
 	return opts
 }
 
-func repoMissing(stepID, url string, data *evaluationData) *domainpipeline.EvaluationResult {
+func repoMissing(url string, data *evaluationData) *domainpipeline.EvaluationResult {
 	return &domainpipeline.EvaluationResult{
 		RequiresAction: true,
 		CurrentState:   string(domainpipeline.VerificationFailed),
@@ -351,7 +480,7 @@ func repoMissing(stepID, url string, data *evaluationData) *domainpipeline.Evalu
 	}
 }
 
-func repoDrifted(stepID, message string, data *evaluationData) *domainpipeline.EvaluationResult {
+func repoDrifted(message string, data *evaluationData) *domainpipeline.EvaluationResult {
 	return &domainpipeline.EvaluationResult{
 		RequiresAction: true,
 		CurrentState:   string(domainpipeline.VerificationFailed),

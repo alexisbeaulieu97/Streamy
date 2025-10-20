@@ -25,7 +25,7 @@ func NewRegistry(path string) (*Registry, error) {
 
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create registry directory: %w", err)
 	}
 
@@ -35,6 +35,7 @@ func NewRegistry(path string) (*Registry, error) {
 		if !os.IsNotExist(err) {
 			return nil, err
 		}
+
 		r.pipelines = []Pipeline{}
 	}
 
@@ -48,10 +49,10 @@ func (r *Registry) Load() error {
 
 	data, err := os.ReadFile(r.path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read registry file %q: %w", r.path, err)
 	}
 
-	var file RegistryFile
+	var file File
 	if err := json.Unmarshal(data, &file); err != nil {
 		return fmt.Errorf("failed to parse registry: %w", err)
 	}
@@ -67,7 +68,7 @@ func (r *Registry) Save() error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	file := RegistryFile{
+	file := File{
 		Version:   r.version,
 		Pipelines: r.pipelines,
 	}
@@ -79,14 +80,14 @@ func (r *Registry) Save() error {
 
 	// Write to temporary file first
 	tmpPath := r.path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temporary file: %w", err)
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write temporary registry file %q: %w", tmpPath, err)
 	}
 
 	// Atomic rename
 	if err := os.Rename(tmpPath, r.path); err != nil {
 		_ = os.Remove(tmpPath) // Clean up temp file on failure
-		return fmt.Errorf("failed to rename temporary file: %w", err)
+		return fmt.Errorf("failed to rename temporary registry file %q to %q: %w", tmpPath, r.path, err)
 	}
 
 	return nil
@@ -100,6 +101,7 @@ func (r *Registry) List() []Pipeline {
 	// Return a copy to prevent external modification
 	result := make([]Pipeline, len(r.pipelines))
 	copy(result, r.pipelines)
+
 	return result
 }
 
@@ -130,6 +132,7 @@ func (r *Registry) Add(p Pipeline) error {
 	}
 
 	r.pipelines = append(r.pipelines, p)
+
 	return nil
 }
 

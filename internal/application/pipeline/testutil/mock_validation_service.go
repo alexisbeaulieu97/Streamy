@@ -1,3 +1,4 @@
+// Package testutil provides test doubles for pipeline application services.
 package testutil
 
 import (
@@ -13,14 +14,17 @@ type MockValidationService struct {
 	RunFunc func(ctx context.Context, validations []domainpipeline.Validation) (domainpipeline.VerificationSummary, error)
 }
 
+// RunValidations records the invocation and delegates to RunFunc when set.
 func (m *MockValidationService) RunValidations(ctx context.Context, validations []domainpipeline.Validation) (domainpipeline.VerificationSummary, error) {
 	if m == nil {
 		return domainpipeline.VerificationSummary{}, nil
 	}
+
 	m.Calls = append(m.Calls, ctx)
 	if m.RunFunc != nil {
 		return m.RunFunc(ctx, validations)
 	}
+
 	return domainpipeline.VerificationSummary{}, nil
 }
 

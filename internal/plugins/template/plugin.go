@@ -1,3 +1,4 @@
+// Package templateplugin renders Go templates to reconcile filesystem content.
 package templateplugin
 
 import (
@@ -6,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -77,6 +79,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 				},
 			}, nil
 		}
+
 		return nil, domainpipeline.NewExecutionError("stat template source", statErr, map[string]interface{}{
 			"step_id":     step.ID,
 			"plugin_type": string(domainplugin.TypeTemplate),
@@ -94,6 +97,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 	}
 
 	desiredMode := cfg.mode()
+
 	existingHash, existingMode, exists, stateErr := destinationState(cfg.Destination)
 	if stateErr != nil {
 		return nil, domainpipeline.NewExecutionError("inspect destination", stateErr, map[string]interface{}{
@@ -136,12 +140,13 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 	}
 
 	diffStr := ""
+
 	if !contentMatches {
 		currentContent, readErr := os.ReadFile(cfg.Destination)
 		if readErr != nil {
 			diffStr = fmt.Sprintf("unable to read existing file: %v", readErr)
 		} else {
-			diffStr = string(diff.GenerateUnifiedDiff([]byte(rendered), currentContent, "desired", "current"))
+			diffStr = diff.GenerateUnifiedDiff([]byte(rendered), currentContent, "desired", "current")
 		}
 	}
 
@@ -181,15 +186,25 @@ func (Plugin) Apply(ctx context.Context, evaluation *domainpipeline.EvaluationRe
 		}, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(cfg.Destination), 0o755); err != nil {
+	dir := filepath.Dir(cfg.Destination)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, domainpipeline.NewExecutionError("create destination directory", err, map[string]interface{}{
 			"step_id":     step.ID,
 			"plugin_type": string(domainplugin.TypeTemplate),
-			"directory":   filepath.Dir(cfg.Destination),
+			"directory":   dir,
 		})
 	}
 
-	if writeErr := os.WriteFile(cfg.Destination, []byte(data.RenderedContent), data.DesiredMode); writeErr != nil {
+	mode := data.DesiredMode
+	if mode == 0 {
+		mode = 0o600
+	}
+
+	if mode.Perm() > 0o600 {
+		mode = (mode &^ os.FileMode(0o777)) | 0o600
+	}
+
+	if writeErr := os.WriteFile(cfg.Destination, []byte(data.RenderedContent), mode); writeErr != nil {
 		return nil, domainpipeline.NewExecutionError("write template output", writeErr, map[string]interface{}{
 			"step_id":     step.ID,
 			"plugin_type": string(domainplugin.TypeTemplate),
@@ -218,7 +233,8 @@ func (c templateConfig) mode() os.FileMode {
 	if c.Mode != nil && *c.Mode != 0 {
 		return os.FileMode(*c.Mode)
 	}
-	return 0o644
+
+	return 0o600
 }
 
 func decodeConfig(step domainpipeline.Step) (templateConfig, error) {
@@ -227,6 +243,7 @@ func decodeConfig(step domainpipeline.Step) (templateConfig, error) {
 			"plugin_type": string(domainplugin.TypeTemplate),
 		})
 	}
+
 	if step.Config == nil {
 		return templateConfig{}, domainpipeline.NewValidationError("template configuration missing", map[string]interface{}{
 			"step_id":     step.ID,
@@ -266,6 +283,7 @@ func decodeConfig(step domainpipeline.Step) (templateConfig, error) {
 				"value":       vars,
 			})
 		}
+
 		cfg.Vars = parsed
 	}
 
@@ -278,6 +296,7 @@ func decodeConfig(step domainpipeline.Step) (templateConfig, error) {
 				"value":       rawEnv,
 			})
 		}
+
 		cfg.Env = val
 	}
 
@@ -290,6 +309,7 @@ func decodeConfig(step domainpipeline.Step) (templateConfig, error) {
 				"value":       rawAllowMissing,
 			})
 		}
+
 		cfg.AllowMissing = val
 	}
 
@@ -302,6 +322,7 @@ func decodeConfig(step domainpipeline.Step) (templateConfig, error) {
 				"value":       rawMode,
 			})
 		}
+
 		cfg.Mode = &mode
 	}
 
@@ -314,10 +335,12 @@ func ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.Evalua
 			return data, nil
 		}
 	}
+
 	eval, err := (&Plugin{}).Evaluate(ctx, step)
 	if err != nil {
 		return nil, err
 	}
+
 	data, ok := eval.InternalData.(*evaluationData)
 	if !ok || data == nil {
 		return nil, domainpipeline.NewInternalError("template evaluation missing internal data", nil, map[string]interface{}{
@@ -325,6 +348,7 @@ func ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.Evalua
 			"plugin_type": string(domainplugin.TypeTemplate),
 		})
 	}
+
 	return data, nil
 }
 
@@ -338,7 +362,9 @@ func renderTemplate(cfg templateConfig) (string, string, error) {
 		if _, err := template.New(cfg.Source).Parse(string(content)); err != nil {
 			return "", "", fmt.Errorf("parse template %q: %w", cfg.Source, err)
 		}
+
 		str := string(content)
+
 		return str, hash(str), nil
 	}
 
@@ -351,22 +377,29 @@ func renderTemplate(cfg templateConfig) (string, string, error) {
 	if err := tmpl.Execute(&rendered, cfg.Vars); err != nil {
 		return "", "", fmt.Errorf("render template %q: %w", cfg.Source, err)
 	}
+
 	out := rendered.String()
+
 	return out, hash(out), nil
 }
 
 func destinationState(path string) (string, os.FileMode, bool, error) {
+	path = filepath.Clean(path)
+
 	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", 0, false, nil
 		}
-		return "", 0, false, err
+
+		return "", 0, false, wrapTemplatePathError("stat destination", path, err)
 	}
+
 	content, readErr := os.ReadFile(path)
 	if readErr != nil {
-		return "", info.Mode(), true, readErr
+		return "", info.Mode(), true, wrapTemplatePathError("read destination", path, readErr)
 	}
+
 	return hash(string(content)), info.Mode(), true, nil
 }
 
@@ -382,6 +415,7 @@ func parseVars(raw interface{}) (map[string]string, error) {
 		for k, val := range v {
 			out[k] = val
 		}
+
 		return out, nil
 	case map[string]interface{}:
 		out := make(map[string]string, len(v))
@@ -395,6 +429,7 @@ func parseVars(raw interface{}) (map[string]string, error) {
 				return nil, fmt.Errorf("invalid var type %T for key %s", val, k)
 			}
 		}
+
 		return out, nil
 	default:
 		return nil, fmt.Errorf("invalid vars type %T", raw)
@@ -422,24 +457,55 @@ func parseBool(raw interface{}) (bool, error) {
 func parseMode(raw interface{}) (uint32, error) {
 	switch v := raw.(type) {
 	case int:
-		return uint32(v), nil
+		if v < 0 {
+			return 0, fmt.Errorf("negative mode value %d", v)
+		}
+
+		return normalizeMode(uint64(v))
 	case int32:
-		return uint32(v), nil
+		if v < 0 {
+			return 0, fmt.Errorf("negative mode value %d", v)
+		}
+
+		return normalizeMode(uint64(v))
 	case int64:
-		return uint32(v), nil
+		if v < 0 {
+			return 0, fmt.Errorf("negative mode value %d", v)
+		}
+
+		return normalizeMode(uint64(v))
 	case float64:
-		return uint32(v), nil
+		if v < 0 {
+			return 0, fmt.Errorf("negative mode value %f", v)
+		}
+
+		frac, _ := math.Modf(v)
+		if frac != 0 {
+			return 0, fmt.Errorf("mode value %f must be a whole number", v)
+		}
+
+		return normalizeMode(uint64(v))
 	case string:
 		val := strings.TrimSpace(v)
 		if val == "" {
 			return 0, nil
 		}
+
 		if strings.HasPrefix(val, "0") {
 			parsed, err := strconv.ParseUint(val, 8, 32)
-			return uint32(parsed), err
+			if err != nil {
+				return 0, fmt.Errorf("parse octal mode %q: %w", val, err)
+			}
+
+			return normalizeMode(parsed)
 		}
+
 		parsed, err := strconv.ParseUint(val, 10, 32)
-		return uint32(parsed), err
+		if err != nil {
+			return 0, fmt.Errorf("parse mode %q: %w", val, err)
+		}
+
+		return normalizeMode(parsed)
 	default:
 		return 0, fmt.Errorf("invalid mode type %T", raw)
 	}
@@ -450,6 +516,7 @@ func getString(values map[string]interface{}, key string) (string, bool) {
 	if !ok || raw == nil {
 		return "", false
 	}
+
 	switch v := raw.(type) {
 	case string:
 		return v, true
@@ -458,4 +525,21 @@ func getString(values map[string]interface{}, key string) (string, bool) {
 	default:
 		return fmt.Sprintf("%v", v), true
 	}
+}
+
+func normalizeMode(val uint64) (uint32, error) {
+	const maxMode = 0o777
+	if val > maxMode {
+		return 0, fmt.Errorf("mode %o exceeds maximum %o", val, maxMode)
+	}
+
+	return uint32(val), nil
+}
+
+func wrapTemplatePathError(action, path string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("%s %q: %w", action, path, err)
 }

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -27,6 +27,7 @@ exit 0
 `)
 
 	originalPath := os.Getenv("PATH")
+
 	t.Cleanup(func() { _ = os.Setenv("PATH", originalPath) })
 	require.NoError(t, os.Setenv("PATH", binDir+":"+originalPath))
 
@@ -42,12 +43,14 @@ exit 0
 	plugin := New()
 
 	require.NoError(t, os.Setenv("EXPECT_FAIL", "0"))
+
 	result, err := plugin.Evaluate(context.Background(), step)
 	require.NoError(t, err)
 	require.False(t, result.RequiresAction)
 	require.Equal(t, string(domainpipeline.VerificationSatisfied), result.CurrentState)
 
 	require.NoError(t, os.Setenv("EXPECT_FAIL", "1"))
+
 	result, err = plugin.Evaluate(context.Background(), step)
 	require.NoError(t, err)
 	require.True(t, result.RequiresAction)
@@ -133,6 +136,7 @@ func TestDecodeConfigEnvCastsNonStringValues(t *testing.T) {
 
 func writeScript(t *testing.T, dir, name, content string) {
 	t.Helper()
+
 	scriptPath := filepath.Join(dir, name)
 	require.NoError(t, os.WriteFile(scriptPath, []byte(content), 0o755))
 }

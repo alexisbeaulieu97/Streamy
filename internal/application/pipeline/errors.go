@@ -36,15 +36,18 @@ func (e *AggregateError) Error() string {
 
 	var b strings.Builder
 	b.WriteString(msg)
+
 	for idx, err := range e.Errors {
 		if err == nil {
 			continue
 		}
+
 		b.WriteString("\n  ")
 		b.WriteString(strconv.Itoa(idx + 1))
 		b.WriteString(". ")
 		b.WriteString(err.Error())
 	}
+
 	return b.String()
 }
 
@@ -53,12 +56,14 @@ func (e *AggregateError) Unwrap() []error {
 	if e == nil {
 		return nil
 	}
+
 	result := make([]error, 0, len(e.Errors))
 	for _, err := range e.Errors {
 		if err != nil {
 			result = append(result, err)
 		}
 	}
+
 	return result
 }
 
@@ -66,20 +71,25 @@ func wrapPipelineError(stage, hint string, err error) error {
 	if err == nil {
 		return nil
 	}
+
 	if hint == "" {
 		return fmt.Errorf("%s: %w", stage, err)
 	}
+
 	return fmt.Errorf("%s: %w\nHint: %s", stage, err, hint)
 }
 
 func aggregateErrors(message string, errs []error) error {
 	filtered := make([]error, 0, len(errs))
+
 	for _, err := range errs {
 		if err == nil {
 			continue
 		}
+
 		filtered = append(filtered, err)
 	}
+
 	switch len(filtered) {
 	case 0:
 		return nil
@@ -97,18 +107,21 @@ func wrapExecutionError(results []domainpipeline.StepResult, err error) error {
 	if err == nil {
 		return nil
 	}
+
 	stepErrors := make([]error, 0, len(results)+1)
 	for _, res := range results {
 		if res.Error != nil {
 			stepErrors = append(stepErrors, res.Error)
 		}
 	}
+
 	stepErrors = append(stepErrors, err)
 
 	aggregated := aggregateErrors("pipeline execution failed", stepErrors)
 	if aggregated == nil {
 		aggregated = err
 	}
+
 	return wrapPipelineError("execute pipeline", executionHint, aggregated)
 }
 

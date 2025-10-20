@@ -9,9 +9,12 @@ import (
 type ValidationType string
 
 const (
+	// ValidationCommandExists ensures a command is present in PATH.
 	ValidationCommandExists ValidationType = "command_exists"
-	ValidationFileExists    ValidationType = "file_exists"
-	ValidationPathContains  ValidationType = "path_contains"
+	// ValidationFileExists ensures a file exists at the provided path.
+	ValidationFileExists ValidationType = "file_exists"
+	// ValidationPathContains ensures a file contains the expected text.
+	ValidationPathContains ValidationType = "path_contains"
 )
 
 var supportedValidationTypes = []ValidationType{
@@ -43,6 +46,7 @@ func (v Validation) Validate() error {
 		if err != nil {
 			return err
 		}
+
 		if strings.TrimSpace(command) == "" {
 			return NewValidationError("validation command must be non-empty", map[string]interface{}{
 				"validation_type": v.Type,
@@ -57,6 +61,7 @@ func (v Validation) Validate() error {
 		if _, err := v.stringConfig("file"); err != nil {
 			return err
 		}
+
 		if _, err := v.stringConfig("text"); err != nil {
 			return err
 		}
@@ -101,5 +106,6 @@ func isSupportedValidationType(t ValidationType) bool {
 			return true
 		}
 	}
+
 	return false
 }

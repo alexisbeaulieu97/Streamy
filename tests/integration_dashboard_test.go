@@ -11,8 +11,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 
 	"github.com/alexisbeaulieu97/streamy/internal/registry"
 	"github.com/alexisbeaulieu97/streamy/internal/tui/dashboard"
@@ -33,11 +33,11 @@ func newStubService() *stubDashboardService {
 	}
 }
 
-func (s *stubDashboardService) Verify(ctx context.Context, opts dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
+func (s *stubDashboardService) Verify(_ context.Context, _ dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
 	return s.verifyResult, s.verifyErr
 }
 
-func (s *stubDashboardService) Apply(ctx context.Context, opts dashboard.ApplyOptions) (*registry.ExecutionResult, error) {
+func (s *stubDashboardService) Apply(_ context.Context, _ dashboard.ApplyOptions) (*registry.ExecutionResult, error) {
 	return s.applyResult, s.applyErr
 }
 
@@ -53,16 +53,19 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 	// Create registry
 	reg, err := registry.NewRegistry(registryPath)
 	require.NoError(t, err)
+
 	for _, p := range pipelines {
 		err := reg.Add(p)
 		require.NoError(t, err)
 	}
+
 	err = reg.Save()
 	require.NoError(t, err)
 
 	// Create cache with statuses
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
+
 	for id, status := range statuses {
 		_ = cache.Set(id, registry.CachedStatus{
 			Status:  status,
@@ -70,6 +73,7 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 			Summary: "",
 		})
 	}
+
 	err = cache.Save()
 	require.NoError(t, err)
 
@@ -84,6 +88,7 @@ func setupTestDashboard(t *testing.T, pipelines []registry.Pipeline, statuses ma
 // runModelUpdate runs the model's Update function with a message
 func runModelUpdate(t *testing.T, model dashboard.Model, msg tea.Msg) dashboard.Model {
 	t.Helper()
+
 	newModel, cmd := model.Update(msg)
 
 	// Type assert back to dashboard.Model
@@ -261,16 +266,20 @@ func TestDashboardSortsByPriority(t *testing.T) {
 	// Find positions of pipeline names in the view
 	lines := strings.Split(view, "\n")
 	positions := make(map[string]int)
+
 	for i, line := range lines {
 		if strings.Contains(line, "Pipeline A") {
 			positions["pipeline-a"] = i
 		}
+
 		if strings.Contains(line, "Pipeline B") {
 			positions["pipeline-b"] = i
 		}
+
 		if strings.Contains(line, "Pipeline C") {
 			positions["pipeline-c"] = i
 		}
+
 		if strings.Contains(line, "Pipeline D") {
 			positions["pipeline-d"] = i
 		}
@@ -313,6 +322,7 @@ func TestDashboardLoadsCachedStatuses(t *testing.T) {
 	// Create cache with status
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
+
 	lastRun := time.Now().Add(-30 * time.Minute)
 	_ = cache.Set("test-pipeline", registry.CachedStatus{
 		Status:  registry.StatusSatisfied,
@@ -472,7 +482,9 @@ func TestDashboardJSONFiles(t *testing.T) {
 	// Verify registry JSON is valid
 	registryData, err := os.ReadFile(registryPath)
 	require.NoError(t, err)
-	var registryFile registry.RegistryFile
+
+	var registryFile registry.File
+
 	err = json.Unmarshal(registryData, &registryFile)
 	require.NoError(t, err, "Registry JSON should be valid")
 	assert.Equal(t, "1.0", registryFile.Version)
@@ -481,6 +493,7 @@ func TestDashboardJSONFiles(t *testing.T) {
 	// Create and save cache
 	cache, err := registry.NewStatusCache(cachePath)
 	require.NoError(t, err)
+
 	_ = cache.Set("test-json", registry.CachedStatus{
 		Status:  registry.StatusSatisfied,
 		LastRun: time.Now(),
@@ -492,7 +505,9 @@ func TestDashboardJSONFiles(t *testing.T) {
 	// Verify cache JSON is valid
 	cacheData, err := os.ReadFile(cachePath)
 	require.NoError(t, err)
+
 	var cacheFile registry.StatusCacheFile
+
 	err = json.Unmarshal(cacheData, &cacheFile)
 	require.NoError(t, err, "Cache JSON should be valid")
 	assert.Equal(t, "1.0", cacheFile.Version)

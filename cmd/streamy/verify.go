@@ -48,6 +48,7 @@ func newVerifyCmd(root *rootFlags, app *AppContext) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ConfigPath = args[0]
+
 			opts.Verbose = root.verbose
 			if opts.Timeout <= 0 {
 				opts.Timeout = root.timeout
@@ -79,7 +80,9 @@ func runVerify(ctx context.Context, app *AppContext, opts verifyOptions) error {
 	if err != nil {
 		return err
 	}
+
 	exitFunc(exitCode)
+
 	return nil
 }
 
@@ -104,14 +107,15 @@ func runVerifyInternal(ctx context.Context, app *AppContext, opts verifyOptions)
 
 	summary := pipelineconv.BuildVerificationSummary(verifiedPipeline, results)
 
-	if opts.JSON {
+	switch {
+	case opts.JSON:
 		if err := printJSONOutputFunc(summary, opts.ConfigPath); err != nil {
 			_, _ = fmt.Fprintf(stderrWriter, "Failed to generate JSON output: %v\n", err)
 			return 3, nil
 		}
-	} else if opts.Verbose {
+	case opts.Verbose:
 		printVerboseOutputFunc(summary)
-	} else {
+	default:
 		printTableOutputFunc(summary)
 	}
 
@@ -136,7 +140,9 @@ func handleVerifyExecutionError(err error) (int, error) {
 		_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
 		return 2, nil
 	}
+
 	_, _ = fmt.Fprintf(stderrWriter, "Verification error: %v\n", err)
+
 	return 3, nil
 }
 
@@ -180,22 +186,28 @@ func printVerboseOutput(summary *pipelineconv.VerificationSummary) {
 	printTableOutput(summary)
 
 	hasDetails := false
+
 	for _, result := range summary.Results {
 		if result.Status == pipelineconv.VerificationDrifted && result.Details != "" {
 			if !hasDetails {
 				stdoutWriter.Println("\nDetailed Diff Output:")
 				stdoutWriter.Println(strings.Repeat("=", 80))
+
 				hasDetails = true
 			}
+
 			stdoutWriter.Printf("\n--- Step: %s ---\n", result.StepID)
 			stdoutWriter.Println(result.Details)
 		}
+
 		if result.Status == pipelineconv.VerificationBlocked && result.Error != nil {
 			if !hasDetails {
 				stdoutWriter.Println("\nError Details:")
 				stdoutWriter.Println(strings.Repeat("=", 80))
+
 				hasDetails = true
 			}
+
 			stdoutWriter.Printf("\n--- Step: %s ---\n", result.StepID)
 			stdoutWriter.Printf("Error: %v\n", result.Error)
 		}
@@ -256,6 +268,7 @@ func printJSONOutput(summary *pipelineconv.VerificationSummary, configPath strin
 		if result.Error != nil {
 			jsonResult.Error = result.Error.Error()
 		}
+
 		jsonOutput.Results[i] = jsonResult
 	}
 
@@ -263,8 +276,9 @@ func printJSONOutput(summary *pipelineconv.VerificationSummary, configPath strin
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(jsonOutput); err != nil {
-		return err
+		return fmt.Errorf("encode verification JSON output: %w", err)
 	}
+
 	return nil
 }
 
@@ -289,6 +303,7 @@ func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
+
 	return s[:maxLen-3] + "..."
 }
 

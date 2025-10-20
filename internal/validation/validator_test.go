@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )
@@ -73,12 +73,15 @@ func TestRunValidations_FailureAggregatesResults(t *testing.T) {
 	require.Len(t, results, len(validations))
 
 	var failedCount int
+
 	for _, r := range results {
 		if !r.Passed {
 			failedCount++
+
 			require.NotEmpty(t, r.Message)
 		}
 	}
+
 	require.Equal(t, 2, failedCount)
 }
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )
@@ -84,5 +84,6 @@ func writeVerifyConfig(t *testing.T, contents string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "verify.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o644))
+
 	return path
 }

@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -45,6 +45,7 @@ func TestApplyCopiesFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	source := filepath.Join(tmpDir, "source.txt")
 	dest := filepath.Join(tmpDir, "dest.txt")
+
 	require.NoError(t, os.WriteFile(source, []byte("streamy"), 0o644))
 
 	step := domainpipeline.Step{
@@ -75,6 +76,7 @@ func TestEvaluateRecursiveDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	sourceDir := filepath.Join(tmpDir, "src")
 	destDir := filepath.Join(tmpDir, "dst")
+
 	require.NoError(t, os.Mkdir(sourceDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "file.txt"), []byte("content"), 0o644))
 
@@ -103,6 +105,7 @@ func TestEvaluateOverwriteDisabledWhenDifferent(t *testing.T) {
 	tmpDir := t.TempDir()
 	source := filepath.Join(tmpDir, "source.txt")
 	dest := filepath.Join(tmpDir, "dest.txt")
+
 	require.NoError(t, os.WriteFile(source, []byte("new"), 0o644))
 	require.NoError(t, os.WriteFile(dest, []byte("old"), 0o644))
 
@@ -131,6 +134,7 @@ func TestApplyDirectoryCopyWhenRecursiveEnabled(t *testing.T) {
 	tmpDir := t.TempDir()
 	sourceDir := filepath.Join(tmpDir, "src")
 	destDir := filepath.Join(tmpDir, "dst")
+
 	require.NoError(t, os.Mkdir(sourceDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "nested.txt"), []byte("nested"), 0o644))
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 
 	"github.com/alexisbeaulieu97/streamy/internal/ui/components"
@@ -18,7 +19,7 @@ func newVersionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Display build information",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			header := components.NewHeader("Streamy")
 			divider := components.NewDivider().WithChar("─")
 			info := components.NewText("Version: " + version).WithAppliers(components.Typography(components.TypographyVariantTextSm))
@@ -29,9 +30,14 @@ func newVersionCmd() *cobra.Command {
 
 			writer := bufio.NewWriter(os.Stdout)
 			if _, err := writer.WriteString(card.View() + "\n"); err != nil {
-				return err
+				return fmt.Errorf("write version output: %w", err)
 			}
-			return writer.Flush()
+
+			if err := writer.Flush(); err != nil {
+				return fmt.Errorf("flush version output: %w", err)
+			}
+
+			return nil
 		},
 	}
 

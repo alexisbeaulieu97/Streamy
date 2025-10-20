@@ -1,3 +1,4 @@
+// Package symlinkplugin reconciles symbolic links for the pipeline engine.
 package symlinkplugin
 
 import (
@@ -67,6 +68,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 	switch {
 	case errors.Is(statErr, os.ErrNotExist):
 		data.Exists = false
+
 		return &domainpipeline.EvaluationResult{
 			RequiresAction: true,
 			CurrentState:   string(domainpipeline.VerificationFailed),
@@ -87,6 +89,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 	if info.Mode()&os.ModeSymlink == 0 {
 		data.IsSymlink = false
 		message := "target exists but is not a symlink"
+
 		return &domainpipeline.EvaluationResult{
 			RequiresAction: cfg.Force,
 			CurrentState:   string(domainpipeline.VerificationFailed),
@@ -95,6 +98,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 			InternalData:   data,
 		}, nil
 	}
+
 	data.IsSymlink = true
 
 	linkTarget, readErr := os.Readlink(cfg.Target)
@@ -105,6 +109,7 @@ func (Plugin) Evaluate(ctx context.Context, step domainpipeline.Step) (*domainpi
 			"target":      cfg.Target,
 		})
 	}
+
 	data.CurrentTarget = linkTarget
 
 	if linkTarget == cfg.Source {
@@ -151,7 +156,7 @@ func (Plugin) Apply(ctx context.Context, evaluation *domainpipeline.EvaluationRe
 		}, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(cfg.Target), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfg.Target), 0o750); err != nil {
 		return nil, domainpipeline.NewExecutionError("create symlink directory", err, map[string]interface{}{
 			"step_id":     step.ID,
 			"plugin_type": string(domainplugin.TypeSymlink),
@@ -167,6 +172,7 @@ func (Plugin) Apply(ctx context.Context, evaluation *domainpipeline.EvaluationRe
 				"target":      cfg.Target,
 			})
 		}
+
 		if removeErr := os.Remove(cfg.Target); removeErr != nil {
 			return nil, domainpipeline.NewExecutionError("remove existing target", removeErr, map[string]interface{}{
 				"step_id":     step.ID,
@@ -210,6 +216,7 @@ func ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.Evalua
 	if err != nil {
 		return nil, err
 	}
+
 	data, ok := eval.InternalData.(*evaluationData)
 	if !ok || data == nil {
 		return nil, domainpipeline.NewInternalError("symlink evaluation missing internal data", nil, map[string]interface{}{
@@ -217,6 +224,7 @@ func ensureEvaluationData(ctx context.Context, evaluation *domainpipeline.Evalua
 			"plugin_type": string(domainplugin.TypeSymlink),
 		})
 	}
+
 	return data, nil
 }
 
@@ -232,6 +240,7 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 			"plugin_type": string(domainplugin.TypeSymlink),
 		})
 	}
+
 	if step.Config == nil {
 		return stepConfig{}, domainpipeline.NewValidationError("symlink configuration missing", map[string]interface{}{
 			"step_id":     step.ID,
@@ -256,6 +265,7 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 	}
 
 	force := false
+
 	if raw, exists := step.Config["force"]; exists {
 		parsed, err := parseBool(raw)
 		if err != nil {
@@ -265,6 +275,7 @@ func decodeConfig(step domainpipeline.Step) (stepConfig, error) {
 				"value":       raw,
 			})
 		}
+
 		force = parsed
 	}
 
@@ -280,6 +291,7 @@ func getString(values map[string]interface{}, key string) (string, bool) {
 	if !ok || raw == nil {
 		return "", false
 	}
+
 	switch v := raw.(type) {
 	case string:
 		return v, true

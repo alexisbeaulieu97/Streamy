@@ -38,35 +38,40 @@ func newDashboardPipelineService(apply *applicationpipeline.ApplyUseCase, verify
 			return nil, err
 		}
 	}
+
 	return adapter, nil
 }
 
 func (a *dashboardPipelineAdapter) Verify(ctx context.Context, opts dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
 	pipeline, results, err := a.verifyUseCase.Verify(ctx, opts.ConfigPath)
 	if err != nil {
-		return nil, err
+		return nil, wrapDashboardError("verify", opts.ConfigPath, err)
 	}
 
 	summary := pipelineconv.BuildVerificationSummary(pipeline, results)
 	result := pipelineconv.SummaryToExecutionResult(summary, opts.ConfigPath)
+
 	result.PipelineID = opts.ConfigPath
 	if pipeline != nil && strings.TrimSpace(pipeline.Name) != "" {
 		result.PipelineID = pipeline.Name
 	}
+
 	return result, nil
 }
 
 func (a *dashboardPipelineAdapter) Apply(ctx context.Context, opts dashboard.ApplyOptions) (*registry.ExecutionResult, error) {
 	pipeline, stepResults, _, err := a.applyUseCase.Apply(ctx, opts.ConfigPath, opts.DryRun)
 	if err != nil {
-		return nil, err
+		return nil, wrapDashboardError("apply", opts.ConfigPath, err)
 	}
 
 	execResult := pipelineconv.ConvertApplyResults(stepResults, opts.ConfigPath, opts.DryRun, nil, nil)
+
 	execResult.PipelineID = opts.ConfigPath
 	if pipeline != nil && strings.TrimSpace(pipeline.Name) != "" {
 		execResult.PipelineID = pipeline.Name
 	}
+
 	return execResult, nil
 }
 
@@ -74,6 +79,7 @@ func (a *dashboardPipelineAdapter) StepProgressCmd() tea.Cmd {
 	if a.progressCh == nil {
 		return nil
 	}
+
 	return func() tea.Msg {
 		select {
 		case msg, ok := <-a.progressCh:
@@ -81,6 +87,7 @@ func (a *dashboardPipelineAdapter) StepProgressCmd() tea.Cmd {
 				a.progressCh = nil
 				return dashboard.StepProgressChannelClosedMsg{}
 			}
+
 			return msg
 		case <-time.After(250 * time.Millisecond):
 			return dashboard.StepProgressTimeoutMsg{}
@@ -92,20 +99,25 @@ func (a *dashboardPipelineAdapter) subscribeToEvents() error {
 	if a.events == nil {
 		return nil
 	}
-	handler := func(ctx context.Context, event ports.DomainEvent) error {
+
+	handler := func(_ context.Context, event ports.DomainEvent) error {
 		payload, ok := event.Payload().(map[string]interface{})
 		if !ok {
 			return nil
 		}
+
 		pipelineID, _ := payload["pipeline"].(string)
 		if pipelineID == "" {
 			pipelineID, _ = payload["pipeline_id"].(string)
 		}
+
 		stepID, _ := payload["step_id"].(string)
+
 		message := ""
 		if errVal, ok := payload["error"]; ok {
 			message = fmt.Sprint(errVal)
 		}
+
 		status := strings.TrimPrefix(event.EventType(), "step.")
 
 		a.progress.Set(pipelineID, dashboard.StepProgress{
@@ -125,6 +137,7 @@ func (a *dashboardPipelineAdapter) subscribeToEvents() error {
 		case a.progressCh <- msg:
 		default:
 		}
+
 		return nil
 	}
 
@@ -140,9 +153,11 @@ func (a *dashboardPipelineAdapter) subscribeToEvents() error {
 			errs = append(errs, fmt.Errorf("subscribe to %s: %w", eventType, err))
 		}
 	}
+
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
+
 	return nil
 }
 
@@ -164,6 +179,17 @@ func (s *stepProgress) Set(pipelineID string, progress dashboard.StepProgress) {
 func (s *stepProgress) Get(pipelineID string) (dashboard.StepProgress, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	progress, ok := s.data[pipelineID]
+
 	return progress, ok
+}
+
+func wrapDashboardError(operation, configPath string, err error) error {
+	return &commandError{
+		operation:  operation,
+		context:    fmt.Sprintf("processing pipeline %q", configPath),
+		cause:      err,
+		suggestion: "Inspect the detailed error output above, resolve the issue, then retry.",
+	}
 }

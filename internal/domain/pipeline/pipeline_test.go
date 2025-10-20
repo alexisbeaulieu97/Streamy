@@ -32,6 +32,7 @@ func TestPipelineValidateDuplicateStep(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected duplicate error")
 	}
+
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDuplicate {
 		t.Fatalf("expected duplicate domain error, got %v", err)
@@ -50,6 +51,7 @@ func TestPipelineValidateDependencies(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing dependency error")
 	}
+
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDependency {
 		t.Fatalf("expected dependency domain error, got %v", err)
@@ -69,6 +71,7 @@ func TestPipelineValidateDependencyCycle(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected cycle error")
 	}
+
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeCycle {
 		t.Fatalf("expected cycle error code, got %v", err)
@@ -89,6 +92,7 @@ func TestPipelineGetStep(t *testing.T) {
 	if _, err = p.GetStep("missing"); err == nil {
 		t.Fatal("expected not found error")
 	}
+
 	var domainErr *DomainError
 	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeNotFound {
 		t.Fatalf("expected not found domain error, got %v", err)
@@ -100,11 +104,13 @@ func TestPipelineMustStep(t *testing.T) {
 	if step := p.MustStep("x"); step.ID != "x" {
 		t.Fatalf("unexpected step %v", step)
 	}
+
 	defer func() {
 		if recover() == nil {
 			t.Fatal("expected panic for missing step")
 		}
 	}()
+
 	_ = p.MustStep("missing")
 }
 
@@ -126,6 +132,7 @@ func TestPipelineClone(t *testing.T) {
 	if p.Steps[0].ID != "a" {
 		t.Fatal("expected original steps unchanged")
 	}
+
 	if p.Validations[0].Config["command"] != "git" {
 		t.Fatal("expected original validation config unchanged")
 	}
@@ -133,6 +140,7 @@ func TestPipelineClone(t *testing.T) {
 
 func TestPipelineEffectiveSettings(t *testing.T) {
 	p := Pipeline{Settings: Settings{Parallel: 0, Timeout: 0}}
+
 	eff := p.EffectiveSettings()
 	if eff.Parallel != 4 || eff.Timeout != 300 {
 		t.Fatalf("expected defaults applied, got %+v", eff)

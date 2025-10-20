@@ -37,6 +37,7 @@ func NewEventBuffer(limit int) *EventBuffer {
 	if limit <= 0 {
 		limit = defaultBufferLimit
 	}
+
 	return &EventBuffer{
 		limit:  limit,
 		events: make([]bufferedEntry, 0, limit),
@@ -50,8 +51,10 @@ func (b *EventBuffer) add(entry bufferedEntry) {
 	if len(b.events) == b.limit {
 		copy(b.events, b.events[1:])
 		b.events[len(b.events)-1] = entry
+
 		return
 	}
+
 	b.events = append(b.events, entry)
 }
 
@@ -60,6 +63,7 @@ func (b *EventBuffer) Flush(delegate ports.Logger) {
 	if delegate == nil {
 		return
 	}
+
 	b.mu.Lock()
 	events := make([]bufferedEntry, len(b.events))
 	copy(events, b.events)

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
 )
 
 func TestRegistryNew(t *testing.T) {
@@ -27,11 +27,12 @@ func TestRegistryLoadExisting(t *testing.T) {
 	// Copy test fixture
 	testData, err := os.ReadFile("../../testdata/registry/single-pipeline.json")
 	require.NoError(t, err)
-	err = os.WriteFile(registryPath, testData, 0644)
+	err = os.WriteFile(registryPath, testData, 0o644)
 	require.NoError(t, err)
 
 	reg, err := NewRegistry(registryPath)
 	require.NoError(t, err)
+
 	pipelines := reg.List()
 	assert.Len(t, pipelines, 1)
 	assert.Equal(t, "dev-env", pipelines[0].ID)

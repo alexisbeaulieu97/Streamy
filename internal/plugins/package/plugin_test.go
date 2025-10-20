@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	require "github.com/stretchr/testify/require"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 	domainplugin "github.com/alexisbeaulieu97/streamy/internal/domain/plugin"
@@ -20,10 +20,14 @@ func TestMetadata(t *testing.T) {
 
 func TestEvaluateAllPackagesInstalled(t *testing.T) {
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
-	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+	runCommand = func(_ context.Context, name string, args ...string) (internalexec.Result, error) {
+		_ = args
+
 		require.Equal(t, "dpkg-query", name)
+
 		return internalexec.Result{}, nil
 	}
 
@@ -48,15 +52,18 @@ func TestEvaluateAllPackagesInstalled(t *testing.T) {
 
 func TestEvaluateDetectsMissingPackages(t *testing.T) {
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
-	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+	runCommand = func(_ context.Context, name string, args ...string) (internalexec.Result, error) {
 		if name != "dpkg-query" {
 			return internalexec.Result{}, nil
 		}
+
 		if len(args) > 0 && args[len(args)-1] == "git" {
 			return internalexec.Result{}, errPackageMissing
 		}
+
 		return internalexec.Result{}, nil
 	}
 
@@ -81,25 +88,34 @@ func TestEvaluateDetectsMissingPackages(t *testing.T) {
 }
 
 func TestApplyInstallsMissingPackages(t *testing.T) {
-	var dpkgCalls int
-	var installCalls int
+	var (
+		dpkgCalls    int
+		installCalls int
+	)
 
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
-	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+	runCommand = func(_ context.Context, name string, args ...string) (internalexec.Result, error) {
+		_ = args
+
 		switch name {
 		case "dpkg-query":
 			dpkgCalls++
+
 			if len(args) > 0 && args[len(args)-1] == "git" {
 				return internalexec.Result{}, errPackageMissing
 			}
+
 			return internalexec.Result{}, nil
 		case "apt-get":
 			require.GreaterOrEqual(t, len(args), 1)
+
 			if args[0] == "install" {
 				installCalls++
 			}
+
 			return internalexec.Result{}, nil
 		default:
 			return internalexec.Result{}, nil
@@ -130,9 +146,12 @@ func TestApplyInstallsMissingPackages(t *testing.T) {
 
 func TestApplyHandlesExecutionError(t *testing.T) {
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
-	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+	runCommand = func(_ context.Context, name string, args ...string) (internalexec.Result, error) {
+		_ = args
+
 		switch name {
 		case "dpkg-query":
 			return internalexec.Result{}, errPackageMissing
@@ -153,9 +172,11 @@ func TestApplyHandlesExecutionError(t *testing.T) {
 
 	eval, err := New().Evaluate(context.Background(), step)
 	require.NoError(t, err)
+
 	result, applyErr := New().Apply(context.Background(), eval, step)
 	require.Nil(t, result)
 	require.Error(t, applyErr)
+
 	var domainErr *domainpipeline.DomainError
 	require.ErrorAs(t, applyErr, &domainErr)
 	require.Equal(t, domainpipeline.ErrCodeExecution, domainErr.Code)
@@ -163,6 +184,7 @@ func TestApplyHandlesExecutionError(t *testing.T) {
 
 func TestApplyRespectsAlreadySatisfiedEvaluation(t *testing.T) {
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
 	step := domainpipeline.Step{
@@ -181,15 +203,19 @@ func TestApplyRespectsAlreadySatisfiedEvaluation(t *testing.T) {
 
 func TestEnsureEvaluationDataFallback(t *testing.T) {
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
 	var dpkgQueries int
 
-	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+	runCommand = func(_ context.Context, name string, args ...string) (internalexec.Result, error) {
+		_ = args
+
 		if name == "dpkg-query" {
 			dpkgQueries++
 			return internalexec.Result{}, errPackageMissing
 		}
+
 		return internalexec.Result{}, nil
 	}
 
@@ -211,26 +237,32 @@ func TestEnsureEvaluationDataFallback(t *testing.T) {
 
 func TestApplyRunsUpdateWhenRequested(t *testing.T) {
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
-	var updateCalls int
-	var installCalls int
+	var (
+		updateCalls  int
+		installCalls int
+	)
 
-	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+	runCommand = func(_ context.Context, name string, args ...string) (internalexec.Result, error) {
 		switch name {
 		case "dpkg-query":
 			return internalexec.Result{}, errPackageMissing
 		case "apt-get":
 			require.NotEmpty(t, args)
+
 			if args[0] == "update" {
 				updateCalls++
 				return internalexec.Result{}, nil
 			}
+
 			if args[0] == "install" {
 				installCalls++
 				return internalexec.Result{}, nil
 			}
 		}
+
 		return internalexec.Result{}, nil
 	}
 
@@ -254,15 +286,18 @@ func TestApplyRunsUpdateWhenRequested(t *testing.T) {
 
 func TestApplyHandlesUpdateTimeout(t *testing.T) {
 	original := runCommand
+
 	defer func() { runCommand = original }()
 
-	runCommand = func(ctx context.Context, name string, args ...string) (internalexec.Result, error) {
+	runCommand = func(_ context.Context, name string, args ...string) (internalexec.Result, error) {
 		if name == "dpkg-query" {
 			return internalexec.Result{}, errPackageMissing
 		}
+
 		if name == "apt-get" && len(args) > 0 && args[0] == "update" {
 			return internalexec.Result{}, context.DeadlineExceeded
 		}
+
 		return internalexec.Result{}, nil
 	}
 
@@ -278,6 +313,7 @@ func TestApplyHandlesUpdateTimeout(t *testing.T) {
 	result, err := New().Apply(context.Background(), nil, step)
 	require.Nil(t, result)
 	require.Error(t, err)
+
 	var domainErr *domainpipeline.DomainError
 	require.ErrorAs(t, err, &domainErr)
 	require.Equal(t, domainpipeline.ErrCodeTimeout, domainErr.Code)

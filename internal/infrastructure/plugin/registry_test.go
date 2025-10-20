@@ -19,6 +19,7 @@ func (s *stubPlugin) Metadata() domainplugin.Metadata { return s.meta }
 func (s *stubPlugin) Evaluate(context.Context, domainpipeline.Step) (*domainpipeline.EvaluationResult, error) {
 	return &domainpipeline.EvaluationResult{RequiresAction: false}, nil
 }
+
 func (s *stubPlugin) Apply(context.Context, *domainpipeline.EvaluationResult, domainpipeline.Step) (*domainpipeline.StepResult, error) {
 	return &domainpipeline.StepResult{StepID: "stub", Status: domainpipeline.StatusAlreadySatisfied}, nil
 }
@@ -37,6 +38,7 @@ func TestRegistryRegisterAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected get error: %v", err)
 	}
+
 	if got.Metadata().Type != pluginType {
 		t.Fatalf("expected plugin type %s, got %s", pluginType, got.Metadata().Type)
 	}
@@ -59,6 +61,7 @@ func TestRegistryList(t *testing.T) {
 	if len(plugins) != len(types) {
 		t.Fatalf("expected %d plugins, got %d", len(types), len(plugins))
 	}
+
 	for i, p := range plugins {
 		if p.Metadata().Type != expected[i] {
 			t.Fatalf("expected plugin order %v, got %v", expected, pluginTypes(plugins))
@@ -73,6 +76,7 @@ func TestRegistryDuplicateRegister(t *testing.T) {
 	if err := reg.Register(stub); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if err := reg.Register(stub); err == nil {
 		t.Fatal("expected duplicate registration error")
 	}
@@ -80,10 +84,12 @@ func TestRegistryDuplicateRegister(t *testing.T) {
 
 func TestRegistryGetMissing(t *testing.T) {
 	reg := NewRegistry()
+
 	_, err := reg.Get(domainplugin.Type("missing"))
 	if err == nil {
 		t.Fatal("expected error for missing plugin")
 	}
+
 	if _, ok := err.(*domainpipeline.DomainError); !ok {
 		t.Fatalf("expected domain error, got %T", err)
 	}
@@ -130,6 +136,7 @@ func TestRegistryValidateDependencies(t *testing.T) {
 	if err := reg.Register(newStubPlugin(domainplugin.TypeCommand)); err != nil {
 		t.Fatalf("register command: %v", err)
 	}
+
 	if err := reg.Register(newStubPlugin(domainplugin.TypePackage, domainplugin.TypeCommand)); err != nil {
 		t.Fatalf("register package: %v", err)
 	}
@@ -144,10 +151,12 @@ func TestRegistryValidateDependenciesMissing(t *testing.T) {
 	if err := reg.Register(newStubPlugin(domainplugin.TypePackage, domainplugin.TypeRepo)); err != nil {
 		t.Fatalf("register package: %v", err)
 	}
+
 	err := reg.ValidateDependencies()
 	if err == nil {
 		t.Fatal("expected dependency validation error")
 	}
+
 	assertDomainErrCode(t, err, domainpipeline.ErrCodeDependency)
 }
 
@@ -156,6 +165,7 @@ func TestRegistryValidateDependenciesCycle(t *testing.T) {
 	if err := reg.Register(newStubPlugin(domainplugin.TypePackage, domainplugin.TypeRepo)); err != nil {
 		t.Fatalf("register package: %v", err)
 	}
+
 	if err := reg.Register(newStubPlugin(domainplugin.TypeRepo, domainplugin.TypePackage)); err != nil {
 		t.Fatalf("register repo: %v", err)
 	}
@@ -164,6 +174,7 @@ func TestRegistryValidateDependenciesCycle(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected cycle validation error")
 	}
+
 	assertDomainErrCode(t, err, domainpipeline.ErrCodeCycle)
 }
 
@@ -172,6 +183,7 @@ func TestRegistryInitializePlugins(t *testing.T) {
 	if err := reg.Register(newStubPlugin(domainplugin.TypeCommand)); err != nil {
 		t.Fatalf("register command: %v", err)
 	}
+
 	if err := reg.Register(newStubPlugin(domainplugin.TypePackage, domainplugin.TypeCommand)); err != nil {
 		t.Fatalf("register package: %v", err)
 	}
@@ -190,6 +202,7 @@ func TestRegistryGetForDependent(t *testing.T) {
 	if err := reg.Register(newStubPlugin(domainplugin.TypeCommand)); err != nil {
 		t.Fatalf("register command: %v", err)
 	}
+
 	if err := reg.Register(newStubPlugin(domainplugin.TypePackage, domainplugin.TypeCommand)); err != nil {
 		t.Fatalf("register package: %v", err)
 	}
@@ -198,6 +211,7 @@ func TestRegistryGetForDependent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected dependency retrieval error: %v", err)
 	}
+
 	if plugin.Metadata().Type != domainplugin.TypeCommand {
 		t.Fatalf("expected command plugin, got %s", plugin.Metadata().Type)
 	}
@@ -208,6 +222,7 @@ func newStubPlugin(typ domainplugin.Type, deps ...domainplugin.Type) *stubPlugin
 	for _, dep := range deps {
 		depNames = append(depNames, string(dep))
 	}
+
 	return &stubPlugin{
 		meta: domainplugin.Metadata{
 			ID:           string(typ),
@@ -221,10 +236,12 @@ func newStubPlugin(typ domainplugin.Type, deps ...domainplugin.Type) *stubPlugin
 
 func assertDomainErrCode(t *testing.T, err error, code domainpipeline.ErrorCode) {
 	t.Helper()
+
 	var derr *domainpipeline.DomainError
 	if !errors.As(err, &derr) {
 		t.Fatalf("expected domain error, got %T", err)
 	}
+
 	if derr.Code != code {
 		t.Fatalf("expected error code %s, got %s", code, derr.Code)
 	}
@@ -235,5 +252,6 @@ func pluginTypes(plugins []ports.Plugin) []domainplugin.Type {
 	for _, p := range plugins {
 		types = append(types, p.Metadata().Type)
 	}
+
 	return types
 }

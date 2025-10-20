@@ -1,3 +1,4 @@
+// Package ports declares interfaces between the domain and infrastructure layers.
 package ports
 
 import (
