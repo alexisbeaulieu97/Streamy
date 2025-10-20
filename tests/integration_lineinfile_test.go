@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
-	"go.yaml.in/yaml/v3"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )

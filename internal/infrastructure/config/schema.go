@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
-	"go.yaml.in/yaml/v3"
+	"github.com/goccy/go-yaml"
 )
 
 type fileConfig struct {

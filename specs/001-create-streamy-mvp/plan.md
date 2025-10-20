@@ -43,7 +43,7 @@ Streamy is a cross-platform CLI tool for declarative environment setup that dram
 **Language/Version**: Go 1.25.1  
 **Primary Dependencies**:
 - CLI: `spf13/cobra` (command structure), `spf13/viper` (app config)
-- YAML: `go.yaml.in/yaml/v3` (parsing), `go-playground/validator/v10` (schema validation)
+- YAML: `github.com/goccy/go-yaml` (parsing), `go-playground/validator/v10` (schema validation)
 - TUI: `charmbracelet/bubbletea` (framework), `charmbracelet/lipgloss` (styling), `charmbracelet/bubbles` (components)
 - Logging: `rs/zerolog` (structured logging with JSON/human modes)
 - Git: `go-git/go-git/v5` (repo cloning without external git binary)
@@ -246,7 +246,7 @@ streamy/
 **Decisions Made**:
 1. **Language**: Go 1.25+ for single-binary distribution
 2. **CLI Framework**: Cobra + Viper for command structure and config
-3. **YAML Parsing**: go.yaml.in/yaml/v3 with go-playground/validator for schema validation
+3. **YAML Parsing**: github.com/goccy/go-yaml with go-playground/validator for schema validation
 4. **TUI Framework**: Charm stack (Bubbletea + Lipgloss + Bubbles)
 5. **Logging**: zerolog for structured logging
 6. **Git Operations**: go-git for dependency-free repository cloning

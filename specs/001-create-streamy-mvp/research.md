@@ -38,9 +38,9 @@
 
 **Important Note**: Viper is used for **application-level** configuration (global settings, CLI flags), NOT for parsing user YAML configs. User pipeline configs are parsed with go-yaml to avoid coupling.
 
-### 3. YAML Parsing: go.yaml.in/yaml/v3
+### 3. YAML Parsing: github.com/goccy/go-yaml
 
-**Decision**: Use `go.yaml.in/yaml/v3` for YAML parsing
+**Decision**: Use `github.com/goccy/go-yaml` for YAML parsing
 
 **Rationale**:
 - Pure Go implementation (no C dependencies)
