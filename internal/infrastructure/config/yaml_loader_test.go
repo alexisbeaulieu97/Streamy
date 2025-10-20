@@ -47,7 +47,7 @@ func TestDomainErrorFromContextErr(t *testing.T) {
 }
 
 func TestContextDomainError(t *testing.T) {
-	if err := contextDomainError(nil, "cancelled", "timed out", nil); err != nil {
+	if err := contextDomainError(context.TODO(), "cancelled", "timed out", nil); err != nil {
 		t.Fatalf("expected nil error for nil context, got %v", err)
 	}
 
@@ -216,7 +216,7 @@ func TestContextCheck(t *testing.T) {
 		}
 	}
 
-	require(contextCheck(nil))
+	require(contextCheck(context.TODO()))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -185,11 +185,11 @@ type countingContext struct {
 
 func (c *countingContext) Err() error {
 	if err := c.Context.Err(); err != nil {
-		return err
+		return fmt.Errorf("context cancelled: %w", err)
 	}
 
 	if atomic.AddInt32(&c.count, 1) >= c.limit {
-		return context.Canceled
+		return fmt.Errorf("count limit reached: %w", context.Canceled)
 	}
 
 	return nil
