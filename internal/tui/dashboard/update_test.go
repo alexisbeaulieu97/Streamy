@@ -523,7 +523,7 @@ func TestUpdate_KeyMsg_ConfirmDialog(t *testing.T) {
 
 	m := NewModel([]registry.Pipeline{}, reg, cache, nil)
 	m.viewMode = ViewConfirm
-	m.confirmAction = "apply"
+	m.confirmAction = actionApply
 	m.confirmPipeline = "test-1"
 	m.confirmMessage = "Apply configuration?"
 	m.selectedID = "test-1"
@@ -537,7 +537,7 @@ func TestUpdate_KeyMsg_ConfirmDialog(t *testing.T) {
 
 	// Test 'esc' key to cancel
 	m.viewMode = ViewConfirm
-	m.confirmAction = "apply"
+	m.confirmAction = actionApply
 	m.selectedID = "test-1"
 	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	dashModel, ok = newModel.(Model)

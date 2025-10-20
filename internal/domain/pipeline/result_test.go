@@ -12,9 +12,18 @@ func TestStepResultHelpers(t *testing.T) {
 		t.Fatal("did not expect failure")
 	}
 
+	if msg := res.FormatOutput(); msg != "ok" {
+		t.Fatalf("expected message output, got %q", msg)
+	}
+
 	failure := StepResult{StepID: "b", Status: StatusFailure, Error: &DomainError{Code: ErrCodeExecution, Message: "boom"}}
 	if failure.FormatOutput() != "EXECUTION_ERROR: boom" {
 		t.Fatalf("unexpected output: %s", failure.FormatOutput())
+	}
+
+	withoutMsg := StepResult{StepID: "c", Status: StatusSkipped, Message: "", Output: "output"}
+	if out := withoutMsg.FormatOutput(); out != "output" {
+		t.Fatalf("expected output string, got %q", out)
 	}
 }
 
@@ -26,6 +35,11 @@ func TestVerificationResultHelpers(t *testing.T) {
 
 	if res.FormatMessage() != string(VerificationSatisfied) {
 		t.Fatalf("unexpected message: %s", res.FormatMessage())
+	}
+
+	custom := VerificationResult{Status: VerificationUnknown, Message: "custom"}
+	if msg := custom.FormatMessage(); msg != "custom" {
+		t.Fatalf("expected custom message, got %q", msg)
 	}
 }
 

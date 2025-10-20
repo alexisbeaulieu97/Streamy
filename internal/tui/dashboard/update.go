@@ -613,7 +613,7 @@ func handleDetailVerify(m Model) (Model, tea.Cmd) {
 	m.operationCtxs[selected.ID] = cancel
 	m.loading[selected.ID] = true
 	m.operations[selected.ID] = Operation{
-		Type:       "verify",
+		Type:       operationVerify,
 		PipelineID: selected.ID,
 		StartedAt:  time.Now(),
 	}
@@ -627,7 +627,7 @@ func handleDetailApply(m Model) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.confirmAction = "apply"
+	m.confirmAction = actionApply
 	m.confirmPipeline = selected.ID
 	m.confirmMessage = fmt.Sprintf("Apply configuration for '%s'?", selected.Name)
 	m.viewMode = ViewConfirm
@@ -645,7 +645,7 @@ func handleDetailRefresh(m Model) (Model, tea.Cmd) {
 	m.operationCtxs[selected.ID] = cancel
 	m.loading[selected.ID] = true
 	m.operations[selected.ID] = Operation{
-		Type:       "verify",
+		Type:       operationVerify,
 		PipelineID: selected.ID,
 		StartedAt:  time.Now(),
 	}
@@ -690,7 +690,7 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		// Handle the confirmed action
 		switch action {
-		case "apply":
+		case actionApply:
 			// Find pipeline
 			var selected *registry.Pipeline
 
@@ -711,7 +711,7 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.operationCtxs[selected.ID] = cancel
 			m.loading[selected.ID] = true
 			m.operations[selected.ID] = Operation{
-				Type:       "apply",
+				Type:       operationApply,
 				PipelineID: selected.ID,
 				StartedAt:  time.Now(),
 			}
@@ -721,7 +721,7 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			return m, applyCmd(ctx, selected.ID, selected.Path, m.service)
 
-		case "cancel_verify", "cancel_apply":
+		case actionCancelVerify, actionCancelApply:
 			// Cancel the operation
 			if cancel, ok := m.operationCtxs[pipelineID]; ok {
 				cancel()

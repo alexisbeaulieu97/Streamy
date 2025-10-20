@@ -66,7 +66,7 @@ func TestLoadInitialStatusCmd(t *testing.T) {
 
 func TestVerifyCmd(t *testing.T) {
 	ctx := context.Background()
-	result := &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied}
+	result := &registry.ExecutionResult{Operation: operationVerify, Status: registry.StatusSatisfied}
 	svc := &stubPipelineService{verifyResult: result}
 
 	cmd := verifyCmd(ctx, "test-1", "/tmp/config.yaml", svc)
@@ -89,7 +89,7 @@ func TestVerifyCmd(t *testing.T) {
 
 func TestApplyCmd(t *testing.T) {
 	ctx := context.Background()
-	result := &registry.ExecutionResult{Operation: "apply", Status: registry.StatusSatisfied}
+	result := &registry.ExecutionResult{Operation: operationApply, Status: registry.StatusSatisfied}
 	svc := &stubPipelineService{applyResult: result}
 
 	cmd := applyCmd(ctx, "test-1", "/tmp/config.yaml", svc)
@@ -134,7 +134,7 @@ func TestRefreshAllCmd(t *testing.T) {
 
 func TestRefreshSingleCmd(t *testing.T) {
 	ctx := context.Background()
-	result := &registry.ExecutionResult{Operation: "verify", Status: registry.StatusSatisfied}
+	result := &registry.ExecutionResult{Operation: operationVerify, Status: registry.StatusSatisfied}
 	svc := &stubPipelineService{verifyResult: result}
 
 	pipeline := registry.Pipeline{

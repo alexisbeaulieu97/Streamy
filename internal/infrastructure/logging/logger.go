@@ -26,6 +26,8 @@ type Options struct {
 	Fields       map[string]interface{}
 }
 
+const defaultLayer = "infrastructure"
+
 // Logger implements ports.Logger using charmbracelet/log.
 type Logger struct {
 	logger *cblog.Logger
@@ -66,7 +68,7 @@ func New(opts Options) (*Logger, error) {
 
 	layer := opts.Layer
 	if layer == "" {
-		layer = "infrastructure"
+		layer = defaultLayer
 	}
 
 	return &Logger{

@@ -592,13 +592,13 @@ func (m Model) renderConfirmView() string {
 	)
 
 	switch m.confirmAction {
-	case "cancel_verify":
+	case actionCancelVerify:
 		title = "Cancel Verification"
 		message = "Are you sure you want to stop the verification in progress?"
-	case "cancel_apply":
+	case actionCancelApply:
 		title = "Cancel Apply Operation"
 		message = "Are you sure you want to stop applying changes?"
-	case "apply":
+	case actionApply:
 		title = "Apply Changes"
 		message = "This will modify your system configuration."
 	default:

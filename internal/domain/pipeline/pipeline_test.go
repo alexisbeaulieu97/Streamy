@@ -19,6 +19,51 @@ func TestPipelineValidate(t *testing.T) {
 	}
 }
 
+func TestPipelineValidateMissingName(t *testing.T) {
+	p := Pipeline{Steps: []Step{{ID: "setup", Type: StepTypeCommand}}}
+
+	err := p.Validate()
+	if err == nil {
+		t.Fatal("expected missing name error")
+	}
+
+	var domainErr *DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeMissing {
+		t.Fatalf("expected missing field domain error, got %v", err)
+	}
+}
+
+func TestPipelineValidateRequiresSteps(t *testing.T) {
+	p := Pipeline{Name: "empty"}
+
+	err := p.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for missing steps")
+	}
+
+	var domainErr *DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeValidation {
+		t.Fatalf("expected validation error, got %v", err)
+	}
+}
+
+func TestPipelineValidateStepError(t *testing.T) {
+	p := Pipeline{
+		Name:  "invalid-step",
+		Steps: []Step{{ID: "setup"}},
+	}
+
+	err := p.Validate()
+	if err == nil {
+		t.Fatal("expected error from step validation")
+	}
+
+	var domainErr *DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeMissing {
+		t.Fatalf("expected propagated missing field error, got %v", err)
+	}
+}
+
 func TestPipelineValidateDuplicateStep(t *testing.T) {
 	p := Pipeline{
 		Name: "invalid",
@@ -118,7 +163,12 @@ func TestPipelineClone(t *testing.T) {
 	p := Pipeline{
 		Name:     "original",
 		Settings: Settings{Parallel: 2},
-		Steps:    []Step{{ID: "a", Type: StepTypeCommand}},
+		Steps: []Step{{
+			ID:        "a",
+			Type:      StepTypeCommand,
+			DependsOn: []string{"pre"},
+			Config:    map[string]interface{}{"key": "value"},
+		}},
 		Validations: []Validation{{
 			Type:   ValidationCommandExists,
 			Config: map[string]interface{}{"command": "git"},
@@ -127,10 +177,20 @@ func TestPipelineClone(t *testing.T) {
 
 	clone := p.Clone()
 	clone.Steps[0].ID = "b"
+	clone.Steps[0].DependsOn[0] = "other"
+	clone.Steps[0].Config["key"] = "changed"
 	clone.Validations[0].Config["command"] = "hg"
 
 	if p.Steps[0].ID != "a" {
 		t.Fatal("expected original steps unchanged")
+	}
+
+	if dep := p.Steps[0].DependsOn[0]; dep != "pre" {
+		t.Fatalf("expected original dependency untouched, got %q", dep)
+	}
+
+	if cfg := p.Steps[0].Config["key"]; cfg != "value" {
+		t.Fatalf("expected original config untouched, got %v", cfg)
 	}
 
 	if p.Validations[0].Config["command"] != "git" {

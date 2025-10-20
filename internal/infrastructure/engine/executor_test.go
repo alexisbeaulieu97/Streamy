@@ -602,3 +602,150 @@ func (s *stubEventPublisher) contains(eventType string) bool {
 type noopSubscription struct{}
 
 func (noopSubscription) Unsubscribe() {}
+
+type metricsCollectorStub struct {
+	called bool
+}
+
+func (m *metricsCollectorStub) IncCounter(_ context.Context, _ string, _ map[string]string) {
+	m.called = true
+}
+
+func (m *metricsCollectorStub) SetGauge(_ context.Context, _ string, _ float64, _ map[string]string) {
+}
+
+func (m *metricsCollectorStub) ObserveHistogram(_ context.Context, _ string, _ float64, _ map[string]string) {
+}
+
+type tracerStub struct {
+	spanName string
+}
+
+type spanStub struct{}
+
+func (spanStub) SetAttribute(_ string, _ interface{}) {}
+
+func (spanStub) SetStatus(_ ports.SpanStatus, _ string) {}
+
+func (spanStub) End() {}
+
+func (t *tracerStub) StartSpan(ctx context.Context, name string, _ ...interface{}) (context.Context, ports.Span) {
+	t.spanName = name
+	return ctx, spanStub{}
+}
+
+func (tracerStub) Inject(_ context.Context, _ interface{}) error { return nil }
+
+func (tracerStub) Extract(ctx context.Context, _ interface{}) (context.Context, error) {
+	return ctx, nil
+}
+
+func TestExecutorOptionsConfigureObservability(t *testing.T) {
+	registry := infraPlugin.NewRegistry()
+
+	plug := &executorStubPlugin{meta: domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"}, requireAction: true}
+	if err := registry.Register(plug); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	metrics := &metricsCollectorStub{}
+	tracer := &tracerStub{}
+
+	executor := NewExecutor(
+		registry,
+		WithExecutorLogger(logging.NewNoOpLogger()),
+		WithExecutorMetrics(metrics),
+		WithExecutorTracer(tracer),
+	)
+
+	pipeline := &domainpipeline.Pipeline{Steps: []domainpipeline.Step{{ID: "cmd", Enabled: true, Type: domainpipeline.StepTypeCommand}}}
+	plan := &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"cmd"}}}}
+
+	if _, err := executor.Execute(context.Background(), plan, pipeline); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if !metrics.called {
+		t.Fatal("expected metrics collector to be invoked")
+	}
+
+	if tracer.spanName == "" {
+		t.Fatal("expected tracer span to be started")
+	}
+}
+
+func TestExecutorWithParallelismOptionOverridesSettings(t *testing.T) {
+	registry := infraPlugin.NewRegistry()
+	executor := NewExecutor(registry, WithExecutorParallelism(42))
+
+	value := executor.resolveParallelism(5, 3)
+	if value != 3 {
+		t.Fatalf("expected parallelism capped by level size, got %d", value)
+	}
+
+	value = executor.resolveParallelism(0, 5)
+	if value != 5 {
+		t.Fatalf("expected default to level size, got %d", value)
+	}
+}
+
+func TestExecutorHandleEvaluateError(t *testing.T) {
+	registry := infraPlugin.NewRegistry()
+
+	plug := &executorStubPlugin{
+		meta:          domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"},
+		requireAction: false,
+		onEvaluate: func(_ context.Context, _ domainpipeline.Step) error {
+			return errors.New("evaluate failed")
+		},
+	}
+
+	if err := registry.Register(plug); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	executor := NewExecutor(registry, WithExecutorLogger(logging.NewNoOpLogger()))
+
+	pipeline := &domainpipeline.Pipeline{Steps: []domainpipeline.Step{{ID: "cmd", Type: domainpipeline.StepTypeCommand, Enabled: true}}}
+	plan := &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"cmd"}}}}
+
+	if _, err := executor.Execute(context.Background(), plan, pipeline); err == nil {
+		t.Fatal("expected evaluation failure")
+	}
+}
+
+func TestExecutorHandleAlreadySatisfied(t *testing.T) {
+	registry := infraPlugin.NewRegistry()
+
+	plug := &executorStubPlugin{meta: domainplugin.Metadata{ID: "cmd", Name: "Command", Type: domainplugin.TypeCommand, Version: "1.0.0"}, requireAction: false}
+	if err := registry.Register(plug); err != nil {
+		t.Fatalf("register plugin: %v", err)
+	}
+
+	pipeline := &domainpipeline.Pipeline{
+		Settings: domainpipeline.Settings{DryRun: false, ContinueOnError: false, Parallel: 1},
+		Steps:    []domainpipeline.Step{{ID: "cmd", Type: domainpipeline.StepTypeCommand, Enabled: true}},
+	}
+
+	recorder := &stubEventPublisher{}
+	executor := NewExecutor(registry, WithExecutorEvents(recorder))
+
+	plan := &domainpipeline.ExecutionPlan{Levels: []domainpipeline.ExecutionLevel{{Level: 0, StepIDs: []string{"cmd"}}}}
+
+	results, err := executor.Execute(context.Background(), plan, pipeline)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected single result, got %d", len(results))
+	}
+
+	if results[0].Status != domainpipeline.StatusAlreadySatisfied {
+		t.Fatalf("expected already satisfied status, got %+v", results[0])
+	}
+
+	if !recorder.contains(ports.EventStepSkipped) {
+		t.Fatal("expected skipped event for already satisfied step")
+	}
+}

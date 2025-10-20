@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	require "github.com/stretchr/testify/require"
@@ -81,4 +82,108 @@ func TestService_RunValidations_Failures(t *testing.T) {
 
 	entries := logger.Entries()
 	require.NotEmpty(t, entries)
+}
+
+func TestService_RunValidations_UnsupportedType(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(testutil.NewMockLogger())
+	validations := []domainpipeline.Validation{
+		{Type: domainpipeline.ValidationType("custom"), Config: map[string]interface{}{"foo": "bar"}},
+	}
+
+	summary, err := svc.RunValidations(context.Background(), validations)
+	require.Error(t, err)
+	require.Equal(t, 1, summary.TotalChecks)
+	require.Equal(t, 1, summary.FailedChecks)
+
+	var domainErr *domainpipeline.DomainError
+	require.ErrorAs(t, err, &domainErr)
+	require.Equal(t, domainpipeline.ErrCodeValidation, domainErr.Code)
+	require.NotEmpty(t, domainErr.Context)
+}
+
+func TestStringConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing config map", func(t *testing.T) {
+		_, err := stringConfig(nil, "path")
+		require.Error(t, err)
+
+		var domainErr *domainpipeline.DomainError
+		require.ErrorAs(t, err, &domainErr)
+		require.Equal(t, domainpipeline.ErrCodeValidation, domainErr.Code)
+		require.Equal(t, "path", domainErr.Context["required_key"])
+	})
+
+	t.Run("missing key", func(t *testing.T) {
+		_, err := stringConfig(map[string]interface{}{}, "path")
+		require.Error(t, err)
+
+		var domainErr *domainpipeline.DomainError
+		require.ErrorAs(t, err, &domainErr)
+		require.Equal(t, domainpipeline.ErrCodeMissing, domainErr.Code)
+		require.Equal(t, "path", domainErr.Context["missing_key"])
+	})
+
+	t.Run("invalid value", func(t *testing.T) {
+		cases := []interface{}{123, ""}
+		for _, raw := range cases {
+			_, err := stringConfig(map[string]interface{}{"path": raw}, "path")
+			require.Error(t, err)
+
+			var domainErr *domainpipeline.DomainError
+			require.ErrorAs(t, err, &domainErr)
+			require.Equal(t, domainpipeline.ErrCodeValidation, domainErr.Code)
+			require.Equal(t, "path", domainErr.Context["invalid_key"])
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		value, err := stringConfig(map[string]interface{}{"path": "ok"}, "path")
+		require.NoError(t, err)
+		require.Equal(t, "ok", value)
+	})
+}
+
+func TestValidationWorkerLimit(t *testing.T) {
+	original := runtime.GOMAXPROCS(0)
+	runtime.GOMAXPROCS(4)
+	t.Cleanup(func() {
+		runtime.GOMAXPROCS(original)
+	})
+
+	require.Equal(t, 0, validationWorkerLimit(0))
+	require.Equal(t, 2, validationWorkerLimit(2))
+	require.Equal(t, 4, validationWorkerLimit(10))
+	require.Equal(t, 4, validationWorkerLimit(100))
+}
+
+func TestService_RunValidations_ContextCancelled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	svc := NewService(testutil.NewMockLogger())
+	summary, err := svc.RunValidations(ctx, []domainpipeline.Validation{{Type: domainpipeline.ValidationCommandExists}})
+	require.Error(t, err)
+	require.Zero(t, summary.TotalChecks)
+	require.Zero(t, summary.PassedChecks)
+
+	var domainErr *domainpipeline.DomainError
+	require.ErrorAs(t, err, &domainErr)
+	require.Equal(t, domainpipeline.ErrCodeCancelled, domainErr.Code)
+}
+
+func TestSupportedValidationTypesForContext(t *testing.T) {
+	t.Parallel()
+
+	expected := []domainpipeline.ValidationType{
+		domainpipeline.ValidationCommandExists,
+		domainpipeline.ValidationFileExists,
+		domainpipeline.ValidationPathContains,
+	}
+
+	require.ElementsMatch(t, expected, supportedValidationTypesForContext())
 }

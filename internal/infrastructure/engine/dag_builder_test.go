@@ -103,6 +103,36 @@ func TestDAGBuilderBuildIgnoresDisabledSteps(t *testing.T) {
 	assertSameElements(t, plan.Levels[0].StepIDs, []string{"b"})
 }
 
+func TestDAGBuilderBuildComplexBranches(t *testing.T) {
+	builder := NewDAGBuilder()
+	ctx := context.Background()
+
+	steps := []pipeline.Step{
+		{ID: "a", Type: pipeline.StepTypeCommand, Enabled: true},
+		{ID: "b", Type: pipeline.StepTypeCommand, Enabled: true, DependsOn: []string{"a"}},
+		{ID: "c", Type: pipeline.StepTypeCommand, Enabled: true, DependsOn: []string{"a"}},
+		{ID: "d", Type: pipeline.StepTypeCommand, Enabled: true, DependsOn: []string{"b"}},
+		{ID: "e", Type: pipeline.StepTypeCommand, Enabled: true, DependsOn: []string{"b", "c"}},
+	}
+
+	plan, err := builder.Build(ctx, steps)
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+
+	if plan.TotalSteps != 5 {
+		t.Fatalf("expected total steps 5, got %d", plan.TotalSteps)
+	}
+
+	if len(plan.Levels) != 3 {
+		t.Fatalf("expected 3 levels, got %d", len(plan.Levels))
+	}
+
+	assertSameElements(t, plan.Levels[0].StepIDs, []string{"a"})
+	assertSameElements(t, plan.Levels[1].StepIDs, []string{"b", "c"})
+	assertSameElements(t, plan.Levels[2].StepIDs, []string{"d", "e"})
+}
+
 func TestDAGBuilderBuildCancelled(t *testing.T) {
 	builder := NewDAGBuilder()
 	ctx, cancel := context.WithCancel(context.Background())

@@ -13,6 +13,8 @@ type rootFlags struct {
 	timeout time.Duration
 }
 
+var rootDashboardLauncher = runDashboard
+
 func newRootCmd(app *AppContext) *cobra.Command {
 	flags := &rootFlags{}
 
@@ -36,7 +38,7 @@ func newRootCmd(app *AppContext) *cobra.Command {
 					logger.Info(ctx, "launching dashboard from root command", "command", "dashboard", "source", "root")
 				}
 
-				return runDashboard(ctx, app, logger)
+				return rootDashboardLauncher(ctx, app, logger)
 			}
 
 			return cmd.Help()

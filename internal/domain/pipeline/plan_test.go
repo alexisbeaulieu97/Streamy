@@ -27,6 +27,33 @@ func TestExecutionPlanValidate(t *testing.T) {
 	}
 }
 
+func TestExecutionPlanLevelForStep(t *testing.T) {
+	pl := ExecutionPlan{
+		Levels: []ExecutionLevel{
+			{Level: 0, StepIDs: []string{"setup", "prepare"}},
+			{Level: 1, StepIDs: []string{"install"}},
+		},
+	}
+
+	level, err := pl.LevelForStep("install")
+	if err != nil {
+		t.Fatalf("expected level lookup success, got %v", err)
+	}
+
+	if level != 1 {
+		t.Fatalf("expected level 1, got %d", level)
+	}
+
+	if _, err := pl.LevelForStep("missing"); err == nil {
+		t.Fatal("expected error for missing step")
+	} else {
+		var domainErr *DomainError
+		if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeDependency {
+			t.Fatalf("expected dependency error, got %v", err)
+		}
+	}
+}
+
 func TestExecutionPlanValidateMissingStep(t *testing.T) {
 	pl := ExecutionPlan{
 		Levels: []ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}},
@@ -96,6 +123,21 @@ func TestExecutionPlanValidateDependencySameLevel(t *testing.T) {
 
 	if domainErr.Context["step_level"] != 0 || domainErr.Context["dependency_level"] != 0 {
 		t.Fatalf("expected level context, got %v", domainErr.Context)
+	}
+}
+
+func TestExecutionPlanValidateEnsuresLevelsPresent(t *testing.T) {
+	pl := ExecutionPlan{}
+	pipe := Pipeline{Name: "plan", Steps: []Step{{ID: "setup", Enabled: true}}}
+
+	err := pl.Validate(pipe)
+	if err == nil {
+		t.Fatal("expected validation error when no levels provided")
+	}
+
+	var domainErr *DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != ErrCodeValidation {
+		t.Fatalf("expected validation error, got %v", err)
 	}
 }
 

@@ -147,7 +147,7 @@ func TestRenderConfirmView(t *testing.T) {
 	m.width = 120
 	m.height = 40
 	m.viewMode = ViewConfirm
-	m.confirmAction = "apply"
+	m.confirmAction = actionApply
 
 	view := m.renderConfirmView()
 	assert.NotEmpty(t, view)
