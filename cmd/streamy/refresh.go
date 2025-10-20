@@ -340,7 +340,11 @@ func verifyPipelines(ctx context.Context, logger ports.Logger, cmd *cobra.Comman
 		go func() {
 			defer wg.Done()
 
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
 
 			_, _ = fmt.Fprintf(out, "[%d/%d] %s... ", i+1, len(pipelines), pipeline.ID)
 

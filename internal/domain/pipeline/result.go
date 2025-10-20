@@ -1,5 +1,7 @@
 package pipeline
 
+import "time"
+
 // ResultStatus represents the status of an executed step.
 type ResultStatus string
 
@@ -18,7 +20,7 @@ const (
 type StepResult struct {
 	StepID   string
 	Status   ResultStatus
-	Duration int
+	Duration time.Duration
 	Message  string
 	Output   string
 	Error    *DomainError

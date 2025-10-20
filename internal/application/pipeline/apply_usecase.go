@@ -202,7 +202,7 @@ func (u *ApplyUseCase) emitStepEvents(ctx context.Context, pipelineName string, 
 			"step_id":  result.StepID,
 			"status":   result.Status,
 			"changed":  result.Changed,
-			"duration": result.Duration,
+			"duration": result.Duration.Milliseconds(),
 		}
 		eventType := ports.EventStepCompleted
 

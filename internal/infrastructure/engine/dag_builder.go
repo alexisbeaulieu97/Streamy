@@ -4,6 +4,7 @@ package engine
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
 )
@@ -51,13 +52,27 @@ func (b *DAGBuilder) Build(ctx context.Context, steps []pipeline.Step) (*pipelin
 func collectActiveSteps(ctx context.Context, steps []pipeline.Step) (map[string]pipeline.Step, error) {
 	active := make(map[string]pipeline.Step)
 
-	for _, step := range steps {
+	for idx, step := range steps {
 		if err := contextCancelled(ctx, "collect_steps"); err != nil {
 			return nil, err
 		}
 
 		if !step.Enabled {
 			continue
+		}
+
+		if strings.TrimSpace(step.ID) == "" {
+			return nil, pipeline.NewValidationError("step id must be set", map[string]interface{}{
+				"step_index":  idx,
+				"plugin_type": step.Type,
+			})
+		}
+
+		if _, exists := active[step.ID]; exists {
+			return nil, pipeline.NewDuplicateError(step.ID).WithContext(map[string]interface{}{
+				"step_index":  idx,
+				"plugin_type": step.Type,
+			})
 		}
 
 		active[step.ID] = step
@@ -83,10 +98,18 @@ func initializeGraph(ctx context.Context, active map[string]pipeline.Step) (map[
 
 func populateGraph(ctx context.Context, active map[string]pipeline.Step, indegree map[string]int, adjacency map[string][]string) error {
 	for id, step := range active {
+		seen := make(map[string]struct{}, len(step.DependsOn))
+
 		for _, dep := range step.DependsOn {
 			if err := contextCancelled(ctx, "build_graph"); err != nil {
 				return err
 			}
+
+			if _, duplicate := seen[dep]; duplicate {
+				continue
+			}
+
+			seen[dep] = struct{}{}
 
 			if dep == id {
 				return pipeline.NewDependencyError("step cannot depend on itself", map[string]interface{}{"step_id": id})

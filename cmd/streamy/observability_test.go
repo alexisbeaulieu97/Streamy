@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -141,8 +142,10 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 	var logBuf bytes.Buffer
 
+	var writer io.Writer = &syncBufferWriter{buf: &logBuf}
+
 	logger, err := logginginfra.New(logginginfra.Options{
-		Writer:    &logBuf,
+		Writer:    writer,
 		Formatter: cblog.JSONFormatter,
 		Level:     "info",
 		Layer:     "infrastructure",

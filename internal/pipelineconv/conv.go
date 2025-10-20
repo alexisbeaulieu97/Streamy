@@ -284,7 +284,7 @@ func ConvertStepResult(res domainpipeline.StepResult, dryRun bool) registry.Step
 		StepID:   res.StepID,
 		Status:   status,
 		Message:  res.FormatOutput(),
-		Duration: time.Duration(res.Duration) * time.Millisecond,
+		Duration: res.Duration,
 	}
 
 	if res.Error != nil {
@@ -392,7 +392,7 @@ func ToStepState(res domainpipeline.StepResult, dryRun bool) components.StepStat
 		Status:   status,
 		Message:  res.FormatOutput(),
 		Error:    res.Error,
-		Duration: time.Duration(res.Duration) * time.Millisecond,
+		Duration: res.Duration,
 		Changed:  changed,
 	}
 }

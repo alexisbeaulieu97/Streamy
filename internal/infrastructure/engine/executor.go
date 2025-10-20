@@ -336,7 +336,7 @@ func (e *Executor) handleEvaluateError(ctx context.Context, pipelineName string,
 		StepID:   step.ID,
 		Status:   domainpipeline.StatusFailure,
 		Error:    derr,
-		Duration: int(elapsed.Milliseconds()),
+		Duration: elapsed,
 	}
 
 	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed)
@@ -367,7 +367,7 @@ func (e *Executor) handleAlreadySatisfied(ctx context.Context, pipelineName stri
 		StepID:   step.ID,
 		Status:   domainpipeline.StatusAlreadySatisfied,
 		Message:  "step already satisfied",
-		Duration: int(elapsed.Milliseconds()),
+		Duration: elapsed,
 	}
 
 	e.recordMetrics(ctx, pipelineName, result.StepID, step.Type, result.Status, elapsed)
@@ -386,7 +386,7 @@ func (e *Executor) handleApply(ctx context.Context, pipelineName string, step do
 	}
 
 	elapsed := time.Since(startedAt)
-	result.Duration = int(elapsed.Milliseconds())
+	result.Duration = elapsed
 
 	if err != nil {
 		result.Status = domainpipeline.StatusFailure
@@ -413,22 +413,22 @@ func (e *Executor) handleApply(ctx context.Context, pipelineName string, step do
 	return *result, nil
 }
 
-func (e *Executor) publishStepFailed(ctx context.Context, pipelineName string, step domainpipeline.Step, duration int, err error) {
+func (e *Executor) publishStepFailed(ctx context.Context, pipelineName string, step domainpipeline.Step, duration time.Duration, err error) {
 	publishEvent(ctx, e.events, e.logger, ports.EventStepFailed, map[string]interface{}{
 		"pipeline":  pipelineName,
 		"step_id":   step.ID,
 		"step_type": step.Type,
-		"duration":  duration,
+		"duration":  duration.Milliseconds(),
 		"error":     err,
 	})
 }
 
-func (e *Executor) publishStepCompleted(ctx context.Context, pipelineName string, step domainpipeline.Step, duration int, changed, dryRun bool) {
+func (e *Executor) publishStepCompleted(ctx context.Context, pipelineName string, step domainpipeline.Step, duration time.Duration, changed, dryRun bool) {
 	payload := map[string]interface{}{
 		"pipeline":  pipelineName,
 		"step_id":   step.ID,
 		"step_type": step.Type,
-		"duration":  duration,
+		"duration":  duration.Milliseconds(),
 		"changed":   changed,
 	}
 
@@ -439,12 +439,12 @@ func (e *Executor) publishStepCompleted(ctx context.Context, pipelineName string
 	publishEvent(ctx, e.events, e.logger, ports.EventStepCompleted, payload)
 }
 
-func (e *Executor) publishStepSkipped(ctx context.Context, pipelineName string, step domainpipeline.Step, duration int) {
+func (e *Executor) publishStepSkipped(ctx context.Context, pipelineName string, step domainpipeline.Step, duration time.Duration) {
 	publishEvent(ctx, e.events, e.logger, ports.EventStepSkipped, map[string]interface{}{
 		"pipeline":  pipelineName,
 		"step_id":   step.ID,
 		"step_type": step.Type,
-		"duration":  duration,
+		"duration":  duration.Milliseconds(),
 	})
 }
 
@@ -715,7 +715,7 @@ func dryRunResult(step domainpipeline.Step, eval *domainpipeline.EvaluationResul
 		Status:   status,
 		Message:  message,
 		Changed:  changed,
-		Duration: int(elapsed.Milliseconds()),
+		Duration: elapsed,
 	}
 }
 

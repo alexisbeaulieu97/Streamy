@@ -74,7 +74,15 @@ func (l *YAMLLoader) Validate(ctx context.Context, path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		l.logError(ctx, "configuration path stat failed", err, map[string]interface{}{"path": path})
-		return convertError(err, path)
+
+		if errors.Is(err, os.ErrNotExist) {
+			return domain.NewNotFoundError("configuration", map[string]interface{}{"path": path})
+		}
+
+		return domain.NewValidationError("configuration path inaccessible", map[string]interface{}{
+			"path":  path,
+			"error": err.Error(),
+		})
 	}
 
 	if info.IsDir() {
@@ -82,27 +90,84 @@ func (l *YAMLLoader) Validate(ctx context.Context, path string) error {
 	}
 
 	ext := filepath.Ext(path)
-	switch ext {
-	case ".yaml", ".yml":
-		l.logDebug(ctx, "validating pipeline configuration", map[string]interface{}{"path": path})
-		_, err = l.Load(ctx, path)
-	default:
-		err = domain.NewValidationError("unsupported configuration file extension", map[string]interface{}{"path": path, "extension": ext})
+	if ext != ".yaml" && ext != ".yml" {
+		return domain.NewValidationError("unsupported configuration file extension", map[string]interface{}{"path": path, "extension": ext})
 	}
 
-	if err == nil {
-		return nil
+	// Perform a lightweight syntax check so validation only surfaces permitted error codes.
+	l.logDebug(ctx, "validating pipeline configuration", map[string]interface{}{"path": path})
+
+	file, err := l.open(path)
+	if err != nil {
+		l.logError(ctx, "failed to open configuration for validation", err, map[string]interface{}{"path": path})
+
+		if errors.Is(err, os.ErrNotExist) {
+			return domain.NewNotFoundError("configuration", map[string]interface{}{"path": path})
+		}
+
+		return domain.NewValidationError("configuration unreadable", map[string]interface{}{
+			"path":  path,
+			"error": err.Error(),
+		})
 	}
 
+	defer func() {
+		_ = file.Close()
+	}()
+
+	reader := io.Reader(file)
+	if ctx != nil {
+		reader = &ctxAwareReader{ctx: ctx, reader: file}
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return mapValidationReadError(err, path)
+	}
+
+	if len(data) == 0 {
+		return domain.NewValidationError("configuration file is empty", map[string]interface{}{"path": path})
+	}
+
+	if err := yaml.Unmarshal(data, &struct{}{}); err != nil {
+		ctxFields := map[string]interface{}{"path": path}
+		if line := extractLine(err); line > 0 {
+			ctxFields["line"] = line
+		}
+
+		return domain.NewValidationError("invalid configuration syntax", ctxFields)
+	}
+
+	return nil
+}
+
+var _ ports.ConfigLoader = (*YAMLLoader)(nil)
+
+// mapValidationReadError normalizes I/O failures into the limited set of
+// DomainError codes that the ConfigLoader.Validate contract permits.
+func mapValidationReadError(err error, path string) error {
 	var domainErr *domain.DomainError
 	if errors.As(err, &domainErr) {
 		return domainErr
 	}
 
-	return fmt.Errorf("validate configuration %q: %w", path, err)
-}
+	if errors.Is(err, context.Canceled) {
+		return domain.NewDomainError(domain.ErrCodeCancelled, "validation cancelled", err, map[string]interface{}{"path": path})
+	}
 
-var _ ports.ConfigLoader = (*YAMLLoader)(nil)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return domain.NewTimeoutError("validation timed out", err, map[string]interface{}{"path": path})
+	}
+
+	if os.IsNotExist(err) {
+		return domain.NewNotFoundError("configuration", map[string]interface{}{"path": path})
+	}
+
+	return domain.NewValidationError("failed to read configuration", map[string]interface{}{
+		"path":  path,
+		"error": err.Error(),
+	})
+}
 
 func convertError(err error, path string) error {
 	if err == nil {

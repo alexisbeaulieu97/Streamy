@@ -70,8 +70,36 @@ func (s *Service) executeValidation(ctx context.Context, val domain.Validation) 
 	result := domain.VerificationResult{Type: string(val.Type)}
 
 	if validateErr := val.Validate(); validateErr != nil {
-		err := domain.NewDomainError(domain.ErrCodeValidation, "validation descriptor invalid", validateErr, map[string]interface{}{"validation_type": val.Type})
-		return validationOutcome{result: result, err: err, fatal: true}
+		err := validateErr
+
+		var domainErr *domain.DomainError
+		if errors.As(validateErr, &domainErr) {
+			err = domainErr
+		} else {
+			domainErr = domain.NewDomainError(domain.ErrCodeValidation, "validation descriptor invalid", validateErr, map[string]interface{}{"validation_type": val.Type})
+			err = domainErr
+		}
+
+		result.Status = domain.VerificationFailed
+		result.Message = err.Error()
+
+		details := map[string]interface{}{
+			"validation_type": result.Type,
+		}
+
+		if domainErr != nil && len(domainErr.Context) > 0 {
+			for k, v := range domainErr.Context {
+				details[k] = v
+			}
+		}
+
+		result.Details = details
+
+		if s.logger != nil {
+			s.logger.Warn(ctx, "validation definition invalid", "validation_type", result.Type, "error", err)
+		}
+
+		return validationOutcome{result: result, err: err, fatal: false}
 	}
 
 	runner, ok := validationRunners[val.Type]

@@ -77,6 +77,10 @@ func (e *DomainError) Unwrap() error {
 
 // Is allows errors.Is comparisons against other DomainError values.
 func (e *DomainError) Is(target error) bool {
+	if e == nil {
+		return false
+	}
+
 	var domainErr *DomainError
 	if !errors.As(target, &domainErr) {
 		return false

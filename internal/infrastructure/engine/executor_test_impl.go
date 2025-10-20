@@ -98,7 +98,7 @@ func (e *TestExecutor) runStep(ctx context.Context, step domainpipeline.Step, dr
 			StepID:   step.ID,
 			Status:   domainpipeline.StatusFailure,
 			Error:    derr,
-			Duration: int(time.Since(start).Milliseconds()),
+			Duration: time.Since(start),
 		}, derr
 	}
 
@@ -111,7 +111,7 @@ func (e *TestExecutor) runStep(ctx context.Context, step domainpipeline.Step, dr
 			StepID:   step.ID,
 			Status:   domainpipeline.StatusAlreadySatisfied,
 			Message:  "step already satisfied",
-			Duration: int(time.Since(start).Milliseconds()),
+			Duration: time.Since(start),
 		}, nil
 	}
 
@@ -120,7 +120,7 @@ func (e *TestExecutor) runStep(ctx context.Context, step domainpipeline.Step, dr
 		result = &domainpipeline.StepResult{StepID: step.ID}
 	}
 
-	result.Duration = int(time.Since(start).Milliseconds())
+	result.Duration = time.Since(start)
 
 	if err != nil {
 		result.Status = domainpipeline.StatusFailure

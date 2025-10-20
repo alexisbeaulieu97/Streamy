@@ -43,6 +43,13 @@ func newDashboardPipelineService(apply *applicationpipeline.ApplyUseCase, verify
 }
 
 func (a *dashboardPipelineAdapter) Verify(ctx context.Context, opts dashboard.VerifyOptions) (*registry.ExecutionResult, error) {
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
 	pipeline, results, err := a.verifyUseCase.Verify(ctx, opts.ConfigPath)
 	if err != nil {
 		return nil, wrapDashboardError("verify", opts.ConfigPath, err)

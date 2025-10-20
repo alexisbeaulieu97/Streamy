@@ -376,7 +376,7 @@ func (p *sleepPlugin) Apply(ctx context.Context, evaluation *domainpipeline.Eval
 		StepID:   step.ID,
 		Status:   domainpipeline.StatusSuccess,
 		Message:  "slept successfully",
-		Duration: int(cfg.Duration / time.Millisecond),
+		Duration: cfg.Duration,
 	}, nil
 }
 

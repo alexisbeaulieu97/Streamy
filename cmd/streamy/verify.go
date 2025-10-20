@@ -131,7 +131,8 @@ func handleVerifyPrepareError(err error) (int, error) {
 		_, _ = fmt.Fprintf(stderrWriter, "Configuration error: %v\n", err)
 		return 2, nil
 	default:
-		return 3, err
+		_, _ = fmt.Fprintf(stderrWriter, "Error preparing verification: %v\n", err)
+		return 3, nil
 	}
 }
 
