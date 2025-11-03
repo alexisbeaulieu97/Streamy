@@ -14,8 +14,11 @@ type Pipeline struct {
 	Description  string    `json:"description"`
 	RegisteredAt time.Time `json:"registered_at"`
 
+	Dependencies []string `json:"dependencies,omitempty"`
+
 	// Runtime state (not persisted in registry)
 	Status     PipelineStatus   `json:"-"`
+	BlockedBy  []string         `json:"-"`
 	LastRun    time.Time        `json:"-"`
 	LastResult *ExecutionResult `json:"-"`
 }
@@ -26,6 +29,8 @@ type PipelineStatus string
 // Pipeline status constants used to record registry execution outcomes.
 const (
 	StatusUnknown   PipelineStatus = "unknown"
+	StatusReady     PipelineStatus = "ready"
+	StatusBlocked   PipelineStatus = "blocked"
 	StatusSatisfied PipelineStatus = "satisfied"
 	StatusDrifted   PipelineStatus = "drifted"
 	StatusFailed    PipelineStatus = "failed"
@@ -36,8 +41,12 @@ const (
 // Icon returns the Unicode icon for the status
 func (s PipelineStatus) Icon() string {
 	switch s {
-	case StatusSatisfied:
+	case StatusReady:
 		return "🟢"
+	case StatusBlocked:
+		return "🟠"
+	case StatusSatisfied:
+		return "✅"
 	case StatusDrifted:
 		return "🟡"
 	case StatusFailed:
@@ -50,6 +59,10 @@ func (s PipelineStatus) Icon() string {
 // IconFallback returns ASCII fallback when Unicode is not supported
 func (s PipelineStatus) IconFallback() string {
 	switch s {
+	case StatusReady:
+		return "[RD]"
+	case StatusBlocked:
+		return "[BL]"
 	case StatusSatisfied:
 		return "[OK]"
 	case StatusDrifted:
@@ -64,6 +77,10 @@ func (s PipelineStatus) IconFallback() string {
 // Color returns the Lipgloss color for the status
 func (s PipelineStatus) Color() lipgloss.Color {
 	switch s {
+	case StatusReady:
+		return lipgloss.Color("34") // green
+	case StatusBlocked:
+		return lipgloss.Color("208") // orange
 	case StatusSatisfied:
 		return lipgloss.Color("42") // green
 	case StatusDrifted:
@@ -86,6 +103,7 @@ type ExecutionResult struct {
 	Operation   string         `json:"operation"` // "verify" or "apply"
 	Status      PipelineStatus `json:"status"`
 	Success     bool           `json:"success"`
+	BlockedBy   string         `json:"blocked_by,omitempty"`
 	Summary     string         `json:"summary"`
 	StepCount   int            `json:"step_count"`
 	FailedSteps []string       `json:"failed_steps,omitempty"`
@@ -126,10 +144,24 @@ type CachedStatus struct {
 	Summary     string         `json:"summary"`
 	StepCount   int            `json:"step_count"`
 	FailedSteps []string       `json:"failed_steps,omitempty"`
+	BlockedBy   string         `json:"blocked_by,omitempty"`
 }
 
 // StatusCacheFile is the JSON file format for the status cache
 type StatusCacheFile struct {
-	Version  string                  `json:"version"`
-	Statuses map[string]CachedStatus `json:"statuses"`
+	Version        string                  `json:"version"`
+	Statuses       map[string]CachedStatus `json:"statuses"`
+	Orchestrations []OrchestrationSummary  `json:"orchestrations,omitempty"`
+}
+
+// OrchestrationSummary captures a condensed history of orchestration runs for status cache persistence.
+type OrchestrationSummary struct {
+	RootPipelineID string    `json:"root_pipeline_id"`
+	StartTime      time.Time `json:"start_time"`
+	EndTime        time.Time `json:"end_time"`
+	TotalPipelines int       `json:"total_pipelines"`
+	Executed       int       `json:"executed"`
+	Blocked        int       `json:"blocked"`
+	Failed         int       `json:"failed"`
+	PipelineOrder  []string  `json:"pipeline_order"`
 }

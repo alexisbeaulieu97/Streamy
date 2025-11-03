@@ -22,6 +22,7 @@ type Logger interface {
 	Warn(ctx context.Context, msg string, fields ...interface{})
 	Error(ctx context.Context, msg string, fields ...interface{})
 	With(fields ...interface{}) Logger
+	SetLevel(level string) error
 }
 
 type correlationIDKey struct{}

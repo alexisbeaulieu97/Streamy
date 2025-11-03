@@ -88,6 +88,7 @@ flowchart TB
 ### Infrastructure (`internal/infrastructure`)
 - Implements the ports exposed by the application layer:
   - `config`: YAML loader converts files into domain pipelines.
+  - `registry`: file-backed pipeline store that reconciles dependency status on each add and keeps the status cache in sync.
   - `engine`: DAG builder, planner, executor built on goroutines.
   - `logging`, `metrics`, `tracing`: adapters over charmbracelet/log, custom collectors, and tracer spans.
   - `plugin`: in-memory registry for ports-native plugins.
@@ -97,6 +98,7 @@ flowchart TB
 ### CLI (`cmd/streamy`)
 - Acts as the composition root: constructs infrastructure adapters, builds application use cases, and wires Cobra commands.
 - Seeds correlation IDs, configures logging verbosity, and exposes top-level commands (`apply`, `verify`, `dashboard`, etc.).
+- `streamy run --registry` enforces confirmation before honoring `--force`, and requires `--yes` when running in non-interactive mode to preserve safety-by-default.
 - Registers built-in plugins through `RegisterPortsPlugins`, ensuring deterministically validated metadata before execution.
 
 ## Dependency Rules
@@ -110,7 +112,7 @@ Static enforcement:
 - Ports live in `internal/ports`, clarifying the API boundary.
 
 ## Data Flow
-1. **Configuration**: `cmd/streamy` instantiates `config.YAMLLoader`. `Load(ctx, path)` returns a fully validated domain pipeline.
+1. **Configuration**: `cmd/streamy` instantiates `config.YAMLLoader`. `Load(ctx, path)` returns a fully validated domain pipeline, then `registry.ReconcileStatuses` updates downstream readiness and syncs the status cache whenever `streamy registry add` persists a new entry.
 2. **Preparation**: `PrepareUseCase` builds the execution plan using infrastructure DAG builder and planner ports.
 3. **Execution**: `ApplyUseCase` or `VerifyUseCase` invokes the engine executor. Plugins are resolved through the registry port and executed with the current context, metrics, tracing, and events.
 4. **Observability**: Each layer logs with charmbracelet/log, metrics collectors capture counts/durations, and the tracer emits spans with correlation IDs.

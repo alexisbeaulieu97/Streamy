@@ -1,3 +1,4 @@
+// Package registry persists pipeline metadata and status caches.
 package registry
 
 import (

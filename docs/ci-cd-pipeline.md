@@ -112,6 +112,14 @@ go test -v ./tests/...
 ./scripts/build.sh
 ```
 
+## Managing Pipeline Dependencies
+
+Streamy’s registry now understands cross-pipeline dependencies:
+
+- **Declare dependencies in YAML** with `id`, `version`, and canonical entries (e.g. `backend@1.2`). See `docs/pipeline-dependencies.md` for the full schema.
+- **Register pipelines** with `streamy registry add <config.yaml>`. Missing upstream pipelines leave the new entry in a **Blocked** state until those dependencies are registered.
+- **Visualize relationships** using `streamy registry list --tree` to confirm the graph is ready (`🟢`) before orchestration or release workflows consume it.
+
 ## Release Process
 
 1. **Create a semantic version tag**:
@@ -133,3 +141,4 @@ go test -v ./tests/...
 ✅ **Maintain coverage above 80%** for core logic
 ✅ **Use semantic versioning** for tags
 ✅ **Write descriptive commit messages** for changelogs
+✅ **Keep registry dependencies unblocked** by regularly checking `streamy registry list --tree`

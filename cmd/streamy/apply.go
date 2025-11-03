@@ -7,8 +7,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/alexisbeaulieu97/streamy/internal/pipelineconv"
 	"github.com/alexisbeaulieu97/streamy/internal/ports"
@@ -16,48 +14,10 @@ import (
 )
 
 type applyOptions struct {
-	ConfigPath          string
-	DryRun              bool
-	Verbose             bool
-	NonInteractive      bool
-	ForceNonInteractive bool
-	Timeout             time.Duration
-}
-
-func newApplyCmd(root *rootFlags, app *AppContext) *cobra.Command {
-	opts := applyOptions{}
-
-	cmd := &cobra.Command{
-		Use:   "apply",
-		Short: "Apply a Streamy configuration",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			opts.DryRun = root.dryRun
-			opts.Verbose = root.verbose
-
-			opts.NonInteractive = opts.ForceNonInteractive || !term.IsTerminal(int(os.Stdout.Fd()))
-			if opts.Timeout <= 0 {
-				opts.Timeout = root.timeout
-			}
-
-			if err := validateApplyOptions(opts); err != nil {
-				return err
-			}
-
-			cmdCtx, logger := app.CommandContext(cmd, "command.apply")
-
-			return runApply(cmdCtx, app, opts, logger)
-		},
-	}
-
-	cmd.Flags().StringVarP(&opts.ConfigPath, "config", "c", "", "Path to configuration file")
-	cmd.Flags().BoolVar(&opts.ForceNonInteractive, "non-interactive", false, "Disable the interactive TUI and print results to stdout")
-	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 0, "Maximum duration for the apply command (defaults to root timeout)")
-
-	if err := cmd.MarkFlagRequired("config"); err != nil {
-		panic(fmt.Sprintf("failed to mark config flag required: %v", err))
-	}
-
-	return cmd
+	ConfigPath     string
+	DryRun         bool
+	NonInteractive bool
+	Timeout        time.Duration
 }
 
 func runApply(ctx context.Context, app *AppContext, opts applyOptions, logger ports.Logger) error {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/spf13/cobra"
 
 	domainpipeline "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -25,14 +26,19 @@ type addOptions struct {
 }
 
 type addOperation struct {
-	ctx      context.Context
-	logger   ports.Logger
-	app      *AppContext
-	cmd      *cobra.Command
-	opts     *addOptions
-	absPath  string
-	prepared *domainpipeline.Pipeline
-	registry *registry.Registry
+	ctx         context.Context
+	logger      ports.Logger
+	app         *AppContext
+	cmd         *cobra.Command
+	opts        *addOptions
+	absPath     string
+	prepared    *domainpipeline.Pipeline
+	registry    *registry.Registry
+	statusCache *registry.StatusCache
+	baseID      string
+	version     string
+	deps        []string
+	canonicalID string
 }
 
 func newAddOperation(ctx context.Context, logger ports.Logger, app *AppContext, cmd *cobra.Command, opts *addOptions) *addOperation {
@@ -71,11 +77,27 @@ func (op *addOperation) resolvePath(configPath string) error {
 }
 
 func (op *addOperation) ensurePipelineID() error {
-	if op.opts.id == "" {
-		op.opts.id = registry.GeneratePipelineID(op.absPath)
+	override := strings.TrimSpace(op.opts.id)
+	if override == "" {
+		return nil
 	}
 
-	if err := registry.ValidatePipelineID(op.opts.id); err != nil {
+	if op.baseID == "" {
+		return nil
+	}
+
+	if override != op.baseID {
+		return op.fail(
+			"mismatched pipeline id",
+			"validating --id flag",
+			fmt.Errorf("flag id %q does not match config id %q", override, op.baseID),
+			"Update the --id flag to match the pipeline's YAML id or omit the flag entirely.",
+			"flag_id", override,
+			"config_id", op.baseID,
+		)
+	}
+
+	if err := registry.ValidatePipelineID(override); err != nil {
 		return op.fail(
 			"invalid pipeline id",
 			"validating pipeline ID",
@@ -149,27 +171,94 @@ func (op *addOperation) loadRegistry() error {
 	return nil
 }
 
-func (op *addOperation) registerPipeline() (registry.Pipeline, error) {
+func (op *addOperation) loadStatusCache() error {
+	path, err := defaultStatusCachePath()
+	if err != nil {
+		return op.fail(
+			"status cache path resolution failed",
+			"determining status cache path",
+			err,
+			"Ensure your HOME directory is set correctly.",
+		)
+	}
+
+	cache, err := registry.NewStatusCache(path)
+	if err != nil {
+		return op.fail(
+			"status cache load failed",
+			"loading status cache",
+			err,
+			"Check that you have write access to the status cache directory.",
+			"path", path,
+		)
+	}
+
+	op.statusCache = cache
+
+	return nil
+}
+
+func (op *addOperation) registerPipeline() (registry.Pipeline, []string, error) {
+	dependencies := append([]string(nil), op.deps...)
+
+	if err := op.registry.ValidateDependencyCycles(op.canonicalID, dependencies); err != nil {
+		return registry.Pipeline{}, nil, op.fail(
+			"invalid dependencies",
+			fmt.Sprintf("validating dependencies for pipeline %q", op.canonicalID),
+			err,
+			"Remove circular references from the dependency list before retrying.",
+			"pipeline_id", op.canonicalID,
+			"dependencies", dependencies,
+		)
+	}
+
+	unregistered := op.registry.FindUnregisteredDependencies(dependencies)
+
 	newPipeline := registry.Pipeline{
-		ID:           op.opts.id,
+		ID:           op.canonicalID,
 		Name:         op.opts.name,
 		Path:         op.absPath,
 		Description:  op.opts.description,
 		RegisteredAt: time.Now().UTC(),
+		Dependencies: dependencies,
+	}
+
+	if len(unregistered) > 0 {
+		newPipeline.BlockedBy = append([]string(nil), unregistered...)
+		newPipeline.Status = registry.StatusBlocked
+
+		stderr := op.cmd.ErrOrStderr()
+		_, _ = fmt.Fprintf(stderr, "⚠ Warning: unregistered dependencies: %v\n", unregistered)
+		_, _ = fmt.Fprintln(stderr, "  Pipeline will remain blocked until each dependency is added to the registry.")
+	} else {
+		newPipeline.Status = registry.StatusReady
 	}
 
 	if err := op.registry.Add(newPipeline); err != nil {
-		return registry.Pipeline{}, op.fail(
+		return registry.Pipeline{}, nil, op.fail(
 			"registry add failed",
-			fmt.Sprintf("adding pipeline %q", op.opts.id),
+			fmt.Sprintf("adding pipeline %q", op.canonicalID),
 			err,
 			"Use a different ID or remove the existing pipeline first.",
-			"pipeline_id", op.opts.id,
+			"pipeline_id", op.canonicalID,
+		)
+	}
+
+	unblocked := op.registry.ReconcileStatuses(op.statusCache)
+
+	updatedPipeline, err := op.registry.Get(op.canonicalID)
+	if err != nil {
+		return registry.Pipeline{}, nil, op.fail(
+			"registry lookup failed",
+			fmt.Sprintf("retrieving pipeline %q", op.canonicalID),
+			err,
+			"Retry the operation; if the issue persists, inspect the registry file for corruption.",
+			"pipeline_id", op.canonicalID,
 		)
 	}
 
 	if err := op.registry.Save(); err != nil {
-		return registry.Pipeline{}, op.fail(
+		return registry.Pipeline{}, nil, op.fail(
 			"registry save failed",
 			"saving registry",
 			err,
@@ -178,10 +267,22 @@ func (op *addOperation) registerPipeline() (registry.Pipeline, error) {
 		)
 	}
 
-	return newPipeline, nil
+	if op.statusCache != nil {
+		if err := op.statusCache.Save(); err != nil {
+			return registry.Pipeline{}, nil, op.fail(
+				"status cache save failed",
+				"saving status cache",
+				err,
+				"Check disk space and file permissions, then retry.",
+				"pipeline_id", op.canonicalID,
+			)
+		}
+	}
+
+	return updatedPipeline, unblocked, nil
 }
 
-func (op *addOperation) printSuccess(newPipeline registry.Pipeline) {
+func (op *addOperation) printSuccess(newPipeline registry.Pipeline, unblocked []string) {
 	if op.opts.verbose {
 		_, _ = fmt.Fprintf(op.cmd.ErrOrStderr(), "✓ Added pipeline %q (%s)\n", newPipeline.ID, newPipeline.Name)
 	}
@@ -189,12 +290,125 @@ func (op *addOperation) printSuccess(newPipeline registry.Pipeline) {
 	stdout := op.cmd.OutOrStdout()
 	_, _ = fmt.Fprintf(stdout, "✓ Added pipeline '%s' (%s)\n", newPipeline.ID, newPipeline.Name)
 	_, _ = fmt.Fprintf(stdout, "  Path: %s\n", newPipeline.Path)
-	_, _ = fmt.Fprintf(stdout, "  ID:   %s\n", newPipeline.ID)
+	_, _ = fmt.Fprintf(stdout, "  Status: %s %s\n", newPipeline.Status.Icon(), strings.ToUpper(newPipeline.Status.String()))
+
+	if len(newPipeline.BlockedBy) > 0 {
+		_, _ = fmt.Fprintln(stdout, "  Missing dependencies:")
+		for _, dep := range newPipeline.BlockedBy {
+			_, _ = fmt.Fprintf(stdout, "    - %s\n", dep)
+		}
+	}
+
+	if len(unblocked) > 0 {
+		_, _ = fmt.Fprintf(stdout, "✓ Unblocked pipelines: %s\n", strings.Join(unblocked, ", "))
+	}
+
 	_, _ = fmt.Fprintln(stdout, "\nRun 'streamy registry refresh "+newPipeline.ID+"' to verify its current status.")
 
 	if op.logger != nil {
-		op.logger.Info(op.ctx, "pipeline registered", "pipeline_id", newPipeline.ID, "config_path", newPipeline.Path)
+		args := []interface{}{"pipeline_id", newPipeline.ID, "config_path", newPipeline.Path}
+		if len(unblocked) > 0 {
+			args = append(args, "unblocked", unblocked)
+		}
+
+		op.logger.Info(op.ctx, "pipeline registered", args...)
 	}
+}
+
+func (op *addOperation) loadConfigMetadata() error {
+	data, err := os.ReadFile(op.absPath)
+	if err != nil {
+		return op.fail(
+			"read pipeline config",
+			fmt.Sprintf("reading config %q", op.absPath),
+			err,
+			"Ensure the pipeline file exists and is readable.",
+			"config_path", op.absPath,
+		)
+	}
+
+	var meta pipelineMetadata
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return op.fail(
+			"parse pipeline config",
+			fmt.Sprintf("parsing config %q", op.absPath),
+			err,
+			"Fix the YAML syntax issues noted above and try again.",
+			"config_path", op.absPath,
+		)
+	}
+
+	meta.ID = strings.TrimSpace(meta.ID)
+	if meta.ID == "" {
+		return op.fail(
+			"missing pipeline id",
+			fmt.Sprintf("validating config %q", op.absPath),
+			fmt.Errorf("pipeline id missing"),
+			"Add an 'id' field to your pipeline YAML (e.g., id: backend-deploy).",
+			"config_path", op.absPath,
+		)
+	}
+
+	meta.Version = strings.TrimSpace(meta.Version)
+	if meta.Version == "" {
+		return op.fail(
+			"missing pipeline version",
+			fmt.Sprintf("validating config %q", op.absPath),
+			fmt.Errorf("pipeline version missing"),
+			"Add a 'version' field to your pipeline YAML (e.g., version: \"1.0\").",
+			"pipeline_id", meta.ID,
+			"config_path", op.absPath,
+		)
+	}
+
+	canonicalID, err := registry.BuildCanonicalPipelineID(meta.ID, meta.Version)
+	if err != nil {
+		return op.fail(
+			"invalid pipeline identifier",
+			fmt.Sprintf("validating config %q", op.absPath),
+			err,
+			"Ensure the 'id' uses lowercase letters, numbers, or hyphens and the 'version' does not contain whitespace or '@'.",
+			"pipeline_id", meta.ID,
+			"pipeline_version", meta.Version,
+		)
+	}
+
+	dependencies := make([]string, 0, len(meta.Dependencies))
+	for _, raw := range meta.Dependencies {
+		dep := strings.TrimSpace(raw)
+		if dep == "" {
+			return op.fail(
+				"invalid dependency identifier",
+				fmt.Sprintf("validating dependencies in %q", op.absPath),
+				fmt.Errorf("dependency entries cannot be blank"),
+				"List each dependency using the canonical <id>@<version> format.",
+				"pipeline_id", meta.ID,
+			)
+		}
+
+		if err := registry.ValidateCanonicalPipelineID(dep); err != nil {
+			return op.fail(
+				"invalid dependency identifier",
+				fmt.Sprintf("validating dependencies in %q", op.absPath),
+				err,
+				"Declare each dependency in canonical <id>@<version> format (e.g., api@1.2).",
+				"dependency", dep,
+			)
+		}
+
+		dependencies = append(dependencies, dep)
+	}
+
+	if strings.TrimSpace(op.opts.description) == "" && strings.TrimSpace(meta.Description) != "" {
+		op.opts.description = meta.Description
+	}
+
+	op.baseID = meta.ID
+	op.version = meta.Version
+	op.deps = dependencies
+	op.canonicalID = canonicalID
+
+	return nil
 }
 
 func newAddCmd(rootFlags *rootFlags, app *AppContext) *cobra.Command {
@@ -235,6 +449,10 @@ func runAdd(ctx context.Context, logger ports.Logger, app *AppContext, cmd *cobr
 		return err
 	}
 
+	if err := op.loadConfigMetadata(); err != nil {
+		return err
+	}
+
 	if err := op.ensurePipelineID(); err != nil {
 		return err
 	}
@@ -249,12 +467,16 @@ func runAdd(ctx context.Context, logger ports.Logger, app *AppContext, cmd *cobr
 		return err
 	}
 
-	newPipeline, err := op.registerPipeline()
+	if err := op.loadStatusCache(); err != nil {
+		return err
+	}
+
+	newPipeline, unblocked, err := op.registerPipeline()
 	if err != nil {
 		return err
 	}
 
-	op.printSuccess(newPipeline)
+	op.printSuccess(newPipeline, unblocked)
 
 	return nil
 }
@@ -316,4 +538,12 @@ func (e *commandError) Error() string {
 
 func (e *commandError) Unwrap() error {
 	return e.cause
+}
+
+type pipelineMetadata struct {
+	ID           string   `yaml:"id"`
+	Version      string   `yaml:"version"`
+	Name         string   `yaml:"name"`
+	Description  string   `yaml:"description"`
+	Dependencies []string `yaml:"dependencies"`
 }

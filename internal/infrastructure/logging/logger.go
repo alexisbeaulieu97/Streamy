@@ -141,6 +141,26 @@ func (l *Logger) log(ctx context.Context, level cblog.Level, msg string, fields 
 	}
 }
 
+// SetLevel updates the underlying logger level at runtime.
+func (l *Logger) SetLevel(level string) error {
+	if l == nil || l.logger == nil {
+		return nil
+	}
+
+	if level == "" {
+		return errors.New("log level cannot be empty")
+	}
+
+	parsed, err := cblog.ParseLevel(strings.ToLower(level))
+	if err != nil {
+		return fmt.Errorf("parse log level: %w", err)
+	}
+
+	l.logger.SetLevel(parsed)
+
+	return nil
+}
+
 func mapToFields(input map[string]interface{}) []interface{} {
 	if len(input) == 0 {
 		return nil

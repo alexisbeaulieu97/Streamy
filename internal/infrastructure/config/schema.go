@@ -6,21 +6,58 @@ import (
 	"strings"
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
+	"github.com/alexisbeaulieu97/streamy/internal/registry"
 	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
 )
 
 type fileConfig struct {
-	Version     string             `yaml:"version"`
-	Name        string             `yaml:"name"`
-	Description string             `yaml:"description,omitempty"`
-	Settings    settingsConfig     `yaml:"settings,omitempty"`
-	Steps       []stepConfig       `yaml:"steps"`
-	Validations []validationConfig `yaml:"validations,omitempty"`
+	ID           string             `yaml:"id"`
+	Version      string             `yaml:"version"`
+	Name         string             `yaml:"name"`
+	Description  string             `yaml:"description,omitempty"`
+	Dependencies []string           `yaml:"dependencies,omitempty"`
+	Settings     settingsConfig     `yaml:"settings,omitempty"`
+	Steps        []stepConfig       `yaml:"steps"`
+	Validations  []validationConfig `yaml:"validations,omitempty"`
 }
 
 func (c *fileConfig) toPipeline() (*domain.Pipeline, error) {
+	c.ID = strings.TrimSpace(c.ID)
+	c.Version = strings.TrimSpace(c.Version)
+
+	if c.ID == "" {
+		return nil, domain.NewMissingFieldError("id")
+	}
+
+	if c.Version == "" {
+		return nil, domain.NewMissingFieldError("version")
+	}
+
+	if _, err := registry.BuildCanonicalPipelineID(c.ID, c.Version); err != nil {
+		return nil, domain.NewValidationError("invalid pipeline identifier", map[string]interface{}{
+			"id":      c.ID,
+			"version": c.Version,
+			"error":   err.Error(),
+		})
+	}
+
+	normalizedDeps := make([]string, 0, len(c.Dependencies))
+
+	for _, dep := range c.Dependencies {
+		trimmed := strings.TrimSpace(dep)
+		if err := registry.ValidateCanonicalPipelineID(trimmed); err != nil {
+			return nil, domain.NewValidationError("invalid dependency identifier", map[string]interface{}{
+				"dependency": trimmed,
+				"error":      err.Error(),
+			})
+		}
+
+		normalizedDeps = append(normalizedDeps, trimmed)
+	}
+
 	pipeline := &domain.Pipeline{
+		ID:          c.ID,
 		Version:     c.Version,
 		Name:        c.Name,
 		Description: c.Description,
@@ -31,6 +68,10 @@ func (c *fileConfig) toPipeline() (*domain.Pipeline, error) {
 			DryRun:          c.Settings.DryRun,
 			Verbose:         c.Settings.Verbose,
 		},
+	}
+
+	if len(normalizedDeps) > 0 {
+		pipeline.Dependencies = append([]string(nil), normalizedDeps...)
 	}
 
 	if len(c.Steps) > 0 {

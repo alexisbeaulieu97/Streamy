@@ -51,7 +51,9 @@ func TestVerifyCommandStructuredLogging(t *testing.T) {
 
 	configLoader := &stubConfigLoader{
 		pipeline: &domainpipeline.Pipeline{
-			Name: "demo",
+			ID:      "demo",
+			Version: "1.0",
+			Name:    "demo",
 			Steps: []domainpipeline.Step{
 				{ID: "setup", Type: domainpipeline.StepType("command"), Enabled: true},
 			},
@@ -157,7 +159,9 @@ func TestVerifyCommandStructuredLogging_WithFailure(t *testing.T) {
 
 	configLoader := &stubConfigLoader{
 		pipeline: &domainpipeline.Pipeline{
-			Name: "demo",
+			ID:      "demo",
+			Version: "1.0",
+			Name:    "demo",
 			Steps: []domainpipeline.Step{
 				{ID: "setup", Type: domainpipeline.StepType("command"), Enabled: true},
 			},

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"testing"
 
 	domain "github.com/alexisbeaulieu97/streamy/internal/domain/pipeline"
@@ -83,8 +84,13 @@ func TestValidationConfigUnmarshalYAMLTrimsType(t *testing.T) {
 
 func TestFileConfigToPipelineSuccess(t *testing.T) {
 	cfg := fileConfig{
+		ID:      "demo",
 		Version: "1.0",
 		Name:    "demo",
+		Dependencies: []string{
+			"db@1.0",
+			"network@2.0",
+		},
 		Settings: settingsConfig{
 			Parallel:        8,
 			Timeout:         120,
@@ -135,6 +141,7 @@ func TestFileConfigToPipelineSuccess(t *testing.T) {
 
 func TestFileConfigToPipelineValidationFailure(t *testing.T) {
 	cfg := fileConfig{
+		ID:      "demo",
 		Version: "1.0",
 		Name:    "demo",
 		Steps: []stepConfig{{
@@ -196,6 +203,92 @@ func TestExtractValidationConfigRemovesType(t *testing.T) {
 
 	if _, ok := raw["type"]; ok {
 		t.Fatal("type key should be removed from validation config")
+	}
+}
+
+func TestFileConfigToPipelineRequiresIDAndVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cfg  fileConfig
+	}{
+		{
+			name: "missing id",
+			cfg: fileConfig{
+				Version: "1.0",
+				Name:    "demo",
+				Steps: []stepConfig{{
+					ID:        "setup",
+					Type:      "command",
+					Enabled:   true,
+					rawConfig: map[string]any{"command": "echo"},
+				}},
+			},
+		},
+		{
+			name: "missing version",
+			cfg: fileConfig{
+				ID:   "demo",
+				Name: "demo",
+				Steps: []stepConfig{{
+					ID:        "setup",
+					Type:      "command",
+					Enabled:   true,
+					rawConfig: map[string]any{"command": "echo"},
+				}},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.cfg.toPipeline()
+			if err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+
+			var domainErr *domain.DomainError
+			if !errors.As(err, &domainErr) {
+				t.Fatalf("expected domain error, got %T", err)
+			}
+
+			if domainErr.Code != domain.ErrCodeMissing && domainErr.Code != domain.ErrCodeValidation {
+				t.Fatalf("unexpected domain error code: %s", domainErr.Code)
+			}
+		})
+	}
+}
+
+func TestFileConfigToPipelineRejectsNonCanonicalDependencies(t *testing.T) {
+	cfg := fileConfig{
+		ID:      "demo",
+		Version: "1.0",
+		Name:    "demo",
+		Dependencies: []string{
+			"db", // missing version portion
+		},
+		Steps: []stepConfig{{
+			ID:        "setup",
+			Type:      "command",
+			Enabled:   true,
+			rawConfig: map[string]any{"command": "echo"},
+		}},
+	}
+
+	_, err := cfg.toPipeline()
+	if err == nil {
+		t.Fatal("expected validation error for non-canonical dependency, got nil")
+	}
+
+	var domainErr *domain.DomainError
+	if !errors.As(err, &domainErr) {
+		t.Fatalf("expected domain error, got %T", err)
+	}
+
+	if domainErr.Code != domain.ErrCodeValidation {
+		t.Fatalf("unexpected error code: %s", domainErr.Code)
 	}
 }
 

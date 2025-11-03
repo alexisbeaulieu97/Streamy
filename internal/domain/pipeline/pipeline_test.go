@@ -7,7 +7,9 @@ import (
 
 func TestPipelineValidate(t *testing.T) {
 	p := Pipeline{
-		Name: "test",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "test",
 		Steps: []Step{
 			{ID: "setup", Type: StepTypeCommand},
 			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}},
@@ -20,7 +22,7 @@ func TestPipelineValidate(t *testing.T) {
 }
 
 func TestPipelineValidateMissingName(t *testing.T) {
-	p := Pipeline{Steps: []Step{{ID: "setup", Type: StepTypeCommand}}}
+	p := Pipeline{ID: "test", Version: "1.0", Steps: []Step{{ID: "setup", Type: StepTypeCommand}}}
 
 	err := p.Validate()
 	if err == nil {
@@ -34,7 +36,7 @@ func TestPipelineValidateMissingName(t *testing.T) {
 }
 
 func TestPipelineValidateRequiresSteps(t *testing.T) {
-	p := Pipeline{Name: "empty"}
+	p := Pipeline{ID: "test", Version: "1.0", Name: "empty"}
 
 	err := p.Validate()
 	if err == nil {
@@ -49,8 +51,10 @@ func TestPipelineValidateRequiresSteps(t *testing.T) {
 
 func TestPipelineValidateStepError(t *testing.T) {
 	p := Pipeline{
-		Name:  "invalid-step",
-		Steps: []Step{{ID: "setup"}},
+		ID:      "test",
+		Version: "1.0",
+		Name:    "invalid-step",
+		Steps:   []Step{{ID: "setup"}},
 	}
 
 	err := p.Validate()
@@ -66,7 +70,9 @@ func TestPipelineValidateStepError(t *testing.T) {
 
 func TestPipelineValidateDuplicateStep(t *testing.T) {
 	p := Pipeline{
-		Name: "invalid",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "invalid",
 		Steps: []Step{
 			{ID: "dup", Type: StepTypeCommand},
 			{ID: "dup", Type: StepTypePackage},
@@ -86,7 +92,9 @@ func TestPipelineValidateDuplicateStep(t *testing.T) {
 
 func TestPipelineValidateDependencies(t *testing.T) {
 	p := Pipeline{
-		Name: "invalid",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "invalid",
 		Steps: []Step{
 			{ID: "a", Type: StepTypeCommand, DependsOn: []string{"missing"}},
 		},
@@ -105,7 +113,9 @@ func TestPipelineValidateDependencies(t *testing.T) {
 
 func TestPipelineValidateDependencyCycle(t *testing.T) {
 	p := Pipeline{
-		Name: "cycle",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "cycle",
 		Steps: []Step{
 			{ID: "a", Type: StepTypeCommand, DependsOn: []string{"b"}},
 			{ID: "b", Type: StepTypeCommand, DependsOn: []string{"a"}},
@@ -125,8 +135,10 @@ func TestPipelineValidateDependencyCycle(t *testing.T) {
 
 func TestPipelineGetStep(t *testing.T) {
 	p := Pipeline{
-		Name:  "steps",
-		Steps: []Step{{ID: "a", Type: StepTypeCommand}},
+		ID:      "test",
+		Version: "1.0",
+		Name:    "steps",
+		Steps:   []Step{{ID: "a", Type: StepTypeCommand}},
 	}
 
 	step, err := p.GetStep("a")
@@ -145,7 +157,7 @@ func TestPipelineGetStep(t *testing.T) {
 }
 
 func TestPipelineMustStep(t *testing.T) {
-	p := Pipeline{Steps: []Step{{ID: "x", Type: StepTypeCommand}}}
+	p := Pipeline{ID: "test", Version: "1.0", Steps: []Step{{ID: "x", Type: StepTypeCommand}}}
 	if step := p.MustStep("x"); step.ID != "x" {
 		t.Fatalf("unexpected step %v", step)
 	}
@@ -161,6 +173,8 @@ func TestPipelineMustStep(t *testing.T) {
 
 func TestPipelineClone(t *testing.T) {
 	p := Pipeline{
+		ID:       "test",
+		Version:  "1.0",
 		Name:     "original",
 		Settings: Settings{Parallel: 2},
 		Steps: []Step{{
@@ -199,7 +213,7 @@ func TestPipelineClone(t *testing.T) {
 }
 
 func TestPipelineEffectiveSettings(t *testing.T) {
-	p := Pipeline{Settings: Settings{Parallel: 0, Timeout: 0}}
+	p := Pipeline{ID: "test", Version: "1.0", Settings: Settings{Parallel: 0, Timeout: 0}}
 
 	eff := p.EffectiveSettings()
 	if eff.Parallel != 4 || eff.Timeout != 300 {

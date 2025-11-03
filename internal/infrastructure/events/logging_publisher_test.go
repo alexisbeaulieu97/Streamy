@@ -513,6 +513,8 @@ func (m *mockLogger) With(_ ...interface{}) ports.Logger {
 	return &mockLogger{}
 }
 
+func (m *mockLogger) SetLevel(string) error { return nil }
+
 type sampleEvent struct {
 	eventType string
 	payload   interface{}

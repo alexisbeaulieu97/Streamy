@@ -124,6 +124,8 @@ func (l *recordingLogger) With(fields ...interface{}) ports.Logger {
 	return clone
 }
 
+func (l *recordingLogger) SetLevel(string) error { return nil }
+
 func (l *recordingLogger) Entries() []logEntry {
 	l.mu.Lock()
 	defer l.mu.Unlock()

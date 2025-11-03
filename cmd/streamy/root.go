@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -45,11 +47,38 @@ func newRootCmd(app *AppContext) *cobra.Command {
 		},
 	}
 
+	cmd.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		if app == nil || app.Logger == nil {
+			return nil
+		}
+
+		level := "warn"
+		if flags.verbose {
+			level = "info"
+		}
+
+		if err := app.Logger.SetLevel(level); err != nil {
+			return fmt.Errorf("set log level: %w", err)
+		}
+
+		app.Logger.Info(cmd.Context(), "starting streamy command", "pid", os.Getpid())
+
+		return nil
+	}
+
+	cmd.PersistentPostRun = func(cmd *cobra.Command, _ []string) {
+		if app == nil || app.Logger == nil {
+			return
+		}
+
+		app.Logger.Info(cmd.Context(), "streamy command completed", "pid", os.Getpid())
+	}
+
 	cmd.PersistentFlags().BoolVarP(&flags.verbose, "verbose", "v", false, "Enable verbose logging")
 	cmd.PersistentFlags().BoolVar(&flags.dryRun, "dry-run", false, "Preview execution without making changes")
 	cmd.PersistentFlags().DurationVar(&flags.timeout, "timeout", 30*time.Minute, "Maximum duration for a command before it is cancelled")
 
-	cmd.AddCommand(newApplyCmd(flags, app))
+	cmd.AddCommand(newRunCmd(flags, app))
 	cmd.AddCommand(newVerifyCmd(flags, app))
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newDashboardCmd(app))

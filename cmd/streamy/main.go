@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,6 +18,7 @@ import (
 	metricsinfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/metrics"
 	plugininfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/plugin"
 	tracinginfra "github.com/alexisbeaulieu97/streamy/internal/infrastructure/tracing"
+	"github.com/spf13/pflag"
 )
 
 func main() {
@@ -23,9 +26,28 @@ func main() {
 }
 
 func run() int {
+	preflightFlags := pflag.NewFlagSet("streamy-preflight", pflag.ContinueOnError)
+	preflightFlags.ParseErrorsWhitelist.UnknownFlags = true
+	preflightFlags.SetOutput(io.Discard)
+
+	var verbose bool
+	preflightFlags.BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
+
+	if err := preflightFlags.Parse(os.Args[1:]); err != nil {
+		if !errors.Is(err, pflag.ErrHelp) {
+			fmt.Fprintf(os.Stderr, "failed to parse flags: %v\n", err)
+			return 1
+		}
+	}
+
+	defaultLevel := "warn"
+	if verbose {
+		defaultLevel = "info"
+	}
+
 	appLogger, err := logginginfra.New(logginginfra.Options{
 		Writer:    os.Stderr,
-		Level:     "info",
+		Level:     defaultLevel,
 		Component: "cli",
 		Layer:     "infrastructure",
 	})
@@ -109,16 +131,12 @@ func run() int {
 
 	rootCmd := newRootCmd(app)
 
-	appLogger.Info(ctx, "starting streamy command", "pid", os.Getpid())
-
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		appLogger.Error(ctx, "streamy command failed", "error", err)
 		fmt.Fprintln(os.Stderr, FormatError(err))
 
 		return 1
 	}
-
-	appLogger.Info(ctx, "streamy command completed", "pid", os.Getpid())
 
 	return 0
 }

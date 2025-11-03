@@ -140,11 +140,15 @@ func (c *capturingLogger) Error(_ context.Context, msg string, fields ...interfa
 
 func (c *capturingLogger) With(_ ...interface{}) ports.Logger { return c }
 
+func (c *capturingLogger) SetLevel(string) error { return nil }
+
 func TestYAMLLoaderLoadAndValidate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pipeline.yaml")
 
-	yamlContent := `name: demo
+	yamlContent := `id: demo
+version: "1.0"
+name: demo
 steps:
   - id: setup
     type: command
@@ -180,7 +184,9 @@ func TestYAMLLoaderLoadInvalidSchema(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pipeline.yaml")
 
-	yamlContent := `name: demo
+	yamlContent := `id: demo
+version: "1.0"
+name: demo
 steps:
   - id: setup
     type: command

@@ -22,6 +22,7 @@ func TestVerifyAllSatisfied(t *testing.T) {
 	require.NoError(t, os.WriteFile(targetFile, []byte("ok"), 0o644))
 
 	configPath := writeVerifyConfig(t, fmt.Sprintf(`
+id: verify-all-satisfied
 version: "1.0"
 name: "verify"
 steps:
@@ -48,6 +49,7 @@ func TestVerifyMissingResource(t *testing.T) {
 	missingFile := filepath.Join(t.TempDir(), "missing.txt")
 
 	configPath := writeVerifyConfig(t, fmt.Sprintf(`
+id: verify-missing-resource
 version: "1.0"
 name: "verify-missing"
 steps:

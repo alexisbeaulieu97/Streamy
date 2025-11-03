@@ -24,6 +24,9 @@ func (n *NoOpLogger) Error(context.Context, string, ...interface{}) {}
 // With implements ports.Logger.
 func (n *NoOpLogger) With(...interface{}) ports.Logger { return n }
 
+// SetLevel implements ports.Logger.
+func (n *NoOpLogger) SetLevel(string) error { return nil }
+
 // NewNoOpLogger returns a ports.Logger that discards all log entries.
 func NewNoOpLogger() ports.Logger {
 	return &NoOpLogger{}

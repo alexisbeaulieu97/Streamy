@@ -8,12 +8,14 @@ import (
 
 // Pipeline represents a complete pipeline configuration.
 type Pipeline struct {
-	Version     string
-	Name        string
-	Description string
-	Settings    Settings
-	Steps       []Step
-	Validations []Validation
+	ID           string
+	Version      string
+	Name         string
+	Description  string
+	Settings     Settings
+	Steps        []Step
+	Validations  []Validation
+	Dependencies []string
 }
 
 // Validate ensures the pipeline satisfies all invariants.
@@ -147,12 +149,14 @@ func (p Pipeline) Clone() Pipeline {
 	}
 
 	return Pipeline{
-		Version:     p.Version,
-		Name:        p.Name,
-		Description: p.Description,
-		Settings:    p.Settings.Clone(),
-		Steps:       steps,
-		Validations: validations,
+		ID:           p.ID,
+		Version:      p.Version,
+		Name:         p.Name,
+		Description:  p.Description,
+		Settings:     p.Settings.Clone(),
+		Steps:        steps,
+		Validations:  validations,
+		Dependencies: slices.Clone(p.Dependencies),
 	}
 }
 

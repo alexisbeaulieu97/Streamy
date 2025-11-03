@@ -106,6 +106,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	defer cancel()
 
 	configPath := writeConfig(t, `
+id: failure-case
 version: "1.0"
 name: "Failure"
 steps:
@@ -135,6 +136,7 @@ func TestIntegrationValidationFailure(t *testing.T) {
 
 	missingPath := filepath.Join(t.TempDir(), "missing.txt")
 	configPath := writeConfig(t, fmt.Sprintf(`
+id: validation-failure
 version: "1.0"
 name: "Validation Failure"
 steps:
@@ -194,6 +196,7 @@ func TestIntegrationCancellationStopsExecutor(t *testing.T) {
 
 	tempDir := t.TempDir()
 	configPath := writeConfig(t, fmt.Sprintf(`
+id: cancellation
 version: "1.0"
 name: "Cancellation"
 settings:

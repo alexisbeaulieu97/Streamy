@@ -5,9 +5,13 @@ Streamy configurations are YAML documents describing environment setup steps, va
 ## Root Document
 
 ```yaml
+id: "app-deploy"
 version: "1.0"
 name: "Developer Environment"
 description: "Optional description"
+dependencies:
+  - db-setup@1.0
+  - network-config@2.0
 settings:
   parallel: 4
   timeout: 300
@@ -25,9 +29,11 @@ validations:
 
 | Field        | Type     | Required | Notes |
 |--------------|----------|----------|-------|
-| `version`    | string   | ✅       | Semantic version `major.minor` (e.g., `"1.0"`). |
+| `id`         | string   | ✅       | Registry identifier base (lowercase alphanumeric + hyphen). Combined with `version` to form `<id>@<version>`. |
+| `version`    | string   | ✅       | Pipeline version string (e.g., `"1.0"`). Used with `id` to derive canonical registry IDs. |
 | `name`       | string   | ✅       | Human-readable name (1–100 chars). |
 | `description`| string   | ❌       | Optional description displayed in the TUI.| 
+| `dependencies` | array | ❌       | Upstream pipeline IDs declared in canonical `<id>@<version>` format. |
 | `settings`   | object   | ❌       | Execution defaults (see below). |
 | `steps`      | array    | ✅       | At least one step. IDs must be unique. |
 | `validations`| array    | ❌       | Post-execution checks. |
@@ -255,4 +261,3 @@ Plugin authors expose metadata to the runtime registry via `PluginMetadata()` (s
 | `description` | string | ❌ | Human-readable summary used in logs and diagnostics. |
 
 The registry validates these fields at startup, detects missing or incompatible dependencies, and computes an initialisation order using the dependency graph.
-

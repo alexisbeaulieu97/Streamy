@@ -246,6 +246,9 @@ func (l *MockLogger) append(level, msg string, fields ...interface{}) {
 	l.entries = append(l.entries, entry)
 }
 
+// SetLevel satisfies the ports.Logger interface. MockLogger ignores level changes.
+func (l *MockLogger) SetLevel(string) error { return nil }
+
 func toFieldMap(fields []interface{}) map[string]interface{} {
 	if len(fields) == 0 {
 		return map[string]interface{}{}

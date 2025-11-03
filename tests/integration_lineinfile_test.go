@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,7 +217,10 @@ func lineInFileStepMap(id string, enabled bool, dependsOn []string, fields map[s
 func writeLineInFileConfig(t *testing.T, steps []map[string]interface{}) string {
 	t.Helper()
 
+	id := sanitizePipelineID(t.Name())
+
 	cfg := map[string]interface{}{
+		"id":      id,
 		"version": "1.0",
 		"name":    "line-in-file-integration",
 		"steps":   steps,
@@ -260,4 +264,43 @@ func writeTempFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+func sanitizePipelineID(name string) string {
+	lower := strings.ToLower(name)
+
+	var b strings.Builder
+	b.Grow(len(lower))
+
+	lastHyphen := false
+
+	for _, r := range lower {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			lastHyphen = false
+
+			b.WriteRune(r)
+
+			continue
+		}
+
+		if !lastHyphen && b.Len() > 0 {
+			lastHyphen = true
+
+			b.WriteByte('-')
+		}
+	}
+
+	id := strings.Trim(b.String(), "-")
+	if id == "" {
+		id = "pipeline"
+	}
+
+	if len(id) > 64 {
+		id = strings.Trim(id[:64], "-")
+		if id == "" {
+			id = "pipeline"
+		}
+	}
+
+	return id
 }

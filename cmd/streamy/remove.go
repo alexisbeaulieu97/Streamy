@@ -165,8 +165,11 @@ func invalidateStatusCache(ctx context.Context, logger ports.Logger, statusPath,
 		return
 	}
 
-	_ = statusCache.Invalidate(pipelineID)
-	_ = statusCache.Save()
+	if err := statusCache.Invalidate(pipelineID); err != nil {
+		if logger != nil {
+			logger.Warn(ctx, "failed to update status cache", "pipeline_id", pipelineID, "error", err)
+		}
+	}
 }
 
 func announceRemoval(cmd *cobra.Command, pipelineID, configPath string) {

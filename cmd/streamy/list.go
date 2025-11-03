@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -19,6 +20,7 @@ import (
 
 type listOptions struct {
 	jsonOutput bool
+	tree       bool
 }
 
 func newListCmd(_ *rootFlags, app *AppContext) *cobra.Command {
@@ -31,7 +33,7 @@ func newListCmd(_ *rootFlags, app *AppContext) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, logger := app.CommandContext(cmd, "command.registry.list")
 			if logger != nil {
-				logger.Info(ctx, "listing pipelines", "json", opts.jsonOutput)
+				logger.Info(ctx, "listing pipelines", "json", opts.jsonOutput, "tree", opts.tree)
 			}
 
 			err := runList(ctx, logger, cmd, opts)
@@ -44,11 +46,16 @@ func newListCmd(_ *rootFlags, app *AppContext) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&opts.jsonOutput, "json", false, "Output in JSON format")
+	cmd.Flags().BoolVar(&opts.tree, "tree", false, "Render dependency tree view")
 
 	return cmd
 }
 
 func runList(ctx context.Context, logger ports.Logger, cmd *cobra.Command, opts *listOptions) error {
+	if opts.jsonOutput && opts.tree {
+		return newCommandError("list", "parsing flags", fmt.Errorf("--json and --tree cannot be combined"), "Choose either --json or --tree output, not both.")
+	}
+
 	registryPath, err := defaultRegistryPath()
 	if err != nil {
 		return newCommandError("list", "determining registry path", err, "Ensure your HOME directory is set correctly.")
@@ -76,6 +83,10 @@ func runList(ctx context.Context, logger ports.Logger, cmd *cobra.Command, opts 
 	statusCache, err := registry.NewStatusCache(statusPath)
 	if err != nil {
 		return newCommandError("list", "loading status cache", err, "Check status cache file permissions and try again.")
+	}
+
+	if opts.tree {
+		return renderListTree(cmd, reg, statusCache)
 	}
 
 	enriched := enrichPipelinesWithStatus(pipelines, statusCache)
@@ -205,6 +216,159 @@ func renderListJSON(cmd *cobra.Command, pipelines []pipelineWithStatus) error {
 	}
 
 	return nil
+}
+
+func renderListTree(cmd *cobra.Command, reg *registry.Registry, _ *registry.StatusCache) error {
+	out := cmd.OutOrStdout()
+	useUnicode := supportsUnicode(out)
+
+	pipelines := reg.PipelinesByID()
+	if len(pipelines) == 0 {
+		return renderEmptyList(cmd)
+	}
+
+	dependents := reg.DependentsIndex()
+
+	roots := make([]string, 0, len(pipelines))
+	for id := range pipelines {
+		if len(dependents[id]) == 0 {
+			roots = append(roots, id)
+		}
+	}
+
+	if len(roots) == 0 {
+		for id := range pipelines {
+			roots = append(roots, id)
+		}
+	}
+
+	sort.Strings(roots)
+
+	ctx := &treeContext{
+		writer:      out,
+		registry:    reg,
+		pipelines:   pipelines,
+		useUnicode:  useUnicode,
+		visitedPath: make(map[string]bool),
+	}
+
+	for i, root := range roots {
+		ctx.visitedPath = make(map[string]bool)
+		ctx.printNode(root, "", i == len(roots)-1)
+
+		if i != len(roots)-1 {
+			_, _ = fmt.Fprintln(out)
+		}
+	}
+
+	return nil
+}
+
+type treeContext struct {
+	writer      io.Writer
+	registry    *registry.Registry
+	pipelines   map[string]registry.Pipeline
+	useUnicode  bool
+	visitedPath map[string]bool
+}
+
+func (t *treeContext) printNode(pipelineID, prefix string, isLast bool) {
+	midBranch := "├─"
+	lastBranch := "└─"
+	continuationPrefix := "│  "
+	spacePrefix := "   "
+
+	if !t.useUnicode {
+		midBranch = "+-"
+		lastBranch = "`-"
+		continuationPrefix = "|  "
+		spacePrefix = "   "
+	}
+
+	branch := midBranch
+	nextPrefix := prefix + continuationPrefix
+
+	if isLast {
+		branch = lastBranch
+		nextPrefix = prefix + spacePrefix
+	}
+
+	info := t.nodeInfo(pipelineID)
+	line := t.formatLine(pipelineID, info)
+	_, _ = fmt.Fprintf(t.writer, "%s%s %s\n", prefix, branch, line)
+
+	if info.missing || len(info.dependencies) == 0 {
+		return
+	}
+
+	if t.visitedPath[pipelineID] {
+		return
+	}
+
+	t.visitedPath[pipelineID] = true
+	defer delete(t.visitedPath, pipelineID)
+
+	for idx, depID := range info.dependencies {
+		t.printNode(depID, nextPrefix, idx == len(info.dependencies)-1)
+	}
+}
+
+type treeNodeInfo struct {
+	status       registry.PipelineStatus
+	reason       string
+	missing      bool
+	dependencies []string
+}
+
+func (t *treeContext) nodeInfo(pipelineID string) treeNodeInfo {
+	pipeline, exists := t.pipelines[pipelineID]
+	if !exists {
+		return treeNodeInfo{
+			status:  registry.StatusBlocked,
+			reason:  "not registered",
+			missing: true,
+		}
+	}
+
+	missing := t.registry.FindUnregisteredDependencies(pipeline.Dependencies)
+	if len(missing) > 0 {
+		reason := fmt.Sprintf("missing dependencies: %s", strings.Join(missing, ", "))
+
+		deps := append([]string(nil), pipeline.Dependencies...)
+		sort.Strings(deps)
+
+		return treeNodeInfo{
+			status:       registry.StatusBlocked,
+			reason:       reason,
+			dependencies: deps,
+		}
+	}
+
+	deps := append([]string(nil), pipeline.Dependencies...)
+	sort.Strings(deps)
+
+	return treeNodeInfo{
+		status:       registry.StatusReady,
+		dependencies: deps,
+	}
+}
+
+func (t *treeContext) formatLine(pipelineID string, info treeNodeInfo) string {
+	icon := info.status.Icon()
+	if !t.useUnicode {
+		icon = info.status.IconFallback()
+	}
+
+	label := "Ready"
+	if info.status != registry.StatusReady {
+		label = "Blocked"
+	}
+
+	if info.status == registry.StatusBlocked && info.reason != "" {
+		return fmt.Sprintf("%s %s (%s: %s)", icon, pipelineID, label, info.reason)
+	}
+
+	return fmt.Sprintf("%s %s (%s)", icon, pipelineID, label)
 }
 
 func supportsUnicode(writer any) bool {

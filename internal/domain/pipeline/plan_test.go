@@ -15,7 +15,9 @@ func TestExecutionPlanValidate(t *testing.T) {
 	}
 
 	pipe := Pipeline{
-		Name: "plan",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "plan",
 		Steps: []Step{
 			{ID: "setup", Type: StepTypeCommand, Enabled: true},
 			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}, Enabled: true},
@@ -58,7 +60,7 @@ func TestExecutionPlanValidateMissingStep(t *testing.T) {
 	pl := ExecutionPlan{
 		Levels: []ExecutionLevel{{Level: 0, StepIDs: []string{"setup"}}},
 	}
-	pipe := Pipeline{Name: "plan", Steps: []Step{{ID: "setup", Enabled: true}, {ID: "install", Enabled: true}}}
+	pipe := Pipeline{ID: "test", Version: "1.0", Name: "plan", Steps: []Step{{ID: "setup", Enabled: true}, {ID: "install", Enabled: true}}}
 
 	err := pl.Validate(pipe)
 	if err == nil {
@@ -79,7 +81,9 @@ func TestExecutionPlanValidateDependencyOrder(t *testing.T) {
 		},
 	}
 	pipe := Pipeline{
-		Name: "plan",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "plan",
 		Steps: []Step{
 			{ID: "setup", Type: StepTypeCommand, Enabled: true},
 			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}, Enabled: true},
@@ -104,7 +108,9 @@ func TestExecutionPlanValidateDependencySameLevel(t *testing.T) {
 		},
 	}
 	pipe := Pipeline{
-		Name: "plan",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "plan",
 		Steps: []Step{
 			{ID: "setup", Type: StepTypeCommand, Enabled: true},
 			{ID: "install", Type: StepTypePackage, DependsOn: []string{"setup"}, Enabled: true},
@@ -128,7 +134,7 @@ func TestExecutionPlanValidateDependencySameLevel(t *testing.T) {
 
 func TestExecutionPlanValidateEnsuresLevelsPresent(t *testing.T) {
 	pl := ExecutionPlan{}
-	pipe := Pipeline{Name: "plan", Steps: []Step{{ID: "setup", Enabled: true}}}
+	pipe := Pipeline{ID: "test", Version: "1.0", Name: "plan", Steps: []Step{{ID: "setup", Enabled: true}}}
 
 	err := pl.Validate(pipe)
 	if err == nil {
@@ -148,7 +154,9 @@ func TestExecutionPlanValidateSkipsDisabledSteps(t *testing.T) {
 		},
 	}
 	pipe := Pipeline{
-		Name: "plan",
+		ID:      "test",
+		Version: "1.0",
+		Name:    "plan",
 		Steps: []Step{
 			{ID: "setup", Type: StepTypeCommand, Enabled: false},
 			{ID: "install", Type: StepTypePackage, Enabled: true, DependsOn: []string{"setup"}},

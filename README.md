@@ -1,10 +1,11 @@
 # Streamy
 
-Streamy is a declarative environment setup tool. Describe packages, repositories, symlinks, file copies, and shell commands in YAML, then run `streamy apply config.yaml` to reproduce the environment with dependency awareness, dry-run previews, and a Bubbletea-powered TUI. Plugins read configuration exclusively through `step.DecodeConfig(&config.<Type>Step{})`, and helpers/tests populate step payloads with `step.SetConfig(config.<Type>Step{...})`.
+Streamy is a declarative environment setup tool. Describe packages, repositories, symlinks, file copies, and shell commands in YAML, then register those pipelines with `streamy registry add <file>` to reproduce complete dependency graphs with dry-run previews, automatic status reconciliation, and a Bubbletea-powered TUI. Plugins read configuration exclusively through `step.DecodeConfig(&config.<Type>Step{})`, and helpers/tests populate step payloads with `step.SetConfig(config.<Type>Step{...})`.
 
 ## Features
 
 - 🧩 **DAG Execution Engine** – Automatically orders steps based on `depends_on` relationships and executes independent steps in parallel.
+- 🕸️ **Pipeline Orchestration** – Register multiple pipelines, visualize dependency trees, and execute graphs with `streamy run --registry <id>@<version>` (with safety prompts for forced overrides).
 - 🔌 **Plugin Architecture** – Built-in plugins for package, repo, symlink, copy, and command steps; easily extensible for new step types.
 - 🛡️ **Safety & Idempotency** – Per-step `Check` methods, dry-run mode, and post-execution validations keep runs predictable.
 - 📊 **Interactive TUI** – Rich terminal UI shows live progress; falls back to plain output when running in non-interactive contexts.
@@ -22,9 +23,10 @@ After Phase 3.14 is complete you can use the install/build scripts in `scripts/`
 
 ## Quick Start
 
-1. Create a config (see `testdata/configs/simple.yaml`):
+1. Create a config (see `testdata/configs/simple.yaml`), making sure it includes a canonical `id`, `version`, and (optionally) a `dependencies` array:
 
    ```yaml
+   id: simple-example
    version: "1.0"
    name: "Simple Example"
    steps:
@@ -41,7 +43,37 @@ After Phase 3.14 is complete you can use the install/build scripts in `scripts/`
        command: echo
    ```
 
-2. Run Streamy:
+2. Register the pipeline (Streamy stores it in `~/.streamy/registry.json`):
+
+   ```bash
+   streamy registry add simple.yaml
+   ```
+
+   Use canonical IDs of the form `<id>@<version>` everywhere inside the registry. If you reference other pipelines in the `dependencies` list, make sure each of those pipelines is registered as well.
+
+3. Inspect the registry:
+
+   ```bash
+   streamy registry list --tree
+   ```
+
+   Missing upstream pipelines automatically mark dependents as **Blocked** (`🟠`). Once you add the missing pipelines, Streamy reconciles the status and shows them as **Ready** (`🟢`).
+
+4. Run the registered pipeline (and its graph) end to end:
+
+   ```bash
+   streamy run --registry simple@1.0
+   ```
+
+   Add `--dry-run` for a safe preview, `--non-interactive` for CI output, and `--force --yes` if you really need to override upstream failures (you’ll be prompted in interactive sessions).
+
+   Tip: append `@latest` (e.g. `streamy run --registry setup-pnpm@latest`) to resolve the highest registered version at runtime. Streamy prints the concrete version it executes so you keep an audit trail.
+
+To execute a single YAML file without registering it, use:
+
+```bash
+streamy run --file simple.yaml
+```
 
    ```bash
    streamy apply --config simple.yaml
@@ -73,8 +105,8 @@ streamy dashboard
 
 1. **Register pipelines**:
    ```bash
-   streamy register dev-env ./configs/dev-env.yaml
-   streamy register prod-env ./configs/prod-env.yaml
+   streamy registry add ./configs/dev-env.yaml
+   streamy registry add ./configs/prod-env.yaml
    ```
 
 2. **Launch dashboard**:
@@ -117,16 +149,16 @@ streamy dashboard
 
 ```bash
 # Register a pipeline
-streamy register <name> <config-path> [--description "Pipeline description"]
+streamy registry add <config-path> [--description "Pipeline description"]
 
 # List registered pipelines
-streamy list
+streamy registry list
 
 # Unregister a pipeline
-streamy unregister <name>
+streamy registry remove <pipeline-id>
 
 # Verify a single pipeline (CLI)
-streamy verify <name>
+streamy verify <pipeline-id>
 ```
 
 The dashboard provides a real-time view of all registered pipelines with interactive operations. Status information is cached in `~/.streamy/status-cache.json` for fast startup.
@@ -141,11 +173,13 @@ The dashboard provides a real-time view of all registered pipelines with interac
 ## CLI Usage
 
 ```bash
-streamy apply --config path/to/config.yaml [--dry-run] [--verbose]
+streamy run --file path/to/config.yaml [--dry-run]
+streamy run --registry pipeline@1.0 [--dry-run] [--force --yes]
 streamy version
 ```
 
-- `streamy apply`: Parses and validates the config, builds the execution plan, runs steps via registered plugins, and displays progress.
+- `streamy run --file`: Parses and validates a local config, builds the execution plan, runs steps via registered plugins, and displays progress.
+- `streamy run --registry`: Resolves the registered pipeline, executes its dependency graph, updates the status cache, and enforces graph-level safeguards (`--force` requires `--yes` in CI).
 - `streamy version`: Prints build metadata (version, commit, build date) injected via `-ldflags`.
 
 ## Architecture Overview

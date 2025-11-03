@@ -44,6 +44,9 @@ func (l *BufferedLogger) With(fields ...interface{}) ports.Logger {
 	return &BufferedLogger{buffer: l.buffer, fields: nextFields}
 }
 
+// SetLevel implements ports.Logger; buffered logger ignores runtime level updates.
+func (l *BufferedLogger) SetLevel(string) error { return nil }
+
 func (l *BufferedLogger) log(ctx context.Context, level logLevel, msg string, fields ...interface{}) {
 	if l == nil || l.buffer == nil {
 		return

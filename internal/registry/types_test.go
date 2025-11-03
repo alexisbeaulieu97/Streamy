@@ -12,7 +12,9 @@ func TestPipelineStatus_Icon(t *testing.T) {
 		status PipelineStatus
 		want   string
 	}{
-		{"satisfied", StatusSatisfied, "🟢"},
+		{"ready", StatusReady, "🟢"},
+		{"blocked", StatusBlocked, "🟠"},
+		{"satisfied", StatusSatisfied, "✅"},
 		{"drifted", StatusDrifted, "🟡"},
 		{"failed", StatusFailed, "🔴"},
 		{"unknown", StatusUnknown, "⚪"},
@@ -33,6 +35,8 @@ func TestPipelineStatus_IconFallback(t *testing.T) {
 		status PipelineStatus
 		want   string
 	}{
+		{"ready", StatusReady, "[RD]"},
+		{"blocked", StatusBlocked, "[BL]"},
 		{"satisfied", StatusSatisfied, "[OK]"},
 		{"drifted", StatusDrifted, "[!!]"},
 		{"failed", StatusFailed, "[XX]"},
@@ -53,6 +57,8 @@ func TestPipelineStatus_Color(t *testing.T) {
 		name   string
 		status PipelineStatus
 	}{
+		{"ready", StatusReady},
+		{"blocked", StatusBlocked},
 		{"satisfied", StatusSatisfied},
 		{"drifted", StatusDrifted},
 		{"failed", StatusFailed},
@@ -75,6 +81,8 @@ func TestPipelineStatus_String(t *testing.T) {
 		status PipelineStatus
 		want   string
 	}{
+		{"ready", StatusReady, "ready"},
+		{"blocked", StatusBlocked, "blocked"},
 		{"satisfied", StatusSatisfied, "satisfied"},
 		{"drifted", StatusDrifted, "drifted"},
 		{"failed", StatusFailed, "failed"},

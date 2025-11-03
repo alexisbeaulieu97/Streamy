@@ -487,7 +487,7 @@ func TestDashboardJSONFiles(t *testing.T) {
 
 	err = json.Unmarshal(registryData, &registryFile)
 	require.NoError(t, err, "Registry JSON should be valid")
-	assert.Equal(t, "1.0", registryFile.Version)
+	assert.Equal(t, "2.0", registryFile.Version)
 	assert.Len(t, registryFile.Pipelines, 1)
 
 	// Create and save cache
@@ -510,7 +510,7 @@ func TestDashboardJSONFiles(t *testing.T) {
 
 	err = json.Unmarshal(cacheData, &cacheFile)
 	require.NoError(t, err, "Cache JSON should be valid")
-	assert.Equal(t, "1.0", cacheFile.Version)
+	assert.Equal(t, "2.0", cacheFile.Version)
 	assert.Len(t, cacheFile.Statuses, 1)
 }
 
